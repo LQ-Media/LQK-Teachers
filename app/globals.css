@@ -1,26 +1,57 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-ink: #D88A4F;
+  --color-ink-soft: #E3A36F;
+  --color-ink-deep: #B86F3A;
+  --color-gold: #C99A35;
+  --color-gold-soft: #E7C878;
+  --color-sage: #A8742A;
+  --color-sage-soft: #F2E4C8;
+  --color-paper: #FBF4E8;
+  --color-paper-deep: #F4E9D6;
+  --color-rust: #B5573C;
+  --color-rust-soft: #F2DDD5;
+  --color-charcoal: #3A3026;
+  --color-charcoal-soft: #7A6E5C;
+  --color-line: #E8D9BE;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-ink-deep: var(--color-ink-deep);
+  --color-gold: var(--color-gold);
+  --color-gold-soft: var(--color-gold-soft);
+  --color-sage: var(--color-sage);
+  --color-sage-soft: var(--color-sage-soft);
+  --color-paper: var(--color-paper);
+  --color-paper-deep: var(--color-paper-deep);
+  --color-rust: var(--color-rust);
+  --color-rust-soft: var(--color-rust-soft);
+  --color-charcoal: var(--color-charcoal);
+  --color-charcoal-soft: var(--color-charcoal-soft);
+  --color-line: var(--color-line);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-heading: var(--font-lora);
+  --font-body: var(--font-inter);
+  --font-arabic: var(--font-amiri);
+
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --radius-pill: 20px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-charcoal);
+  font-family: var(--font-body);
+}
+
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+.font-arabic {
+  font-family: var(--font-arabic);
 }
