@@ -26,11 +26,10 @@ ENV LQK_DATA_DIR=/data
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-# The admin bootstrap script is not part of the traced server bundle; copy the
-# pieces it needs so `node scripts/create-admin.mjs` can run in the container.
+# The bootstrap/import scripts run via plain `node` (outside the traced server
+# bundle), so copy the scripts and the full lib/ they import.
 COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/lib/hash.js ./lib/hash.js
-COPY --from=builder /app/lib/db.js ./lib/db.js
+COPY --from=builder /app/lib ./lib
 
 # Create the mount point. Persistence comes from a Railway Volume attached at
 # /data in the dashboard — NOT a Docker VOLUME instruction, which Railway rejects.

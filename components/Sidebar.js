@@ -6,10 +6,9 @@ import { logout } from "@/lib/actions/auth";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "🏠" },
-  { href: "/hafalan", label: "My hafalan", icon: "📖" },
+  { href: "/hafalan", label: "Quran tracker", icon: "📖" },
   { href: "/reading", label: "My reading", icon: "📚" },
   { href: "/quran", label: "Quran reader", icon: "🕮" },
-  { href: "/review", label: "Hafalan review", icon: "✅", roles: ["reviewer", "admin"] },
   { href: "/achievements", label: "Achievements", icon: "🏆", soon: true },
   { href: "/hours", label: "Work hours", icon: "⏱", soon: true },
   { href: "/admin", label: "Admin", icon: "⚙️", roles: ["admin"], soon: true },

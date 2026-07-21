@@ -1,30 +1,55 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
+import { allowedClassesFor } from "@/lib/tracker/access";
 import { formatDate, formatDateLong, isSameWeek } from "@/lib/date";
-import StatusPill from "@/components/StatusPill";
 import SolatWidget from "@/components/SolatWidget";
+
+function sgToday() {
+  const n = new Date();
+  const sg = new Date(n.getTime() + (n.getTimezoneOffset() + 480) * 60000);
+  const m = sg.getMonth() + 1;
+  const d = sg.getDate();
+  return `${sg.getFullYear()}-${m < 10 ? "0" : ""}${m}-${d < 10 ? "0" : ""}${d}`;
+}
 
 export default async function DashboardPage({ searchParams }) {
   const session = await requireSession();
   const sp = await searchParams;
   const db = getDb();
 
-  const hafalanEntries = db
-    .prepare("SELECT * FROM hafalan_entries WHERE teacher_id = ? ORDER BY created_at DESC")
-    .all(session.userId);
   const readingEntries = db
     .prepare("SELECT * FROM reading_entries WHERE teacher_id = ? ORDER BY created_at DESC")
     .all(session.userId);
-
-  const pendingCount = hafalanEntries.filter((e) => e.status === "pending").length;
   const readingThisWeek = readingEntries.filter((e) => isSameWeek(new Date(e.created_at), new Date())).length;
+
+  // Quran-tracker summary across the classes this user can see.
+  const classes = allowedClassesFor(session);
+  let studentTotal = 0;
+  let loggedToday = 0;
+  if (classes.length) {
+    const placeholders = classes.map(() => "?").join(",");
+    studentTotal = db.prepare(`SELECT COUNT(*) AS c FROM students WHERE class IN (${placeholders})`).get(...classes).c;
+    loggedToday = db
+      .prepare(
+        `SELECT COUNT(DISTINCT student_id) AS c FROM lessons WHERE date = ? AND class IN (${placeholders})`
+      )
+      .get(sgToday(), ...classes).c;
+  }
+
+  const myLessons = db
+    .prepare(
+      `SELECT l.sabaq, l.grade, l.date, s.name AS student_name
+       FROM lessons l JOIN students s ON s.id = l.student_id
+       WHERE l.teacher_id = ? ORDER BY l.created_at DESC LIMIT 3`
+    )
+    .all(session.userId);
 
   return (
     <div className="p-8 max-w-5xl">
       {sp?.denied && (
         <div className="bg-rust-soft text-[#8A4030] text-[13px] font-medium rounded-control px-4 py-3 mb-5">
-          You don't have access to that page.
+          You don’t have access to that page.
         </div>
       )}
       <div className="mb-6">
@@ -43,9 +68,9 @@ export default async function DashboardPage({ searchParams }) {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <StatCard label="Work hours" value="Soon" note="Clock in/out arrives in the next phase" />
         <StatCard
-          label="My hafalan awaiting review"
-          value={String(pendingCount)}
-          note={pendingCount === 1 ? "entry pending" : "entries pending"}
+          label="Logged today"
+          value={classes.length ? `${loggedToday}/${studentTotal}` : "—"}
+          note={classes.length ? "students logged" : "no class assigned"}
         />
         <StatCard
           label="Reading this week"
@@ -55,17 +80,17 @@ export default async function DashboardPage({ searchParams }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <SummaryCard title="My hafalan" viewAllHref="/hafalan">
-          {hafalanEntries.slice(0, 3).map((entry) => (
-            <li key={entry.id} className="flex items-center justify-between py-2.5 border-b-[0.5px] border-line last:border-0">
+        <SummaryCard title="Quran tracker" viewAllHref="/hafalan">
+          {myLessons.map((l, i) => (
+            <li key={i} className="flex items-center justify-between py-2.5 border-b-[0.5px] border-line last:border-0">
               <div>
-                <div className="text-[13px] font-medium text-charcoal">{entry.surah_name}</div>
-                <div className="text-[11px] text-charcoal-soft">{formatDate(entry.created_at)}</div>
+                <div className="text-[13px] font-medium text-charcoal">{l.sabaq}</div>
+                <div className="text-[11px] text-charcoal-soft">{formatDate(l.date)}</div>
               </div>
-              <StatusPill status={entry.status === "pending" ? "pending" : entry.status === "approved" ? "mutqin" : "needs_review"} label={entry.status === "pending" ? "Awaiting review" : entry.status === "approved" ? "Approved" : "Rejected"} />
+              {l.grade && <span className="text-[11px] font-semibold text-charcoal-soft">{l.grade}</span>}
             </li>
           ))}
-          {hafalanEntries.length === 0 && <EmptyRow text="No hafalan entries yet." />}
+          {myLessons.length === 0 && <EmptyRow text="No lessons logged yet." />}
         </SummaryCard>
 
         <SummaryCard title="My reading" viewAllHref="/reading">
