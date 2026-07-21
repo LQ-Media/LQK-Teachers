@@ -32,8 +32,9 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/lib/hash.js ./lib/hash.js
 COPY --from=builder /app/lib/db.js ./lib/db.js
 
+# Create the mount point. Persistence comes from a Railway Volume attached at
+# /data in the dashboard — NOT a Docker VOLUME instruction, which Railway rejects.
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 EXPOSE 3000
 CMD ["node", "server.js"]
