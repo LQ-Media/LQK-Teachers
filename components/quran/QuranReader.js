@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createDataSource } from "@/lib/quran/data";
 import { createQuranStore } from "@/lib/quran/store";
 import { createServerBookmarkService } from "@/lib/quran/bookmark-service";
 import Icon from "@/components/Icon";
 import VerseCard from "./VerseCard";
 import BrowseSheet from "./BrowseSheet";
+import DisplaySheet from "./DisplaySheet";
 import MiniPlayer from "./MiniPlayer";
 
 const BISMILLAH = "﷽"; // shown for every surah except 1 (it is ayah 1) and 9
@@ -36,13 +37,17 @@ export default function QuranReader({ initialBookmark = null }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const scrollRef = useRef(null);
   const verseRefs = useRef(new Map());
 
+  // Load saved display prefs on the client (kept out of the server render so
+  // hydration stays deterministic), then boot the data.
   useEffect(() => {
+    store.hydrate();
     store.init();
   }, [store]);
 
@@ -63,32 +68,71 @@ export default function QuranReader({ initialBookmark = null }) {
     }
   }, [state.versesStatus, state.focusVerseKey, store]);
 
-  // Keep the playing ayah in view during continuous playback.
+  // Keep the playing ayah in view during continuous playback — unless the
+  // constant-speed auto-scroll is running, which owns the scroll position.
   useEffect(() => {
+    if (state.autoscroll.active) return;
     if (state.playback.continuous && state.playback.verseKey) {
       const el = verseRefs.current.get(state.playback.verseKey);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [state.playback.verseKey, state.playback.continuous]);
+  }, [state.playback.verseKey, state.playback.continuous, state.autoscroll.active]);
 
-  function showToast(content) {
-    setToast(content);
+  // Hands-free constant-speed auto-scroll. Accumulate in a float because
+  // element.scrollTop is integer-quantised and slow speeds would otherwise stall.
+  useEffect(() => {
+    if (!state.autoscroll.active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const pxPerSec = 12 + state.autoscroll.speed * 12; // ~24–132 px/s
+    let raf = 0;
+    let last = null;
+    let acc = el.scrollTop;
+    const tick = (t) => {
+      if (last != null) {
+        const dt = t - last;
+        // Ignore long gaps (tab was hidden — rAF is paused there — or the loop
+        // stalled) so refocusing never causes a sudden jump; just resync.
+        if (dt > 0 && dt < 200) {
+          acc += (pxPerSec * dt) / 1000;
+          el.scrollTop = acc;
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) {
+            store.setAutoscroll(false); // reached the end
+            return;
+          }
+        } else {
+          acc = el.scrollTop;
+        }
+      }
+      last = t;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [state.autoscroll.active, state.autoscroll.speed, store]);
+
+  const onWordTap = useCallback((word) => {
+    if (!word.meaning) return;
+    setToast(
+      <>
+        <span className="font-arabic mr-2 text-[18px]" lang="ar">
+          {word.text}
+        </span>
+        {word.meaning}
+      </>
+    );
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2600);
-  }
+  }, []);
 
-  function onWordTap(word) {
-    if (word.meaning) {
-      showToast(
-        <>
-          <span className="font-arabic mr-2 text-[18px]" lang="ar">
-            {word.text}
-          </span>
-          {word.meaning}
-        </>
-      );
-    }
-  }
+  // One stable callback ref for every card (so memoised cards never re-render
+  // on ref-identity churn). It reads the verse key from a data attribute and
+  // returns a React 19 cleanup, keeping all ref access outside render.
+  const registerCard = useCallback((el) => {
+    const key = el.dataset.verseKey;
+    verseRefs.current.set(key, el);
+    return () => verseRefs.current.delete(key);
+  }, []);
 
   if (state.status === "loading") {
     return <FullState>Loading the Quran…</FullState>;
@@ -143,23 +187,11 @@ export default function QuranReader({ initialBookmark = null }) {
             </select>
             <button
               type="button"
-              role="switch"
-              aria-checked={state.showText}
-              onClick={() => store.toggleText()}
-              className="flex flex-none items-center gap-2 text-[13px] text-charcoal"
+              onClick={() => setDisplayOpen(true)}
+              className="flex flex-none items-center gap-2 rounded-control border-[0.5px] border-line bg-white px-3.5 py-2 text-[13px] font-semibold text-charcoal transition-colors hover:bg-paper-deep"
             >
-              <span
-                className={`relative h-6 w-11 rounded-pill transition-colors ${
-                  state.showText ? "bg-ink" : "bg-paper-deep"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${
-                    state.showText ? "left-[22px]" : "left-0.5"
-                  }`}
-                />
-              </span>
-              Translation
+              <Icon name="sliders" size={15} />
+              Display
             </button>
           </div>
         </div>
@@ -225,19 +257,26 @@ export default function QuranReader({ initialBookmark = null }) {
           )}
 
           {state.versesStatus === "ready" &&
-            state.verses.map((v) => (
-              <VerseCard
-                key={v.verseKey}
-                verse={v}
-                state={state}
-                store={store}
-                onWordTap={onWordTap}
-                cardRef={(el) => {
-                  if (el) verseRefs.current.set(v.verseKey, el);
-                  else verseRefs.current.delete(v.verseKey);
-                }}
-              />
-            ))}
+            state.verses.map((v) => {
+              const isCurrent = state.playback.verseKey === v.verseKey;
+              return (
+                <VerseCard
+                  key={v.verseKey}
+                  verse={v}
+                  store={store}
+                  displayMode={state.displayMode}
+                  settings={state.settings}
+                  showTransliteration={state.showTransliteration}
+                  showTranslation={state.showTranslation}
+                  isActive={isCurrent && state.playback.continuous}
+                  isPlaying={isCurrent && (state.playback.playing || state.playback.loading)}
+                  isBookmarked={!!state.bookmark && state.bookmark.verseKey === v.verseKey}
+                  wordIndex={isCurrent ? state.playback.wordIndex : null}
+                  onWordTap={onWordTap}
+                  cardRef={registerCard}
+                />
+              );
+            })}
         </div>
       </div>
 
@@ -253,6 +292,7 @@ export default function QuranReader({ initialBookmark = null }) {
       )}
 
       {sheetOpen && <BrowseSheet state={state} store={store} onClose={() => setSheetOpen(false)} />}
+      {displayOpen && <DisplaySheet state={state} store={store} onClose={() => setDisplayOpen(false)} />}
     </div>
   );
 }

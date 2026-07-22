@@ -62,11 +62,16 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-5 text-[11px] text-charcoal-soft text-center leading-relaxed">
-          Demo accounts (password: <span className="font-semibold">password123</span>)
-          <br />
-          teacher@lqk.test · reviewer@lqk.test · admin@lqk.test
-        </div>
+        {/* Demo accounts are only seeded outside production (see seedIfEmpty in
+            lib/db.js), so only advertise them there — a production deploy has no
+            such accounts and must not imply it does. */}
+        {process.env.NODE_ENV !== "production" && (
+          <div className="mt-5 text-[11px] text-charcoal-soft text-center leading-relaxed">
+            Demo accounts (password: <span className="font-semibold">password123</span>)
+            <br />
+            teacher@lqk.test · reviewer@lqk.test · admin@lqk.test
+          </div>
+        )}
       </div>
     </div>
   );

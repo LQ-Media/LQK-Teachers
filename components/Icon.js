@@ -37,6 +37,12 @@ const ICONS = {
   x: '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
   check: '<path d="M20 6 9 17l-5-5" />',
   "chevron-right": '<path d="m9 18 6-6-6-6" />',
+  "chevrons-down": '<path d="m7 6 5 5 5-5" /><path d="m7 13 5 5 5-5" />',
+  minus: '<path d="M5 12h14" />',
+  plus: '<path d="M5 12h14" /><path d="M12 5v14" />',
+  type: '<polyline points="4 7 4 4 20 4 20 7" /><line x1="9" x2="15" y1="20" y2="20" /><line x1="12" x2="12" y1="4" y2="20" />',
+  sliders:
+    '<line x1="21" x2="14" y1="4" y2="4" /><line x1="10" x2="3" y1="4" y2="4" /><line x1="21" x2="12" y1="12" y2="12" /><line x1="8" x2="3" y1="12" y2="12" /><line x1="21" x2="16" y1="20" y2="20" /><line x1="12" x2="3" y1="20" y2="20" /><line x1="14" x2="14" y1="2" y2="6" /><line x1="8" x2="8" y1="10" y2="14" /><line x1="16" x2="16" y1="18" y2="22" />',
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 1.75, filled = false, className = "" }) {
