@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getHistory } from "@/lib/actions/tracker";
 import { surahByNumber } from "@/lib/quran/surah-list";
+import Icon from "@/components/Icon";
 import { titleCase, fmtDate, gradePillClass } from "./util";
 
 export default function HistoryPanel({ student, onClose, onLogToday }) {
@@ -43,7 +44,7 @@ export default function HistoryPanel({ student, onClose, onLogToday }) {
             onClick={onClose}
             className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-charcoal-soft hover:bg-paper-deep"
           >
-            ✕
+            <Icon name="x" size={16} />
           </button>
         </div>
 

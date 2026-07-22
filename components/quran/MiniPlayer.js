@@ -1,5 +1,7 @@
 "use client";
 
+import Icon from "@/components/Icon";
+
 export default function MiniPlayer({ state, store }) {
   const p = state.playback;
   const total = state.verses.length;
@@ -25,18 +27,18 @@ export default function MiniPlayer({ state, store }) {
 
         <div className="flex items-center gap-2">
           <ControlButton label="Previous ayah" onClick={() => store.prev()}>
-            ⏮
+            <Icon name="skip-back" size={16} />
           </ControlButton>
           <button
             type="button"
             aria-label={isPlaying ? "Pause" : "Play surah"}
             onClick={() => (isPlaying ? store.pause() : store.playChapter())}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-ink text-[18px] text-paper shadow-sm transition-colors hover:bg-ink-deep"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-ink text-paper shadow-sm transition-colors hover:bg-ink-deep"
           >
-            {isPlaying ? "❚❚" : "▶"}
+            <Icon name={isPlaying ? "pause" : "play"} size={18} />
           </button>
           <ControlButton label="Next ayah" onClick={() => store.next()}>
-            ⏭
+            <Icon name="skip-forward" size={16} />
           </ControlButton>
         </div>
 

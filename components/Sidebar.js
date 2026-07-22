@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions/auth";
+import Icon from "@/components/Icon";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: "🏠" },
-  { href: "/hafalan", label: "Quran tracker", icon: "📖" },
-  { href: "/reading", label: "My reading", icon: "📚" },
-  { href: "/quran", label: "Quran reader", icon: "🕮" },
-  { href: "/achievements", label: "Achievements", icon: "🏆", soon: true },
-  { href: "/hours", label: "Work hours", icon: "⏱", soon: true },
-  { href: "/admin", label: "Admin", icon: "⚙️", roles: ["admin"], soon: true },
+  { href: "/dashboard", label: "Dashboard", icon: "house" },
+  { href: "/hafalan", label: "Quran tracker", icon: "clipboard-check" },
+  { href: "/reading", label: "My reading", icon: "notebook" },
+  { href: "/quran", label: "Quran reader", icon: "book-open" },
+  { href: "/achievements", label: "Achievements", icon: "trophy", soon: true },
+  { href: "/hours", label: "Work hours", icon: "clock", soon: true },
+  { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"], soon: true },
 ];
 
 export default function Sidebar({ role, fullName, pendingReviewCount }) {
@@ -40,8 +41,8 @@ export default function Sidebar({ role, fullName, pendingReviewCount }) {
                 key={item.href}
                 className="flex items-center justify-between gap-2 px-3 py-2 rounded-control text-[13px] text-paper/40 cursor-default"
               >
-                <span className="flex items-center gap-2">
-                  <span className="w-4 text-center">{item.icon}</span>
+                <span className="flex items-center gap-2.5">
+                  <Icon name={item.icon} size={18} />
                   {item.label}
                 </span>
                 <span className="text-[9px] font-bold uppercase tracking-wide bg-white/10 rounded-pill px-1.5 py-0.5">
@@ -61,8 +62,8 @@ export default function Sidebar({ role, fullName, pendingReviewCount }) {
                   : "text-paper/80 hover:bg-white/10 hover:text-paper"
               }`}
             >
-              <span className="flex items-center gap-2">
-                <span className="w-4 text-center">{item.icon}</span>
+              <span className="flex items-center gap-2.5">
+                <Icon name={item.icon} size={18} />
                 {item.label}
               </span>
               {item.href === "/review" && pendingReviewCount > 0 && (

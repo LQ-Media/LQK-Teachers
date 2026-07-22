@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Icon from "@/components/Icon";
 
 const PRAYERS = [
-  { key: "Fajr", label: "Subuh", icon: "🌙" },
-  { key: "Dhuhr", label: "Zohor", icon: "☀️" },
-  { key: "Asr", label: "Asar", icon: "🌤" },
-  { key: "Maghrib", label: "Maghrib", icon: "🌇" },
-  { key: "Isha", label: "Isyak", icon: "✨" },
+  { key: "Fajr", label: "Subuh", icon: "sunrise" },
+  { key: "Dhuhr", label: "Zohor", icon: "sun" },
+  { key: "Asr", label: "Asar", icon: "cloud-sun" },
+  { key: "Maghrib", label: "Maghrib", icon: "sunset" },
+  { key: "Isha", label: "Isyak", icon: "moon-star" },
 ];
 
 const CACHE_KEY = "lqk_solat_cache_v2";
@@ -161,7 +162,9 @@ export default function SolatWidget() {
               key={p.key}
               className={`flex-1 rounded-control px-2 py-2.5 text-center ${isCurrentOrNext ? "bg-sage-soft" : ""} ${isPast ? "opacity-50" : ""}`}
             >
-              <div className="text-[15px] mb-1">{p.icon}</div>
+              <div className="mb-1 flex justify-center text-ink">
+                <Icon name={p.icon} size={18} />
+              </div>
               <div className="text-[11px] font-semibold text-charcoal">{p.label}</div>
               <div className="text-[11px] text-charcoal-soft">{p.time}</div>
             </div>

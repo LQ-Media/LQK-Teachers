@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { saveLesson } from "@/lib/actions/tracker";
 import { ALL_SURAHS, surahByNumber, sabaqLabel, nextPortion } from "@/lib/quran/surah-list";
 import { LESSON_GRADES } from "@/lib/tracker/grades";
+import Icon from "@/components/Icon";
 import { titleCase, sgTodayLabel } from "./util";
 
 export default function LogSheet({ student, teacherName, className, onClose, onSaved }) {
@@ -128,7 +129,7 @@ export default function LogSheet({ student, teacherName, className, onClose, onS
             onClick={onClose}
             className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-charcoal-soft hover:bg-paper-deep"
           >
-            ✕
+            <Icon name="x" size={16} />
           </button>
         </div>
 
@@ -144,9 +145,9 @@ export default function LogSheet({ student, teacherName, className, onClose, onS
                 const n = nextPortion(student.lastRead);
                 setPicker(n.s, n.f, n.t);
               }}
-              className="ml-auto rounded-pill bg-white px-3 py-1 text-[11.5px] font-semibold text-ink hover:bg-gold-soft/40"
+              className="ml-auto inline-flex items-center gap-0.5 rounded-pill bg-white px-3 py-1 text-[11.5px] font-semibold text-ink hover:bg-gold-soft/40"
             >
-              Continue ›
+              Continue <Icon name="chevron-right" size={13} />
             </button>
           </div>
         )}

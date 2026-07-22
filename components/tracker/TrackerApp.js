@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getRoster } from "@/lib/actions/tracker";
 import { surahByNumber } from "@/lib/quran/surah-list";
 import { titleCase, initials, fmtDate, sgTodayLabel, gradePillClass } from "./util";
+import Icon from "@/components/Icon";
 import LogSheet from "./LogSheet";
 import HistoryPanel from "./HistoryPanel";
 
@@ -182,9 +183,9 @@ function StudentCard({ student, onOpenHistory, onLog }) {
           <button
             type="button"
             onClick={onLog}
-            className="rounded-pill bg-sage-soft px-3 py-1 text-[11.5px] font-semibold text-sage"
+            className="inline-flex items-center gap-1 rounded-pill bg-sage-soft px-3 py-1 text-[11.5px] font-semibold text-sage"
           >
-            ✓ Logged · Edit
+            <Icon name="check" size={13} /> Logged · Edit
           </button>
         ) : (
           <button

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createDataSource } from "@/lib/quran/data";
 import { createQuranStore } from "@/lib/quran/store";
 import { createServerBookmarkService } from "@/lib/quran/bookmark-service";
+import Icon from "@/components/Icon";
 import VerseCard from "./VerseCard";
 import BrowseSheet from "./BrowseSheet";
 import MiniPlayer from "./MiniPlayer";
@@ -270,9 +271,9 @@ function Banner({ children, action, onDismiss, tone }) {
           type="button"
           aria-label="Dismiss"
           onClick={onDismiss}
-          className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[16px] text-charcoal-soft hover:bg-black/5"
+          className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-charcoal-soft hover:bg-black/5"
         >
-          ×
+          <Icon name="x" size={16} />
         </button>
       </div>
     </div>

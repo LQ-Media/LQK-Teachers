@@ -1,5 +1,7 @@
 "use client";
 
+import Icon from "@/components/Icon";
+
 export default function VerseCard({ verse, state, store, onWordTap, cardRef }) {
   const p = state.playback;
   const isCurrent = p.verseKey === verse.verseKey;
@@ -25,14 +27,14 @@ export default function VerseCard({ verse, state, store, onWordTap, cardRef }) {
             title="Save your place"
             onClick={() => store.setBookmark(verse.verseKey)}
           >
-            {isBookmarked ? "★" : "☆"}
+            <Icon name="bookmark" size={15} filled={isBookmarked} />
           </IconButton>
           <IconButton
             on={isPlaying}
             label={isPlaying ? "Pause" : "Play this ayah"}
             onClick={() => store.togglePlay(verse.verseKey)}
           >
-            {isPlaying ? "❚❚" : "▶"}
+            <Icon name={isPlaying ? "pause" : "play"} size={14} />
           </IconButton>
         </div>
       </div>
