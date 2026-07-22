@@ -2,16 +2,10 @@ import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { allowedClassesFor } from "@/lib/tracker/access";
+import { sheetRoster } from "@/lib/tracker/sheet";
 import { formatDate, formatDateLong, isSameWeek } from "@/lib/date";
+import { titleCase } from "@/components/tracker/util";
 import SolatWidget from "@/components/SolatWidget";
-
-function sgToday() {
-  const n = new Date();
-  const sg = new Date(n.getTime() + (n.getTimezoneOffset() + 480) * 60000);
-  const m = sg.getMonth() + 1;
-  const d = sg.getDate();
-  return `${sg.getFullYear()}-${m < 10 ? "0" : ""}${m}-${d < 10 ? "0" : ""}${d}`;
-}
 
 export default async function DashboardPage({ searchParams }) {
   const session = await requireSession();
@@ -23,27 +17,22 @@ export default async function DashboardPage({ searchParams }) {
     .all(session.userId);
   const readingThisWeek = readingEntries.filter((e) => isSameWeek(new Date(e.created_at), new Date())).length;
 
-  // Quran-tracker summary across the classes this user can see.
+  // Quran-tracker summary — read live from the Google Sheet for the classes this
+  // user can see. Best-effort: a Sheet hiccup must not break the dashboard.
   const classes = allowedClassesFor(session);
-  let studentTotal = 0;
-  let loggedToday = 0;
+  let classSummary = [];
   if (classes.length) {
-    const placeholders = classes.map(() => "?").join(",");
-    studentTotal = db.prepare(`SELECT COUNT(*) AS c FROM students WHERE class IN (${placeholders})`).get(...classes).c;
-    loggedToday = db
-      .prepare(
-        `SELECT COUNT(DISTINCT student_id) AS c FROM lessons WHERE date = ? AND class IN (${placeholders})`
+    const rosters = await Promise.all(
+      classes.map((cls) =>
+        sheetRoster(cls)
+          .then((students) => ({ cls, total: students.length, logged: students.filter((s) => s.logged).length }))
+          .catch(() => null)
       )
-      .get(sgToday(), ...classes).c;
+    );
+    classSummary = rosters.filter(Boolean);
   }
-
-  const myLessons = db
-    .prepare(
-      `SELECT l.sabaq, l.grade, l.date, s.name AS student_name
-       FROM lessons l JOIN students s ON s.id = l.student_id
-       WHERE l.teacher_id = ? ORDER BY l.created_at DESC LIMIT 3`
-    )
-    .all(session.userId);
+  const studentTotal = classSummary.reduce((a, c) => a + c.total, 0);
+  const loggedToday = classSummary.reduce((a, c) => a + c.logged, 0);
 
   return (
     <div className="p-8 max-w-5xl">
@@ -69,7 +58,7 @@ export default async function DashboardPage({ searchParams }) {
         <StatCard label="Work hours" value="Soon" note="Clock in/out arrives in the next phase" />
         <StatCard
           label="Logged today"
-          value={classes.length ? `${loggedToday}/${studentTotal}` : "—"}
+          value={classSummary.length ? `${loggedToday}/${studentTotal}` : "—"}
           note={classes.length ? "students logged" : "no class assigned"}
         />
         <StatCard
@@ -81,16 +70,17 @@ export default async function DashboardPage({ searchParams }) {
 
       <div className="grid grid-cols-2 gap-4">
         <SummaryCard title="Quran tracker" viewAllHref="/hafalan">
-          {myLessons.map((l, i) => (
-            <li key={i} className="flex items-center justify-between py-2.5 border-b-[0.5px] border-line last:border-0">
-              <div>
-                <div className="text-[13px] font-medium text-charcoal">{l.sabaq}</div>
-                <div className="text-[11px] text-charcoal-soft">{formatDate(l.date)}</div>
-              </div>
-              {l.grade && <span className="text-[11px] font-semibold text-charcoal-soft">{l.grade}</span>}
+          {classSummary.map((c) => (
+            <li key={c.cls} className="flex items-center justify-between py-2.5 border-b-[0.5px] border-line last:border-0">
+              <div className="text-[13px] font-medium text-charcoal">{titleCase(c.cls)}</div>
+              <span className="text-[12px] text-charcoal-soft">
+                {c.logged}/{c.total} logged today
+              </span>
             </li>
           ))}
-          {myLessons.length === 0 && <EmptyRow text="No lessons logged yet." />}
+          {classSummary.length === 0 && (
+            <EmptyRow text={classes.length ? "Couldn’t reach the register." : "No class assigned yet."} />
+          )}
         </SummaryCard>
 
         <SummaryCard title="My reading" viewAllHref="/reading">

@@ -65,7 +65,7 @@ export default function LogSheet({ student, teacherName, className, onClose, onS
     setSaving(true);
     setError("");
     try {
-      const res = await saveLesson({ studentId: student.id, surah: qp.s, from: qp.f, to: qp.t, grade, note });
+      const res = await saveLesson({ studentId: student.id, cls: student.class, surah: qp.s, from: qp.f, to: qp.t, grade, note });
       onSaved(res);
       // Best-effort share card; never block the save on it.
       shareLesson().catch(() => {});

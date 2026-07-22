@@ -14,13 +14,13 @@ export default function HistoryPanel({ student, onClose, onLogToday }) {
 
   useEffect(() => {
     let alive = true;
-    getHistory(student.id)
+    getHistory(student.id, student.class)
       .then((rows) => alive && setLessons(rows))
       .catch(() => alive && setError(true));
     return () => {
       alive = false;
     };
-  }, [student.id]);
+  }, [student.id, student.class]);
 
   const surahsCovered = lessons
     ? [...new Set(lessons.filter((l) => l.surah).map((l) => l.surah))].map((n) => surahByNumber(n)?.name).filter(Boolean)
