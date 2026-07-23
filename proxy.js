@@ -18,6 +18,11 @@ export async function proxy(request) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
+  // Force the first-login password change before anything else.
+  if (session?.userId && session.mustChange && pathname !== "/change-password") {
+    return NextResponse.redirect(new URL("/change-password", request.url));
+  }
+
   return NextResponse.next();
 }
 

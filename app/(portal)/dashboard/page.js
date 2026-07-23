@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { allowedClassesFor } from "@/lib/tracker/access";
-import { sheetRoster } from "@/lib/tracker/sheet";
 import { formatDate, isSameWeek } from "@/lib/date";
 import { titleCase } from "@/components/tracker/util";
 import SolatWidget from "@/components/SolatWidget";
@@ -20,19 +19,18 @@ export default async function DashboardPage({ searchParams }) {
     .all(session.userId);
   const readingThisWeek = readingEntries.filter((e) => isSameWeek(new Date(e.created_at), new Date())).length;
 
-  // Quran-tracker summary read live from the Sheet for the caller's classes.
+  // Quran-tracker summary from the app DB for the caller's classes.
+  const now = new Date();
+  const sg = new Date(now.getTime() + (now.getTimezoneOffset() + 480) * 60000);
+  const today = `${sg.getFullYear()}-${String(sg.getMonth() + 1).padStart(2, "0")}-${String(sg.getDate()).padStart(2, "0")}`;
   const classes = allowedClassesFor(session);
-  let classSummary = [];
-  if (classes.length) {
-    const rosters = await Promise.all(
-      classes.map((cls) =>
-        sheetRoster(cls)
-          .then((students) => ({ cls, total: students.length, logged: students.filter((s) => s.logged).length }))
-          .catch(() => null)
-      )
-    );
-    classSummary = rosters.filter(Boolean);
-  }
+  const totalStmt = db.prepare("SELECT COUNT(*) AS c FROM students WHERE class = ?");
+  const loggedStmt = db.prepare("SELECT COUNT(DISTINCT student_id) AS c FROM lessons WHERE class = ? AND date = ?");
+  const classSummary = classes.map((cls) => ({
+    cls,
+    total: totalStmt.get(cls).c,
+    logged: loggedStmt.get(cls, today).c,
+  }));
   const studentTotal = classSummary.reduce((a, c) => a + c.total, 0);
   const loggedToday = classSummary.reduce((a, c) => a + c.logged, 0);
 
