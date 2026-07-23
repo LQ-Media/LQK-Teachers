@@ -47,9 +47,12 @@ export default async function DashboardPage({ searchParams }) {
       {/* Hero */}
       <div className="relative overflow-hidden bg-gradient-to-br from-white to-[#faf5ed] px-6 py-12 md:px-10">
         <div className="mx-auto flex max-w-[1100px] flex-col items-center justify-center gap-8 text-center md:flex-row md:text-left">
-          <div className="flex h-[150px] w-[108px] flex-shrink-0 items-center justify-center overflow-hidden rounded-t-[999px] bg-gradient-to-b from-gold-soft to-sand shadow-[0_8px_16px_rgba(51,58,34,0.1)]">
-            <Icon name="moon-star" size={46} strokeWidth={1.5} className="text-ink" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/mascot-ustazah.png"
+            alt="Little Quran Kids teacher and student"
+            className="h-[170px] w-auto flex-shrink-0 object-contain drop-shadow-[0_10px_20px_rgba(51,58,34,0.12)]"
+          />
           <div>
             <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
               Assalamualaikum, {firstName}.
@@ -80,7 +83,7 @@ export default async function DashboardPage({ searchParams }) {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <TrackerCard title="Quran tracker" href="/hafalan" gradient="from-gold to-[#c99430]">
+          <TrackerCard title="Quran tracker" href="/hafalan" image="/card-tracker.png">
             {classSummary.length ? (
               <ul className="space-y-1.5">
                 {classSummary.map((c) => (
@@ -99,7 +102,7 @@ export default async function DashboardPage({ searchParams }) {
             )}
           </TrackerCard>
 
-          <TrackerCard title="My reading" href="/reading" gradient="from-[#8FA96B] to-[#5f7a3f]">
+          <TrackerCard title="My reading" href="/reading" image="/card-recitation.png">
             {readingEntries.length ? (
               <ul className="space-y-1.5">
                 {readingEntries.slice(0, 3).map((e) => (
@@ -140,10 +143,15 @@ function StatCard({ tint, icon, label, value, note, valueClass, delay }) {
   );
 }
 
-function TrackerCard({ title, href, gradient, children }) {
+function TrackerCard({ title, href, image, children }) {
   return (
     <div className="lqk-rise relative overflow-hidden rounded-card border border-line bg-white p-7">
-      <div className={`-mx-7 -mt-7 mb-5 h-[96px] bg-gradient-to-br ${gradient}`} />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={image}
+        alt=""
+        className="-mx-7 -mt-7 mb-5 block h-[120px] w-[calc(100%+56px)] max-w-none object-cover"
+      />
       <div className="mb-3 flex items-baseline justify-between">
         <h3 className="font-heading text-[16px] font-bold text-charcoal">{title}</h3>
         <Link href={href} className="text-[12px] font-semibold text-gold hover:text-gold-hover">
