@@ -1,20 +1,24 @@
 @import "tailwindcss";
 
+/* LQK brand system — Zaytun olive + Barakah gold, sand tiles, cream page.
+   Gold is the only loud colour; everything dark is the olive "zaytun". */
 :root {
-  --color-ink: #D88A4F;
-  --color-ink-soft: #E3A36F;
-  --color-ink-deep: #B86F3A;
-  --color-gold: #C99A35;
-  --color-gold-soft: #E7C878;
+  --color-ink: #333A22;         /* zaytun — dark primary (buttons, on-cream text) */
+  --color-ink-soft: #4C5533;
+  --color-ink-deep: #262B18;
+  --color-gold: #E0A93B;        /* barakah gold — the accent */
+  --color-gold-soft: #F6E7C8;
   --color-sage: #A8742A;
   --color-sage-soft: #F2E4C8;
-  --color-paper: #FBF4E8;
+  --color-sand: #DFC591;        /* tile backgrounds */
+  --color-paper: #FBF6EC;       /* cream page */
   --color-paper-deep: #F4E9D6;
   --color-rust: #B5573C;
   --color-rust-soft: #F2DDD5;
-  --color-charcoal: #3A3026;
-  --color-charcoal-soft: #7A6E5C;
-  --color-line: #E8D9BE;
+  --color-charcoal: #333A22;    /* headings/body dark */
+  --color-charcoal-soft: #6E6A58; /* muted */
+  --color-line: #EDE4D2;
+  --color-gold-hover: #C99430;
 }
 
 @theme inline {
@@ -23,8 +27,10 @@
   --color-ink-deep: var(--color-ink-deep);
   --color-gold: var(--color-gold);
   --color-gold-soft: var(--color-gold-soft);
+  --color-gold-hover: var(--color-gold-hover);
   --color-sage: var(--color-sage);
   --color-sage-soft: var(--color-sage-soft);
+  --color-sand: var(--color-sand);
   --color-paper: var(--color-paper);
   --color-paper-deep: var(--color-paper-deep);
   --color-rust: var(--color-rust);
@@ -33,13 +39,13 @@
   --color-charcoal-soft: var(--color-charcoal-soft);
   --color-line: var(--color-line);
 
-  --font-heading: var(--font-lora);
-  --font-body: var(--font-inter);
+  --font-heading: var(--font-baloo);
+  --font-body: var(--font-nunito);
   --font-arabic: var(--font-amiri);
 
-  --radius-card: 14px;
-  --radius-control: 10px;
-  --radius-pill: 20px;
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --radius-pill: 999px;
 }
 
 body {
@@ -54,4 +60,24 @@ body {
 
 .font-arabic {
   font-family: var(--font-arabic);
+}
+
+/* Subtle fade + rise on load (dashboard cards), staggered via animation-delay. */
+@keyframes lqk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lqk-rise {
+  animation: lqk-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lqk-rise {
+    animation: none;
+  }
 }

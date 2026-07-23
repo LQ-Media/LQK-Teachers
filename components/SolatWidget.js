@@ -147,29 +147,38 @@ export default function SolatWidget() {
     return { ...p, minutes: h * 60 + m, time: timings[p.key] };
   });
   const nextIndex = parsed.findIndex((p) => p.minutes > nowMinutes);
+  const next = nextIndex === -1 ? parsed[0] : parsed[nextIndex]; // wraps to tomorrow's Subuh
+  const diff = ((next.minutes - nowMinutes) % 1440 + 1440) % 1440;
+  const countdown = diff >= 60 ? `${Math.floor(diff / 60)}h ${diff % 60}m` : `${diff}m`;
 
   return (
-    <div className="bg-white border-[0.5px] border-line rounded-card p-4">
-      <div className="text-[11px] font-bold uppercase tracking-wider text-charcoal-soft mb-3">
-        Solat times · {placeLabel || "Singapore (MUIS)"}
+    <div>
+      <div className="mb-4 text-[12px] font-bold uppercase tracking-wider text-charcoal-soft">
+        Prayer times · {placeLabel || "Singapore (MUIS)"}
       </div>
-      <div className="flex gap-2">
+      <div className="mb-4 grid grid-cols-5 justify-items-center gap-2">
         {parsed.map((p, i) => {
-          const isCurrentOrNext = i === (nextIndex === -1 ? parsed.length - 1 : nextIndex);
+          const isNext = i === (nextIndex === -1 ? 0 : nextIndex);
           const isPast = nextIndex !== -1 && i < nextIndex;
           return (
-            <div
-              key={p.key}
-              className={`flex-1 rounded-control px-2 py-2.5 text-center ${isCurrentOrNext ? "bg-sage-soft" : ""} ${isPast ? "opacity-50" : ""}`}
-            >
-              <div className="mb-1 flex justify-center text-ink">
-                <Icon name={p.icon} size={18} />
+            <div key={p.key} className={`text-center ${isPast ? "opacity-45" : ""}`}>
+              <div
+                className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-colors ${
+                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(224,169,59,0.35)]" : "bg-gold-soft text-ink"
+                }`}
+              >
+                <Icon name={p.icon} size={22} />
               </div>
-              <div className="text-[11px] font-semibold text-charcoal">{p.label}</div>
-              <div className="text-[11px] text-charcoal-soft">{p.time}</div>
+              <div className="text-[13px] font-semibold text-charcoal">{p.label}</div>
+              <div className="text-[12px] text-charcoal-soft">{p.time}</div>
             </div>
           );
         })}
+      </div>
+      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(224,169,59,0.3)]">
+        <span>Next prayer:</span>
+        <span className="text-[15px] font-bold">{next.label}</span>
+        <span>in {countdown}</span>
       </div>
     </div>
   );
