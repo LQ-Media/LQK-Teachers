@@ -70,6 +70,19 @@ export default function DisplaySheet({ state, store, onClose }) {
             </div>
           </Section>
 
+          {/* My reading link-up */}
+          <Section title="My reading">
+            <Switch
+              label="Log my place to My reading"
+              checked={state.logToReading}
+              onChange={() => store.toggleLogToReading()}
+            />
+            <p className="mt-2 text-[12px] text-charcoal-soft">
+              When on, bookmarking an ayah also adds a dated “Last read” entry to your My reading page. You can edit or
+              remove those entries there.
+            </p>
+          </Section>
+
           {/* Arabic script mode */}
           <Section title="Arabic script">
             <div className="flex rounded-pill bg-paper-deep p-1" role="tablist">

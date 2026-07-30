@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createDataSource } from "@/lib/quran/data";
 import { createQuranStore } from "@/lib/quran/store";
 import { createServerBookmarkService } from "@/lib/quran/bookmark-service";
+import { logLastReadFromReader } from "@/lib/actions/reading";
 import Icon from "@/components/Icon";
 import VerseCard from "./VerseCard";
 import BrowseSheet from "./BrowseSheet";
@@ -31,6 +32,9 @@ export default function QuranReader({ initialBookmark = null }) {
     createQuranStore({
       dataSource: createDataSource(),
       bookmarkService: createServerBookmarkService({ initialBookmark }),
+      // Appends a "Last read" entry to the My reading page when the teacher has
+      // the toggle on and bookmarks an ayah. Best-effort; the store swallows errors.
+      readingLogService: { log: (pos) => logLastReadFromReader(pos) },
       defaults: { chapterId: 1, translationId: 20, reciterId: 7, bookmark: initialBookmark },
     })
   );
@@ -110,6 +114,16 @@ export default function QuranReader({ initialBookmark = null }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [state.autoscroll.active, state.autoscroll.speed, store]);
+
+  // Confirm to the teacher when a bookmark also logged to My reading.
+  const loggedSeen = useRef(null);
+  useEffect(() => {
+    if (!state.readingLoggedAt || state.readingLoggedAt === loggedSeen.current) return;
+    loggedSeen.current = state.readingLoggedAt;
+    setToast("Added to My reading");
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  }, [state.readingLoggedAt]);
 
   const onWordTap = useCallback((word) => {
     if (!word.meaning) return;

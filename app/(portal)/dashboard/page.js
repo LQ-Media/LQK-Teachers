@@ -15,9 +15,13 @@ export default async function DashboardPage({ searchParams }) {
   const firstName = session.fullName ? session.fullName.split(" ")[0] : "there";
 
   const readingEntries = db
-    .prepare("SELECT * FROM reading_entries WHERE teacher_id = ? ORDER BY created_at DESC")
+    .prepare(
+      "SELECT * FROM reading_entries WHERE teacher_id = ? ORDER BY COALESCE(read_at, created_at) DESC, created_at DESC"
+    )
     .all(session.userId);
-  const readingThisWeek = readingEntries.filter((e) => isSameWeek(new Date(e.created_at), new Date())).length;
+  const readingThisWeek = readingEntries.filter((e) =>
+    isSameWeek(new Date(e.read_at || e.created_at), new Date())
+  ).length;
 
   // Quran-tracker summary from the app DB for the caller's classes.
   const now = new Date();
@@ -106,9 +110,9 @@ export default async function DashboardPage({ searchParams }) {
                 {readingEntries.slice(0, 3).map((e) => (
                   <li key={e.id} className="flex items-center justify-between text-[13px]">
                     <span className="text-charcoal">
-                      {e.entry_type === "surah" ? `Completed ${e.surah_name}` : `Reading · ${e.session_minutes} min`}
+                      {e.entry_type === "surah" ? `Last read ${e.surah_name}` : `Reading · ${e.session_minutes} min`}
                     </span>
-                    <span className="text-charcoal-soft">{formatDate(e.created_at)}</span>
+                    <span className="text-charcoal-soft">{formatDate(e.read_at || e.created_at)}</span>
                   </li>
                 ))}
               </ul>

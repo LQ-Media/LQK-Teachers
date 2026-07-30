@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: "/quran", label: "Quran reader", icon: "book-open" },
   { href: "/achievements", label: "Achievements", icon: "trophy", soon: true },
   { href: "/hours", label: "Work hours", icon: "clock", soon: true },
-  { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"], soon: true },
+  { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
 ];
 
 // Reveals its label only when the rail is hovered (group-hover).
@@ -26,7 +26,7 @@ function Label({ children, className = "" }) {
   );
 }
 
-export default function Sidebar({ role, fullName }) {
+export default function Sidebar({ role, fullName, avatar }) {
   const pathname = usePathname();
   const initial = (fullName || "?").trim().charAt(0).toUpperCase();
 
@@ -87,21 +87,39 @@ export default function Sidebar({ role, fullName }) {
       </nav>
 
       {/* User + logout */}
-      <form action={logout} className="mt-2 border-t border-line pt-3">
-        <button
-          type="submit"
-          className="flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-[13px] text-charcoal-soft transition-colors hover:bg-paper-deep hover:text-charcoal"
-          title={`${fullName} — log out`}
+      <div className="mt-2 border-t border-line pt-3">
+        <Link
+          href="/profile"
+          title={`${fullName} — profile`}
+          className={`flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-[13px] transition-colors ${
+            pathname === "/profile"
+              ? "bg-gold font-semibold text-ink shadow-[0_4px_12px_rgba(224,169,59,0.35)]"
+              : "text-charcoal hover:bg-paper-deep"
+          }`}
         >
-          <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-sand text-[11px] font-bold text-ink">
-            {initial}
+          <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-sand text-[11px] font-bold text-ink">
+            {avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatar} alt="" className="h-full w-full object-cover" />
+            ) : (
+              initial
+            )}
           </span>
-          <Label className="flex-1 text-left font-semibold text-charcoal">{fullName}</Label>
-          <Label>
-            <Icon name="log-out" size={16} />
-          </Label>
-        </button>
-      </form>
+          <Label className="flex-1 text-left font-semibold">{fullName}</Label>
+        </Link>
+        <form action={logout}>
+          <button
+            type="submit"
+            className="flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-[13px] text-charcoal-soft transition-colors hover:bg-paper-deep hover:text-charcoal"
+            title="Log out"
+          >
+            <span className="flex-shrink-0">
+              <Icon name="log-out" size={18} />
+            </span>
+            <Label>Log out</Label>
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }
