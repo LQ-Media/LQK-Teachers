@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { allowedClassesFor } from "@/lib/tracker/access";
 import { formatDate, isSameWeek } from "@/lib/date";
+import { formatHM, minutesBetween, sgMonth, sgMonthNow } from "@/lib/hours/rates";
 import { titleCase } from "@/components/tracker/util";
 import SolatWidget from "@/components/SolatWidget";
 import HeroClock from "@/components/dashboard/HeroClock";
@@ -38,6 +39,20 @@ export default async function DashboardPage({ searchParams }) {
   const studentTotal = classSummary.reduce((a, c) => a + c.total, 0);
   const loggedToday = classSummary.reduce((a, c) => a + c.logged, 0);
 
+  // Work hours logged this month (excludes rejected), plus whether they're
+  // clocked in right now.
+  const thisMonth = sgMonthNow();
+  const workMinutes = db
+    .prepare(
+      "SELECT started_at, ended_at FROM work_sessions WHERE teacher_id = ? AND ended_at IS NOT NULL AND status != 'rejected'"
+    )
+    .all(session.userId)
+    .filter((r) => sgMonth(r.started_at) === thisMonth)
+    .reduce((a, r) => a + minutesBetween(r.started_at, r.ended_at), 0);
+  const clockedIn = !!db
+    .prepare("SELECT 1 FROM work_sessions WHERE teacher_id = ? AND ended_at IS NULL")
+    .get(session.userId);
+
   return (
     <div className="min-h-screen bg-paper">
       {sp?.denied && (
@@ -48,19 +63,11 @@ export default async function DashboardPage({ searchParams }) {
 
       {/* Hero */}
       <div className="relative overflow-hidden bg-gradient-to-br from-white to-[#faf5ed] px-6 py-12 md:px-10">
-        <div className="mx-auto flex max-w-[1100px] flex-col items-center justify-center gap-8 text-center md:flex-row md:text-left">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/mascot-ustazah.png"
-            alt="Little Quran Kids teacher and student"
-            className="h-[170px] w-auto flex-shrink-0 object-contain drop-shadow-[0_10px_20px_rgba(51,58,34,0.12)]"
-          />
-          <div>
-            <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
-              Assalamualaikum, {firstName}.
-            </h1>
-            <HeroClock />
-          </div>
+        <div className="mx-auto max-w-[1100px] text-center">
+          <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
+            Assalamualaikum, {firstName}.
+          </h1>
+          <HeroClock />
         </div>
       </div>
 
@@ -72,7 +79,14 @@ export default async function DashboardPage({ searchParams }) {
       {/* Content */}
       <div className="mx-auto max-w-[1100px] px-6 py-10 md:px-10">
         <div className="mb-10 grid gap-6 sm:grid-cols-3">
-          <StatCard delay={0} tint="sand" icon="clock" label="Work hours" value="Soon" valueClass="text-gold" note="Clock in when you arrive" />
+          <StatCard
+            delay={0}
+            tint="sand"
+            icon="clock"
+            label="Work hours"
+            value={formatHM(workMinutes)}
+            note={clockedIn ? "Clocked in now" : "This month"}
+          />
           <StatCard
             delay={100}
             tint="white"

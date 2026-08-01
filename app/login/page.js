@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
-import { login } from "@/lib/actions/auth";
+import { useActionState, useState } from "react";
+import { login, register } from "@/lib/actions/auth";
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 
+const fieldClass =
+  "bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
+
 export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(login, undefined);
+  const [mode, setMode] = useState("signin");
 
   return (
     <div className="min-h-screen bg-paper flex items-center justify-center p-6">
@@ -19,6 +22,43 @@ export default function LoginPage() {
             Teachers Portal
           </p>
         </div>
+
+        <div className="mb-4 flex gap-1 rounded-control bg-paper-deep p-1">
+          <ModeTab active={mode === "signin"} onClick={() => setMode("signin")}>
+            Sign in
+          </ModeTab>
+          <ModeTab active={mode === "register"} onClick={() => setMode("register")}>
+            Register
+          </ModeTab>
+        </div>
+
+        {mode === "register" ? <RegisterForm /> : <SignInForm />}
+
+        <InstallPrompt />
+      </div>
+    </div>
+  );
+}
+
+function ModeTab({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded-control px-3 py-2 text-[13px] font-semibold transition-colors ${
+        active ? "bg-white text-ink shadow-sm" : "text-charcoal-soft hover:text-charcoal"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SignInForm() {
+  const [state, formAction, pending] = useActionState(login, undefined);
+
+  return (
+    <>
 
         <form action={formAction} className="bg-white border-[0.5px] border-line rounded-card p-6 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
@@ -73,9 +113,75 @@ export default function LoginPage() {
             teacher@lqk.test · reviewer@lqk.test · admin@lqk.test
           </div>
         )}
-      </div>
-      <InstallPrompt />
-    </div>
+    </>
+  );
+}
+
+function RegisterForm() {
+  const [state, formAction, pending] = useActionState(register, undefined);
+
+  return (
+    <>
+      <form action={formAction} className="bg-white border-[0.5px] border-line rounded-card p-6 flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg_name" className="text-[11px] font-semibold text-charcoal-soft">
+            Full name
+          </label>
+          <input id="reg_name" name="full_name" type="text" required autoComplete="name" className={fieldClass} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg_email" className="text-[11px] font-semibold text-charcoal-soft">
+            Email
+          </label>
+          <input id="reg_email" name="email" type="email" required autoComplete="email" className={fieldClass} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg_password" className="text-[11px] font-semibold text-charcoal-soft">
+            Password
+          </label>
+          <input
+            id="reg_password"
+            name="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className={fieldClass}
+          />
+          <span className="text-[11px] text-charcoal-soft">At least 8 characters.</span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg_confirm" className="text-[11px] font-semibold text-charcoal-soft">
+            Confirm password
+          </label>
+          <input
+            id="reg_confirm"
+            name="confirm_password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className={fieldClass}
+          />
+        </div>
+
+        {state?.error && (
+          <p className="text-[12px] font-medium text-rust bg-rust-soft rounded-control px-3 py-2">{state.error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={pending}
+          className="bg-ink text-paper rounded-control px-[18px] py-[10px] text-[13px] font-semibold hover:bg-ink-deep disabled:opacity-60 transition-colors mt-1"
+        >
+          {pending ? "Creating account…" : "Create account"}
+        </button>
+      </form>
+
+      <p className="mt-4 text-center text-[11px] leading-relaxed text-charcoal-soft">
+        Use the email address your admin invited. If it isn’t on the invite list yet, ask them to add it first.
+      </p>
+    </>
   );
 }
 

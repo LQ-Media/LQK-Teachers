@@ -10,6 +10,8 @@ import {
   createStudent,
   updateStudent,
   deleteStudent,
+  createInvite,
+  deleteInvite,
 } from "@/lib/actions/admin";
 import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
@@ -22,13 +24,23 @@ const ROLE_OPTIONS = ["teacher", "reviewer", "admin"];
 const field =
   "w-full bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
 
-export default function AdminApp({ users, staff, locations, classes, initialHours }) {
+export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours }) {
   const [tab, setTab] = useState("users");
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [staffModal, setStaffModal] = useState(null); // {mode, student?}
+  const [inviteModal, setInviteModal] = useState(false);
   const [creds, setCreds] = useState(null); // {email, tempPassword} banner
 
   const pendingHours = initialHours?.pending?.length || 0;
+
+  const ADD_LABEL = { users: "Add user", staff: "Add staff", invites: "Invite email" };
+  const ADD_ICON = { users: "user-plus", staff: "plus", invites: "mail-plus" };
+
+  function openAdd() {
+    if (tab === "users") setUserModal({ mode: "new" });
+    else if (tab === "staff") setStaffModal({ mode: "new" });
+    else if (tab === "invites") setInviteModal(true);
+  }
 
   return (
     <div className="p-8 max-w-5xl">
@@ -40,11 +52,11 @@ export default function AdminApp({ users, staff, locations, classes, initialHour
         {tab !== "hours" && (
           <button
             type="button"
-            onClick={() => (tab === "users" ? setUserModal({ mode: "new" }) : setStaffModal({ mode: "new" }))}
+            onClick={openAdd}
             className="flex items-center gap-2 rounded-control bg-ink px-4 py-2.5 text-[13px] font-semibold text-paper transition-colors hover:bg-ink-deep"
           >
-            <Icon name={tab === "users" ? "user-plus" : "plus"} size={16} />
-            {tab === "users" ? "Add user" : "Add staff"}
+            <Icon name={ADD_ICON[tab]} size={16} />
+            {ADD_LABEL[tab]}
           </button>
         )}
       </div>
@@ -58,6 +70,9 @@ export default function AdminApp({ users, staff, locations, classes, initialHour
         <Tab active={tab === "staff"} onClick={() => setTab("staff")} icon="clipboard-check">
           Staff roster ({staff.length})
         </Tab>
+        <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
+          Invited emails ({invites.length})
+        </Tab>
         <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
           Work hours{pendingHours ? ` (${pendingHours})` : ""}
         </Tab>
@@ -67,6 +82,7 @@ export default function AdminApp({ users, staff, locations, classes, initialHour
         <UsersTable users={users} onEdit={(u) => setUserModal({ mode: "edit", user: u })} onCreds={setCreds} />
       )}
       {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
+      {tab === "invites" && <InvitesTable invites={invites} />}
       {tab === "hours" && <HoursAdmin initial={initialHours} />}
 
       {userModal && (
@@ -80,6 +96,7 @@ export default function AdminApp({ users, staff, locations, classes, initialHour
       {staffModal && (
         <StaffModal modal={staffModal} classes={classes} onClose={() => setStaffModal(null)} />
       )}
+      {inviteModal && <InviteModal locations={locations} onClose={() => setInviteModal(false)} />}
     </div>
   );
 }
@@ -319,6 +336,203 @@ function UserModal({ modal, locations, onClose, onCreds }) {
       </div>
 
       <ModalActions pending={pending} onClose={onClose} onSave={submit} saveLabel={editing ? "Save changes" : "Create account"} />
+    </Modal>
+  );
+}
+
+// ---- Invited emails ----------------------------------------------------
+
+// The allowlist for self-registration: only these addresses can create their
+// own account at /login → Register, and they inherit the role/branch/tier set
+// here. Nothing is emailed automatically — share the link with the teacher.
+function InvitesTable({ invites }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function remove(i) {
+    if (!confirm(`Remove the invite for ${i.email}? They won't be able to register until you add it again.`)) return;
+    startTransition(async () => {
+      const r = await deleteInvite(i.id);
+      if (r?.error) alert(r.error);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="rounded-control bg-gold-soft/40 px-3.5 py-2.5 text-[12px] leading-relaxed text-charcoal">
+        Add a teacher’s email here, then send them the portal link. They register with that email and set their own
+        password — no temporary password to share. Emails not on this list can’t create an account.
+      </p>
+
+      <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+        {invites.length === 0 ? (
+          <div className="p-6 text-center text-[13px] text-charcoal-soft">
+            No pending invites. Use “Invite email” to add one.
+          </div>
+        ) : (
+          <ul>
+            {invites.map((i) => {
+              const tier = TIER_BY_KEY[i.pay_tier];
+              return (
+                <li
+                  key={i.id}
+                  className="flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-3 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-charcoal">{i.email}</div>
+                    <div className="text-[11px] text-charcoal-soft">
+                      {i.full_name ? `${i.full_name} · ` : ""}
+                      {ROLE_LABEL[i.role] || i.role}
+                      {i.primary_location ? ` · ${i.primary_location}` : ""}
+                      {tier ? ` · ${tier.short} $${tier.rate}/hr` : ""}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="rounded-pill bg-gold-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sage">
+                      Awaiting signup
+                    </span>
+                    <IconBtn label="Remove invite" icon="trash" danger disabled={pending} onClick={() => remove(i)} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InviteModal({ locations, onClose }) {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    email: "",
+    full_name: "",
+    role: "teacher",
+    position: "",
+    pay_tier: "",
+    primary_location: "",
+    branches: new Set(),
+  });
+  const [error, setError] = useState(null);
+  const [pending, startTransition] = useTransition();
+
+  function set(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+  function toggleBranch(loc) {
+    setForm((f) => {
+      const next = new Set(f.branches);
+      next.has(loc) ? next.delete(loc) : next.add(loc);
+      return { ...f, branches: next };
+    });
+  }
+
+  function submit() {
+    setError(null);
+    const branches = new Set(form.branches);
+    if (form.primary_location) branches.add(form.primary_location);
+    startTransition(async () => {
+      const r = await createInvite({ ...form, branches: [...branches] });
+      if (r?.error) {
+        setError(r.error);
+        return;
+      }
+      router.refresh();
+      onClose();
+    });
+  }
+
+  return (
+    <Modal title="Invite an email" onClose={onClose}>
+      <div className="space-y-3.5">
+        <Labelled label="Email — they must register with exactly this address">
+          <input
+            className={field}
+            type="email"
+            value={form.email}
+            placeholder="teacher@example.com"
+            onChange={(e) => set("email", e.target.value)}
+          />
+        </Labelled>
+        <Labelled label="Full name (optional — they can type their own)">
+          <input className={field} value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />
+        </Labelled>
+        <div className="grid grid-cols-2 gap-3">
+          <Labelled label="Role">
+            <select className={field} value={form.role} onChange={(e) => set("role", e.target.value)}>
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r]}
+                </option>
+              ))}
+            </select>
+          </Labelled>
+          <Labelled label="Position">
+            <input
+              className={field}
+              value={form.position}
+              placeholder="e.g. Ustazah"
+              onChange={(e) => set("position", e.target.value)}
+            />
+          </Labelled>
+        </div>
+        <Labelled label="Pay tier — sets their teaching rate for work hours">
+          <select className={field} value={form.pay_tier} onChange={(e) => set("pay_tier", e.target.value)}>
+            <option value="">Not set</option>
+            {PAY_TIERS.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label} — ${t.rate}/hr
+              </option>
+            ))}
+          </select>
+        </Labelled>
+        <Labelled label="Primary branch">
+          <select
+            className={field}
+            value={form.primary_location}
+            onChange={(e) => set("primary_location", e.target.value)}
+          >
+            <option value="">None (HQ / all branches)</option>
+            {locations.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+        <Labelled label="Also assigned to">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 pt-0.5">
+            {locations.map((l) => {
+              const isPrimary = l === form.primary_location;
+              return (
+                <label
+                  key={l}
+                  className={`flex items-center gap-2 text-[13px] ${isPrimary ? "opacity-50" : "text-charcoal"}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-ink"
+                    disabled={isPrimary}
+                    checked={isPrimary || form.branches.has(l)}
+                    onChange={() => toggleBranch(l)}
+                  />
+                  {l}
+                </label>
+              );
+            })}
+          </div>
+        </Labelled>
+
+        <p className="rounded-control bg-gold-soft/40 px-3 py-2 text-[12px] text-charcoal">
+          Nothing is emailed automatically — send them the portal link yourself. They’ll pick their own password when
+          they register.
+        </p>
+        {error && <p className="rounded-control bg-rust-soft px-3 py-2 text-[12px] font-medium text-rust">{error}</p>}
+      </div>
+
+      <ModalActions pending={pending} onClose={onClose} onSave={submit} saveLabel="Add invite" />
     </Modal>
   );
 }

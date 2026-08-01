@@ -45,12 +45,28 @@ export default async function AdminPage() {
     lessonCount: countBy.get(s.id) || 0,
   }));
 
+  const inviteRows = db
+    .prepare(
+      "SELECT id, email, full_name, role, primary_location, position, pay_tier, created_at FROM invites WHERE used_at IS NULL ORDER BY created_at DESC"
+    )
+    .all();
+  const invites = inviteRows.map((i) => ({
+    id: i.id,
+    email: i.email,
+    full_name: i.full_name || "",
+    role: i.role,
+    primary_location: i.primary_location || "",
+    position: i.position || "",
+    pay_tier: i.pay_tier || "",
+  }));
+
   const initialHours = await hoursAdminData(sgMonthNow());
 
   return (
     <AdminApp
       users={users}
       staff={staff}
+      invites={invites}
       locations={LOCATIONS}
       classes={TRACKER_CLASSES}
       initialHours={initialHours}
