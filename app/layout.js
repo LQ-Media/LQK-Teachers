@@ -24,6 +24,18 @@ const amiri = Amiri({
 export const metadata = {
   title: "LQK Teachers Portal",
   description: "Little Quran Kids — Teachers Portal",
+  // Home-screen label + iOS standalone behaviour. The apple-touch-icon and
+  // manifest <link>s are auto-injected by Next from app/apple-icon.png and
+  // app/manifest.js — no need to declare them here.
+  appleWebApp: {
+    capable: true,
+    title: "LQK Teachers",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport = {
+  themeColor: "#333A22",
 };
 
 export default function RootLayout({ children }) {

@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { href: "/reading", label: "My reading", icon: "notebook" },
   { href: "/quran", label: "Quran reader", icon: "book-open" },
   { href: "/achievements", label: "Achievements", icon: "trophy", soon: true },
-  { href: "/hours", label: "Work hours", icon: "clock", soon: true },
+  { href: "/hours", label: "Work hours", icon: "clock" },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
 ];
 

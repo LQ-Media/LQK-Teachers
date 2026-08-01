@@ -13,6 +13,8 @@ import {
 } from "@/lib/actions/admin";
 import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
+import HoursAdmin from "@/components/admin/HoursAdmin";
+import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
 const ROLE_OPTIONS = ["teacher", "reviewer", "admin"];
@@ -20,45 +22,52 @@ const ROLE_OPTIONS = ["teacher", "reviewer", "admin"];
 const field =
   "w-full bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
 
-export default function AdminApp({ users, staff, locations, classes }) {
+export default function AdminApp({ users, staff, locations, classes, initialHours }) {
   const [tab, setTab] = useState("users");
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [staffModal, setStaffModal] = useState(null); // {mode, student?}
   const [creds, setCreds] = useState(null); // {email, tempPassword} banner
+
+  const pendingHours = initialHours?.pending?.length || 0;
 
   return (
     <div className="p-8 max-w-5xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-semibold text-charcoal">Admin</h1>
-          <p className="text-[13px] text-charcoal-soft mt-1">Manage login accounts and the tracked staff roster.</p>
+          <p className="text-[13px] text-charcoal-soft mt-1">Manage accounts, the tracked staff roster, and work hours.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => (tab === "users" ? setUserModal({ mode: "new" }) : setStaffModal({ mode: "new" }))}
-          className="flex items-center gap-2 rounded-control bg-ink px-4 py-2.5 text-[13px] font-semibold text-paper transition-colors hover:bg-ink-deep"
-        >
-          <Icon name={tab === "users" ? "user-plus" : "plus"} size={16} />
-          {tab === "users" ? "Add user" : "Add staff"}
-        </button>
+        {tab !== "hours" && (
+          <button
+            type="button"
+            onClick={() => (tab === "users" ? setUserModal({ mode: "new" }) : setStaffModal({ mode: "new" }))}
+            className="flex items-center gap-2 rounded-control bg-ink px-4 py-2.5 text-[13px] font-semibold text-paper transition-colors hover:bg-ink-deep"
+          >
+            <Icon name={tab === "users" ? "user-plus" : "plus"} size={16} />
+            {tab === "users" ? "Add user" : "Add staff"}
+          </button>
+        )}
       </div>
 
       {creds && <CredsBanner creds={creds} onClose={() => setCreds(null)} />}
 
-      <div className="mb-5 flex gap-1 rounded-control bg-paper-deep p-1 w-fit">
+      <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
         <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
           Login accounts ({users.length})
         </Tab>
         <Tab active={tab === "staff"} onClick={() => setTab("staff")} icon="clipboard-check">
           Staff roster ({staff.length})
         </Tab>
+        <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
+          Work hours{pendingHours ? ` (${pendingHours})` : ""}
+        </Tab>
       </div>
 
-      {tab === "users" ? (
+      {tab === "users" && (
         <UsersTable users={users} onEdit={(u) => setUserModal({ mode: "edit", user: u })} onCreds={setCreds} />
-      ) : (
-        <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />
       )}
+      {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
+      {tab === "hours" && <HoursAdmin initial={initialHours} />}
 
       {userModal && (
         <UserModal
@@ -130,6 +139,11 @@ function UsersTable({ users, onEdit, onCreds }) {
                       </div>
                       <div className="text-[12px] text-charcoal-soft">{u.email}</div>
                       {u.position && <div className="text-[11px] text-charcoal-soft">{u.position}</div>}
+                      {TIER_BY_KEY[u.pay_tier] && (
+                        <div className="text-[11px] font-medium text-sage">
+                          {TIER_BY_KEY[u.pay_tier].short} · ${TIER_BY_KEY[u.pay_tier].rate}/hr
+                        </div>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -177,6 +191,7 @@ function UserModal({ modal, locations, onClose, onCreds }) {
     email: u.email || "",
     role: u.role || "teacher",
     position: u.position || "",
+    pay_tier: u.pay_tier || "",
     primary_location: u.primary_location || "",
     branches: new Set(u.branches || []),
   });
@@ -204,6 +219,7 @@ function UserModal({ modal, locations, onClose, onCreds }) {
       email: form.email,
       role: form.role,
       position: form.position,
+      pay_tier: form.pay_tier,
       primary_location: form.primary_location,
       branches: [...branches],
     };
@@ -247,6 +263,16 @@ function UserModal({ modal, locations, onClose, onCreds }) {
             />
           </Labelled>
         </div>
+        <Labelled label="Pay tier — sets their teaching rate for work hours">
+          <select className={field} value={form.pay_tier} onChange={(e) => set("pay_tier", e.target.value)}>
+            <option value="">Not set</option>
+            {PAY_TIERS.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label} — ${t.rate}/hr
+              </option>
+            ))}
+          </select>
+        </Labelled>
         <Labelled label="Primary branch">
           <select
             className={field}
