@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/hafalan", label: "Quran tracker", icon: "clipboard-check" },
   { href: "/reading", label: "My reading", icon: "notebook" },
   { href: "/quran", label: "Quran reader", icon: "book-open" },
+  { href: "/qibla", label: "Qibla finder", icon: "compass" },
   { href: "/achievements", label: "Achievements", icon: "trophy", soon: true },
   { href: "/hours", label: "Work hours", icon: "clock" },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },

@@ -12,7 +12,7 @@
 // wordmark or figure. To swap the icon, replace app-icon-source.png and re-run:
 //   node scripts/generate-icons.mjs
 import sharp from "sharp";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,6 +27,49 @@ async function fullBleed(size, outPath) {
   mkdirSync(path.dirname(outPath), { recursive: true });
   await sharp(SOURCE).flatten({ background: GROUND }).resize(size, size, { fit: "cover" }).png().toFile(outPath);
   console.log("wrote", path.relative(ROOT, outPath), `(${size}×${size})`);
+}
+
+// Build a real multi-resolution .ico (browser tab / bookmarks). ICO is a small
+// container: 6-byte header, one 16-byte directory entry per image, then the
+// image payloads — PNG payloads are valid in ICO and understood by every
+// modern browser, so we embed the PNGs directly.
+async function writeIco(sizes, outPath) {
+  // ensureAlpha() is required: Next's ICO decoder rejects embedded PNGs that
+  // aren't RGBA ("The PNG is not in RGBA format!"), and flatten() drops alpha.
+  const pngs = await Promise.all(
+    sizes.map((s) =>
+      sharp(SOURCE)
+        .flatten({ background: GROUND })
+        .resize(s, s, { fit: "cover" })
+        .ensureAlpha()
+        .png()
+        .toBuffer()
+    )
+  );
+
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // reserved
+  header.writeUInt16LE(1, 2); // type 1 = icon
+  header.writeUInt16LE(sizes.length, 4);
+
+  let offset = 6 + 16 * sizes.length;
+  const entries = sizes.map((s, i) => {
+    const e = Buffer.alloc(16);
+    e.writeUInt8(s >= 256 ? 0 : s, 0); // width  (0 means 256)
+    e.writeUInt8(s >= 256 ? 0 : s, 1); // height
+    e.writeUInt8(0, 2); // palette colours
+    e.writeUInt8(0, 3); // reserved
+    e.writeUInt16LE(1, 4); // colour planes
+    e.writeUInt16LE(32, 6); // bits per pixel
+    e.writeUInt32LE(pngs[i].length, 8);
+    e.writeUInt32LE(offset, 12);
+    offset += pngs[i].length;
+    return e;
+  });
+
+  mkdirSync(path.dirname(outPath), { recursive: true });
+  writeFileSync(outPath, Buffer.concat([header, ...entries, ...pngs]));
+  console.log("wrote", path.relative(ROOT, outPath), `(${sizes.join(", ")})`);
 }
 
 // Maskable: shrink the art to `inset` of the canvas, centred on the ground,
@@ -46,4 +89,5 @@ await fullBleed(180, path.join(ROOT, "app/apple-icon.png"));
 await fullBleed(192, path.join(ROOT, "public/icon-192.png"));
 await fullBleed(512, path.join(ROOT, "public/icon-512.png"));
 await maskable(512, 400, path.join(ROOT, "public/icon-maskable-512.png"));
+await writeIco([16, 32, 48], path.join(ROOT, "app/favicon.ico"));
 console.log("done");

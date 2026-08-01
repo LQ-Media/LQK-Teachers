@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
+import { COUNTRIES, BY_CODE, countryForTimezone } from "@/lib/countries";
 
 const PRAYERS = [
   { key: "Fajr", label: "Subuh", icon: "sunrise" },
@@ -21,70 +22,8 @@ const API_HREF = "https://aladhan.com/prayer-times-api";
 
 const AUTO = "auto";
 
-// Reference city per country — the times shown are for this city, which is
-// surfaced in the label so it's never ambiguous in large countries.
-const COUNTRIES = [
-  { code: "SG", name: "Singapore", city: "Singapore", method: 11, authority: "MUIS" },
-  { code: "MY", name: "Malaysia", city: "Kuala Lumpur", method: 17, authority: "JAKIM" },
-  { code: "ID", name: "Indonesia", city: "Jakarta", method: 20, authority: "Kemenag" },
-  { code: "BN", name: "Brunei", city: "Bandar Seri Begawan", method: 17, authority: "JAKIM (regional)" },
-  { code: "AU", name: "Australia", city: "Sydney", method: 3, authority: "Muslim World League" },
-  { code: "BH", name: "Bahrain", city: "Manama", method: 8, authority: "Gulf Region" },
-  { code: "BD", name: "Bangladesh", city: "Dhaka", method: 1, authority: "Karachi" },
-  { code: "CA", name: "Canada", city: "Toronto", method: 2, authority: "ISNA" },
-  { code: "EG", name: "Egypt", city: "Cairo", method: 5, authority: "Egyptian General Authority" },
-  { code: "FR", name: "France", city: "Paris", method: 12, authority: "UOIF" },
-  { code: "IN", name: "India", city: "New Delhi", method: 1, authority: "Karachi" },
-  { code: "IR", name: "Iran", city: "Tehran", method: 7, authority: "Univ. of Tehran" },
-  { code: "JO", name: "Jordan", city: "Amman", method: 23, authority: "Ministry of Awqaf" },
-  { code: "KW", name: "Kuwait", city: "Kuwait City", method: 9, authority: "Kuwait" },
-  { code: "MA", name: "Morocco", city: "Casablanca", method: 21, authority: "Morocco" },
-  { code: "OM", name: "Oman", city: "Muscat", method: 8, authority: "Gulf Region" },
-  { code: "PK", name: "Pakistan", city: "Karachi", method: 1, authority: "Karachi" },
-  { code: "PH", name: "Philippines", city: "Manila", method: 3, authority: "Muslim World League" },
-  { code: "QA", name: "Qatar", city: "Doha", method: 10, authority: "Qatar" },
-  { code: "SA", name: "Saudi Arabia", city: "Makkah", method: 4, authority: "Umm Al-Qura" },
-  { code: "TH", name: "Thailand", city: "Bangkok", method: 3, authority: "Muslim World League" },
-  { code: "TN", name: "Tunisia", city: "Tunis", method: 18, authority: "Tunisia" },
-  { code: "TR", name: "Türkiye", city: "Istanbul", method: 13, authority: "Diyanet" },
-  { code: "AE", name: "United Arab Emirates", city: "Dubai", method: 16, authority: "Dubai" },
-  { code: "GB", name: "United Kingdom", city: "London", method: 3, authority: "Muslim World League" },
-  { code: "US", name: "United States", city: "New York", method: 2, authority: "ISNA" },
-];
-
-const BY_CODE = Object.fromEntries(COUNTRIES.map((c) => [c.code, c]));
-
 const CHOICE_KEY = "lqk_solat_country";
 const CACHE_KEY = "lqk_solat_cache_v3";
-
-// Auto mode: infer the country (and therefore its authority) from the device
-// timezone. Coordinates still drive the precise times; the method only tunes
-// the calculation.
-function autoSpecForTimezone(tz) {
-  const region = String(tz || "");
-  if (region === "Asia/Singapore") return BY_CODE.SG;
-  if (region === "Asia/Kuala_Lumpur" || region === "Asia/Kuching") return BY_CODE.MY;
-  if (/^Asia\/(Jakarta|Pontianak|Makassar|Jayapura)$/.test(region)) return BY_CODE.ID;
-  if (region === "Asia/Brunei") return BY_CODE.BN;
-  if (region === "Asia/Bangkok") return BY_CODE.TH;
-  if (region === "Asia/Manila") return BY_CODE.PH;
-  if (region === "Asia/Riyadh") return BY_CODE.SA;
-  if (region === "Asia/Dubai") return BY_CODE.AE;
-  if (region === "Asia/Qatar") return BY_CODE.QA;
-  if (region === "Asia/Kuwait") return BY_CODE.KW;
-  if (region === "Asia/Karachi") return BY_CODE.PK;
-  if (region === "Asia/Kolkata" || region === "Asia/Calcutta") return BY_CODE.IN;
-  if (region === "Asia/Dhaka") return BY_CODE.BD;
-  if (region === "Asia/Tehran") return BY_CODE.IR;
-  if (region === "Europe/Istanbul") return BY_CODE.TR;
-  if (region === "Europe/London") return BY_CODE.GB;
-  if (region === "Europe/Paris") return BY_CODE.FR;
-  if (region === "Africa/Cairo") return BY_CODE.EG;
-  if (region.startsWith("America/")) return BY_CODE.US;
-  if (region.startsWith("Australia/")) return BY_CODE.AU;
-  // Unknown region — fall back to the org's home authority.
-  return BY_CODE.SG;
-}
 
 function cityFromTz(tz) {
   if (!tz) return "Your location";
@@ -197,7 +136,7 @@ export default function SolatWidget() {
 
     if (choice === AUTO) {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const spec = autoSpecForTimezone(tz);
+      const spec = countryForTimezone(tz);
       if (typeof navigator !== "undefined" && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) =>
