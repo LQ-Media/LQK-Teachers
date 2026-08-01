@@ -70,6 +70,7 @@ const ICONS = {
   square: '<rect width="18" height="18" x="3" y="3" rx="2" />',
   download: '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
   "dollar-sign": '<line x1="12" x2="12" y1="2" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />',
+  share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" x2="12" y1="2" y2="15" />',
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 1.75, filled = false, className = "" }) {

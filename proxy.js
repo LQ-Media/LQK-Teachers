@@ -31,6 +31,6 @@ export const config = {
   // (home-screen icon + manifest) so they load without a session — otherwise
   // "Add to Home Screen" can't fetch the icon.
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|icon-maskable-512.png|manifest.webmanifest).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|icon-maskable-512.png|manifest.webmanifest|sw.js|offline.html).*)",
   ],
 };

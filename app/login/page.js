@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { login } from "@/lib/actions/auth";
+import InstallPrompt from "@/components/pwa/InstallPrompt";
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(login, undefined);
@@ -73,6 +74,7 @@ export default function LoginPage() {
           </div>
         )}
       </div>
+      <InstallPrompt />
     </div>
   );
 }
