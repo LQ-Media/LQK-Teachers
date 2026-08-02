@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/ilmu", label: "Ilmu Bank", icon: "users" },
   { href: "/packs", label: "Lesson Packs", icon: "clipboard-check" },
   { href: "/kalimah", label: "Kalimah", icon: "star" },
+  { href: "/dzikir", label: "Wirid & Doa", icon: "moon-star" },
   { href: "/quran", label: "Quran reader", icon: "book-open" },
   { href: "/qibla", label: "Qibla finder", icon: "compass" },
   { href: "/achievements", label: "Achievements", icon: "trophy" },
