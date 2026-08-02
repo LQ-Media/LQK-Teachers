@@ -1,7 +1,18 @@
 # Achievements — build spec
 
-Decisions locked with Karim, 2026-08-02. This is the plan for the `/achievements`
-route that currently sits in the sidebar marked "Soon".
+Decisions locked with Karim, 2026-08-02.
+
+**Status: BUILT** (2026-08-02) — all ten sections below are implemented and
+verified locally against a seeded database. Not committed, not deployed. The
+sidebar item no longer says "Soon".
+
+Deploy steps, in order:
+
+1. Push → the additive migration runs on boot (new tables + `students.profile_id`).
+2. `node scripts/link-roster-accounts.mjs --dry-run` to review, then re-run
+   without the flag to apply. On the current dev data this matched **68 of 68**
+   roster rows with nothing ambiguous.
+3. Anything left over: Achievements → Manage → Account links.
 
 ## 1. What the page is
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { aiCapabilities } from "@/lib/ai/provider";
-import { sgToday } from "@/lib/actions/notes";
+import { sgToday } from "@/lib/hours/rates";
 import Icon from "@/components/Icon";
 import NotebookApp from "@/components/notebook/NotebookApp";
 
