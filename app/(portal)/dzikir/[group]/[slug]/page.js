@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { LOADERS } from "@/lib/dzikir/loaders";
 import { SECTION_INDEX } from "@/lib/dzikir/catalog";
+import { naskh } from "@/lib/dzikir/font";
 import Icon from "@/components/Icon";
 import DzikirReader from "@/components/dzikir/DzikirReader";
 
@@ -30,7 +31,7 @@ export default async function DzikirSectionPage({ params }) {
   const section = mod.default ?? mod;
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className={`${naskh.variable} p-8 max-w-3xl`}>
       <Link
         href="/dzikir"
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-charcoal-soft transition-colors hover:text-charcoal"
