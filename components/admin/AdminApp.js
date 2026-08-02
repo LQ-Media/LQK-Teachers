@@ -7,9 +7,11 @@ import {
   updateUser,
   resetUserPassword,
   deleteUser,
+  deleteUsers,
   createStudent,
   updateStudent,
   deleteStudent,
+  deleteStudents,
   createInvite,
   deleteInvite,
 } from "@/lib/actions/admin";
@@ -23,6 +25,74 @@ const ROLE_OPTIONS = ["teacher", "reviewer", "admin"];
 
 const field =
   "w-full bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
+
+const checkbox = "h-4 w-4 flex-none accent-ink cursor-pointer disabled:cursor-not-allowed disabled:opacity-40";
+
+/**
+ * Row selection for the bulk-delete bars. Selectable ids are passed in so
+ * "select all" can never pick something that isn't allowed to be deleted (your
+ * own account), and so a selection can't survive as a stale id after a refresh.
+ */
+function useSelection(selectableIds) {
+  const [selected, setSelected] = useState(() => new Set());
+  const valid = new Set(selectableIds.map(String));
+  const chosen = [...selected].filter((id) => valid.has(id));
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected(chosen.length === valid.size ? new Set() : new Set(valid));
+  }
+
+  return {
+    chosen,
+    count: chosen.length,
+    has: (id) => selected.has(String(id)),
+    toggle,
+    toggleAll,
+    clear: () => setSelected(new Set()),
+    allChosen: valid.size > 0 && chosen.length === valid.size,
+    someChosen: chosen.length > 0 && chosen.length < valid.size,
+  };
+}
+
+// Shown above a table once something is ticked.
+function BulkBar({ count, noun, onDelete, onClear, pending }) {
+  if (!count) return null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card border-[0.5px] border-line bg-paper-deep px-4 py-2.5">
+      <span className="text-[13px] font-semibold text-charcoal">
+        {count} {noun}
+        {count === 1 ? "" : "s"} selected
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-control px-3 py-1.5 text-[12px] font-semibold text-charcoal-soft transition-colors hover:text-charcoal"
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={pending}
+          className="flex items-center gap-1.5 rounded-control bg-rust px-3 py-1.5 text-[12px] font-semibold text-paper transition-colors hover:opacity-90 disabled:opacity-60"
+        >
+          <Icon name="trash" size={14} />
+          {pending ? "Deleting…" : `Delete ${count} selected`}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours }) {
   const [tab, setTab] = useState("users");
@@ -106,6 +176,28 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
 function UsersTable({ users, onEdit, onCreds }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Your own account can never be deleted, so it is never selectable either.
+  const sel = useSelection(users.filter((u) => !u.isSelf).map((u) => u.id));
+
+  function removeSelected() {
+    const names = users.filter((u) => sel.has(u.id)).map((u) => u.full_name);
+    const preview = names.slice(0, 5).join(", ") + (names.length > 5 ? `, and ${names.length - 5} more` : "");
+    if (
+      !confirm(
+        `Delete ${sel.count} account${sel.count === 1 ? "" : "s"}?\n\n${preview}\n\n` +
+          "This removes their logins and everything logged under them — hours, hafalan, notes, certificates. " +
+          "The staff roster is not deleted, only unlinked. This cannot be undone."
+      )
+    )
+      return;
+    startTransition(async () => {
+      const r = await deleteUsers(sel.chosen);
+      if (r?.error) alert(r.error);
+      else if (r?.keptSelf) alert(`Deleted ${r.deleted}. Your own account was kept.`);
+      sel.clear();
+      router.refresh();
+    });
+  }
 
   function reset(u) {
     if (!confirm(`Reset ${u.full_name}'s password? They'll get a new temporary password and must set their own at next login.`)) return;
@@ -126,11 +218,23 @@ function UsersTable({ users, onEdit, onCreds }) {
   }
 
   return (
+    <>
+    <BulkBar count={sel.count} noun="account" pending={pending} onClear={sel.clear} onDelete={removeSelected} />
     <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b-[0.5px] border-line text-[11px] font-bold uppercase tracking-wider text-charcoal-soft">
+              <th className="w-10 py-3 pl-4">
+                <input
+                  type="checkbox"
+                  className={checkbox}
+                  aria-label="Select all accounts"
+                  checked={sel.allChosen}
+                  ref={(el) => el && (el.indeterminate = sel.someChosen)}
+                  onChange={sel.toggleAll}
+                />
+              </th>
               <Th>Name</Th>
               <Th>Role</Th>
               <Th>Branch</Th>
@@ -139,8 +243,22 @@ function UsersTable({ users, onEdit, onCreds }) {
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-b-[0.5px] border-line last:border-0 align-middle">
-                <td className="py-3 pl-4 pr-3">
+              <tr
+                key={u.id}
+                className={`border-b-[0.5px] border-line last:border-0 align-middle ${sel.has(u.id) ? "bg-paper-deep" : ""}`}
+              >
+                <td className="w-10 py-3 pl-4">
+                  <input
+                    type="checkbox"
+                    className={checkbox}
+                    aria-label={`Select ${u.full_name}`}
+                    disabled={u.isSelf}
+                    title={u.isSelf ? "You can’t delete your own account" : undefined}
+                    checked={sel.has(u.id)}
+                    onChange={() => sel.toggle(u.id)}
+                  />
+                </td>
+                <td className="py-3 pl-1 pr-3">
                   <div className="flex items-center gap-3">
                     <span className="flex h-8 w-8 flex-none items-center justify-center overflow-hidden rounded-full bg-sand text-[11px] font-bold text-ink">
                       {u.avatar ? (
@@ -187,7 +305,7 @@ function UsersTable({ users, onEdit, onCreds }) {
             ))}
             {!users.length && (
               <tr>
-                <td colSpan={4} className="p-6 text-center text-[13px] text-charcoal-soft">
+                <td colSpan={5} className="p-6 text-center text-[13px] text-charcoal-soft">
                   No accounts yet.
                 </td>
               </tr>
@@ -196,6 +314,7 @@ function UsersTable({ users, onEdit, onCreds }) {
         </table>
       </div>
     </div>
+    </>
   );
 }
 
@@ -542,6 +661,26 @@ function InviteModal({ locations, onClose }) {
 function StaffTable({ staff, onEdit }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const sel = useSelection(staff.map((s) => s.id));
+
+  function removeSelected() {
+    const picked = staff.filter((s) => sel.has(s.id));
+    const lessons = picked.reduce((n, s) => n + (s.lessonCount || 0), 0);
+    if (
+      !confirm(
+        `Remove ${picked.length} staff member${picked.length === 1 ? "" : "s"} from the roster?\n\n` +
+          `This also deletes ${lessons} logged lesson${lessons === 1 ? "" : "s"}. ` +
+          "Their login accounts are not touched. This cannot be undone."
+      )
+    )
+      return;
+    startTransition(async () => {
+      const r = await deleteStudents(sel.chosen);
+      if (r?.error) alert(r.error);
+      sel.clear();
+      router.refresh();
+    });
+  }
 
   function remove(s) {
     if (!confirm(`Remove ${titleCase(s.name)} from the roster? This also deletes their ${s.lessonCount} logged lesson(s).`)) return;
@@ -560,6 +699,21 @@ function StaffTable({ staff, onEdit }) {
 
   return (
     <div className="space-y-5">
+      {staff.length > 0 && (
+        <div>
+          <BulkBar count={sel.count} noun="staff member" pending={pending} onClear={sel.clear} onDelete={removeSelected} />
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] font-semibold text-charcoal-soft">
+            <input
+              type="checkbox"
+              className={checkbox}
+              checked={sel.allChosen}
+              ref={(el) => el && (el.indeterminate = sel.someChosen)}
+              onChange={sel.toggleAll}
+            />
+            Select all {staff.length}
+          </label>
+        </div>
+      )}
       {Object.keys(groups).length === 0 && (
         <div className="rounded-card border-[0.5px] border-line bg-white p-6 text-center text-[13px] text-charcoal-soft">
           No staff on the roster yet.
@@ -573,8 +727,18 @@ function StaffTable({ staff, onEdit }) {
           </div>
           <ul>
             {members.map((s) => (
-              <li key={s.id} className="flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-2.5 last:border-0">
-                <div className="min-w-0">
+              <li
+                key={s.id}
+                className={`flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-2.5 last:border-0 ${sel.has(s.id) ? "bg-paper-deep" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  className={checkbox}
+                  aria-label={`Select ${titleCase(s.name)}`}
+                  checked={sel.has(s.id)}
+                  onChange={() => sel.toggle(s.id)}
+                />
+                <div className="min-w-0 flex-1">
                   <div className="text-[13px] font-semibold text-charcoal">{titleCase(s.name)}</div>
                   <div className="text-[11px] text-charcoal-soft">
                     Juz {s.juz}
