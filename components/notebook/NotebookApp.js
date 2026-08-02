@@ -79,13 +79,32 @@ export default function NotebookApp({ capabilities, today }) {
       return;
     }
 
+    // Browsers only expose mediaDevices in a secure context. Opening the portal
+    // over plain http:// on a LAN address (e.g. from a phone at the centre)
+    // leaves it undefined, which would otherwise surface as a misleading
+    // "microphone was blocked" — the mic was never asked for.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(
+        window.isSecureContext
+          ? "This browser doesn't support recording. Try Chrome or Safari, or use Type instead."
+          : "Recording needs a secure connection. Open the portal over https:// (or on localhost) — on a plain http:// address the browser blocks microphone access entirely."
+      );
+      return;
+    }
+
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
       });
-    } catch {
-      setError("Microphone access was blocked. Allow it in your browser settings, then try again.");
+    } catch (err) {
+      // NotAllowedError = the teacher denied (or previously denied) the prompt.
+      // NotFoundError = there is no microphone at all.
+      setError(
+        err?.name === "NotFoundError"
+          ? "No microphone was found on this device."
+          : "Microphone access was blocked. Allow it for this site in your browser settings, then try again."
+      );
       return;
     }
 
@@ -207,6 +226,11 @@ export default function NotebookApp({ capabilities, today }) {
     router.push(`/notebook/${result.id}${result.warning ? "?warn=1" : ""}`);
   }
 
+  const modeAvailable = (key) => {
+    const m = MODES.find((x) => x.key === key);
+    return !m?.need || Boolean(capabilities[m.need]);
+  };
+
   const canReview = text.trim().length > 0;
   const nearLimit = bytes > MAX_AUDIO_BYTES * 0.8;
 
@@ -221,20 +245,31 @@ export default function NotebookApp({ capabilities, today }) {
             <button
               key={m.key}
               type="button"
-              disabled={!available || phase === "recording" || phase === "working"}
+              // Only blocked mid-capture. An unconfigured mode stays clickable
+              // on purpose: a dead button tells a teacher nothing, so selecting
+              // it opens a panel saying exactly what is missing and who fixes it.
+              disabled={phase === "recording" || phase === "working"}
               onClick={() => setMode(m.key)}
-              title={available ? undefined : "Not configured on this server yet"}
-              className={`flex items-center gap-2 rounded-pill px-4 py-2 text-[13px] font-semibold transition-colors ${
+              title={available ? undefined : `${m.label} isn't switched on yet — tap to see why`}
+              className={`flex items-center gap-2 rounded-pill px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-40 ${
                 active
                   ? "bg-ink text-paper"
                   : available
                     ? "bg-white text-charcoal ring-1 ring-line hover:bg-paper-deep"
-                    : "cursor-not-allowed bg-paper-deep text-charcoal-soft/50"
+                    : "bg-paper-deep text-charcoal-soft hover:bg-sand/40"
               }`}
             >
               <Icon name={m.icon} size={15} />
               {m.label}
-              {!available && <span className="text-[10px] font-bold uppercase tracking-wide">off</span>}
+              {!available && (
+                <span
+                  className={`rounded-pill px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                    active ? "bg-paper/20 text-paper" : "bg-white text-charcoal-soft"
+                  }`}
+                >
+                  off
+                </span>
+              )}
             </button>
           );
         })}
@@ -253,6 +288,8 @@ export default function NotebookApp({ capabilities, today }) {
       <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(51,58,34,0.04)]">
         {phase === "working" ? (
           <Working label={working} />
+        ) : !modeAvailable(mode) ? (
+          <UnavailablePane mode={mode} onUseTyping={() => setMode("typed")} />
         ) : mode === "recording" ? (
           <RecordPane
             phase={phase}
@@ -440,6 +477,62 @@ function PhotoPane({ onPick, hasText }) {
         </span>
         <input type="file" accept="image/*" capture="environment" onChange={onPick} className="sr-only" />
       </label>
+    </div>
+  );
+}
+
+/**
+ * Shown when a capture mode has no provider key on the server.
+ *
+ * Says which key is missing and who can add it, because the two audiences who
+ * hit this need different things: a teacher needs to know it isn't their fault
+ * and what to do instead, an admin needs the exact variable name.
+ */
+function UnavailablePane({ mode, onUseTyping }) {
+  const copy =
+    mode === "recording"
+      ? {
+          icon: "mic",
+          title: "Recording isn't switched on yet",
+          body: "This server has no transcription key, so recordings can't be turned into text.",
+          envVar: "GROQ_API_KEY",
+          where: "console.groq.com/keys",
+          note: "It's free, and the same key also writes the summaries.",
+        }
+      : {
+          icon: "camera",
+          title: "Photo capture isn't switched on yet",
+          body: "This server has no image key, so text can't be read out of a photograph.",
+          envVar: "GEMINI_API_KEY",
+          where: "aistudio.google.com/apikey",
+          note: "Optional and free — only this Photo mode needs it.",
+        };
+
+  return (
+    <div className="py-4 text-center">
+      <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-paper-deep text-charcoal-soft">
+        <Icon name={copy.icon} size={24} />
+      </span>
+      <p className="mt-4 font-heading text-[16px] font-bold text-charcoal">{copy.title}</p>
+      <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-charcoal-soft">{copy.body}</p>
+
+      <div className="mx-auto mt-5 max-w-md rounded-control bg-paper px-4 py-3 text-left">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-charcoal-soft">For an admin</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-charcoal">
+          Add <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[12px]">{copy.envVar}</code>{" "}
+          to the server&apos;s environment, then restart it. Get a key from{" "}
+          <span className="font-semibold">{copy.where}</span>.
+        </p>
+        <p className="mt-1.5 text-[12px] text-charcoal-soft">{copy.note}</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onUseTyping}
+        className="mt-5 rounded-control bg-ink px-5 py-2.5 text-[13px] font-bold text-paper transition-opacity hover:opacity-90"
+      >
+        Type notes instead
+      </button>
     </div>
   );
 }
