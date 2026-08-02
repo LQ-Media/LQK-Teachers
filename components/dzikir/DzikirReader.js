@@ -1,6 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import Icon from "@/components/Icon";
+
+// A horizontal drag counts as a page turn when it is decisively sideways:
+// far enough to be deliberate, and clearly more horizontal than vertical so
+// that scrolling a long litany never flips the page by accident.
+const SWIPE_MIN_PX = 64;
+const SWIPE_RATIO = 1.6;
+const SWIPE_MAX_MS = 900;
 
 const LANGS = [
   { key: "en", label: "English" },
@@ -39,7 +49,8 @@ const PREF_KEY = "lqk.dzikir.prefs";
  * plus speed) that drives the window scroll and bows out the moment the reader
  * touches the wheel or the screen.
  */
-export default function DzikirReader({ passages }) {
+export default function DzikirReader({ passages, prev = null, next = null }) {
+  const router = useRouter();
   const [lang, setLang] = useState("en");
   const [showTranslit, setShowTranslit] = useState(true);
   const [showMeaning, setShowMeaning] = useState(true);
@@ -134,8 +145,67 @@ export default function DzikirReader({ passages }) {
   const decSize = useCallback(() => setSize((s) => Math.max(0, s - 1)), []);
   const incSize = useCallback(() => setSize((s) => Math.min(SIZES.length - 1, s + 1)), []);
 
+  // ── Paging between collections ────────────────────────────────────────────
+  const hrefOf = (t) => (t ? `/dzikir/${t.group}/${t.slug}` : null);
+
+  const goTo = useCallback(
+    (target) => {
+      if (!target) return;
+      setScrolling(false); // never carry auto-scroll across a page turn
+      router.push(`/dzikir/${target.group}/${target.slug}`);
+    },
+    [router]
+  );
+
+  // Arrow keys page between collections on desktop. Ignored while the reader is
+  // typing in a field, and never when a modifier is held (that is a browser
+  // shortcut, e.g. ⌘← for Back).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      if (e.key === "ArrowRight") goTo(next);
+      else if (e.key === "ArrowLeft") goTo(prev);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [goTo, prev, next]);
+
+  // Touch paging. Recorded on the container rather than the window so a swipe
+  // that starts on the sticky control bar doesn't turn the page.
+  const touch = useRef(null);
+
+  const onTouchStart = useCallback((e) => {
+    if (e.touches.length !== 1) return; // ignore pinch-zoom
+    const t = e.touches[0];
+    touch.current = { x: t.clientX, y: t.clientY, at: Date.now() };
+  }, []);
+
+  const onTouchEnd = useCallback(
+    (e) => {
+      const start = touch.current;
+      touch.current = null;
+      if (!start) return;
+      // A text selection drag is not a page turn.
+      if (window.getSelection?.()?.toString()) return;
+
+      const t = e.changedTouches?.[0];
+      if (!t) return;
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      if (Date.now() - start.at > SWIPE_MAX_MS) return;
+      if (Math.abs(dx) < SWIPE_MIN_PX) return;
+      if (Math.abs(dx) < Math.abs(dy) * SWIPE_RATIO) return;
+
+      goTo(dx < 0 ? next : prev); // drag left → next, drag right → previous
+    },
+    [goTo, prev, next]
+  );
+
   return (
-    <div>
+    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {/* Controls */}
       <div className="sticky top-0 z-10 -mx-8 mb-5 border-b border-line bg-paper/95 px-8 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -202,6 +272,26 @@ export default function DzikirReader({ passages }) {
             <div className="space-y-3">
               {g.items.map((p) => {
                 const meaning = meaningOf(p);
+
+                // Header rows label the passage that follows them ("Option I",
+                // "Intention for Hajj"). NU ships them as ordinary records with
+                // the heading sitting in the Arabic field, so before the data
+                // migration they rendered as right-to-left Latin text in the
+                // Amiri face, followed by a spurious "no translation" notice.
+                if (p.hdr) {
+                  const heading = meaningOf(p) || p.id_;
+                  if (!heading) return null;
+                  return (
+                    <h3
+                      key={p.id}
+                      className="flex items-center gap-2 pt-2 pb-0.5 font-heading text-[13px] font-bold uppercase tracking-wide text-charcoal-soft"
+                    >
+                      <span className="h-px w-4 flex-shrink-0 bg-gold" aria-hidden="true" />
+                      {heading}
+                    </h3>
+                  );
+                }
+
                 return (
                   <article
                     key={p.id}
@@ -254,7 +344,65 @@ export default function DzikirReader({ passages }) {
           </section>
         ))}
       </div>
+
+      {/* Paging between collections — the swipe made visible, and the only way
+          to move on for anyone using a mouse or a keyboard. */}
+      {(prev || next) && (
+        <nav className="mt-8 border-t border-line pt-5" aria-label="Other collections">
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <PageLink target={prev} href={hrefOf(prev)} side="prev" />
+            <PageLink target={next} href={hrefOf(next)} side="next" />
+          </div>
+          <p className="mt-3 text-center text-[11.5px] text-charcoal-soft/70">
+            Swipe left or right to move between collections, or use the ← → keys.
+          </p>
+        </nav>
+      )}
     </div>
+  );
+}
+
+/**
+ * One side of the pager. Renders a disabled placeholder rather than collapsing
+ * when there is nothing that way, so the two sides stay in a stable grid and
+ * the reader can see they are at the beginning or the end of the library.
+ */
+function PageLink({ target, href, side }) {
+  const isNext = side === "next";
+  const label = isNext ? "Next" : "Previous";
+
+  if (!target) {
+    return (
+      <span
+        className={`flex items-center gap-2 rounded-card border border-dashed border-line px-4 py-3 text-[12.5px] text-charcoal-soft/50 ${
+          isNext ? "sm:justify-end sm:text-right" : ""
+        }`}
+      >
+        {isNext ? `End of the library` : `Start of the library`}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className={`flex items-center gap-3 rounded-card border border-line bg-white px-4 py-3 transition-colors hover:border-gold hover:bg-paper ${
+        isNext ? "sm:flex-row-reverse sm:text-right" : ""
+      }`}
+    >
+      <span className="flex-shrink-0 text-charcoal-soft">
+        <Icon name={isNext ? "chevron-right" : "arrow-left"} size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-bold uppercase tracking-wide text-charcoal-soft/70">
+          {label}
+        </span>
+        <span className="block truncate font-heading text-[14px] font-bold text-charcoal">
+          {target.title}
+        </span>
+        <span className="block truncate text-[11.5px] text-charcoal-soft">{target.groupLabel}</span>
+      </span>
+    </Link>
   );
 }
 

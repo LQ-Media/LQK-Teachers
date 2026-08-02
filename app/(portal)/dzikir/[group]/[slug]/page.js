@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { LOADERS } from "@/lib/dzikir/loaders";
 import { SECTION_INDEX } from "@/lib/dzikir/catalog";
+import { neighboursOf } from "@/lib/dzikir/nav";
 import { naskh } from "@/lib/dzikir/font";
 import Icon from "@/components/Icon";
 import DzikirReader from "@/components/dzikir/DzikirReader";
@@ -29,6 +30,7 @@ export default async function DzikirSectionPage({ params }) {
 
   const mod = await load();
   const section = mod.default ?? mod;
+  const nav = neighboursOf(key);
 
   return (
     <div className={`${naskh.variable} p-8 max-w-3xl`}>
@@ -47,10 +49,14 @@ export default async function DzikirSectionPage({ params }) {
         <h1 className="font-heading text-2xl font-semibold text-charcoal">{section.title}</h1>
         <p className="mt-1 text-[13px] text-charcoal-soft">
           {section.count.toLocaleString()} passage{section.count === 1 ? "" : "s"}
+          <span className="text-charcoal-soft/60">
+            {" · "}
+            {nav.position} of {nav.total}
+          </span>
         </p>
       </div>
 
-      <DzikirReader passages={section.passages} />
+      <DzikirReader passages={section.passages} prev={nav.prev} next={nav.next} />
     </div>
   );
 }
