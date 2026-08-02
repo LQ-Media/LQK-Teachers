@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
-import { aiCapabilities } from "@/lib/ai/provider";
+import { aiCapabilities, aiKeyDiagnostics } from "@/lib/ai/provider";
 import { sgToday } from "@/lib/hours/rates";
 import Icon from "@/components/Icon";
 import NotebookApp from "@/components/notebook/NotebookApp";
@@ -32,6 +32,10 @@ export default async function NotebookPage() {
     }));
 
   const capabilities = aiCapabilities();
+  // Only computed when something is actually off, so the normal page carries
+  // no diagnostic payload at all.
+  const keyDiag =
+    capabilities.transcribe && capabilities.vision ? null : aiKeyDiagnostics();
 
   return (
     <div className="p-8 max-w-3xl">
@@ -43,7 +47,7 @@ export default async function NotebookPage() {
         </p>
       </div>
 
-      <NotebookApp capabilities={capabilities} today={sgToday()} />
+      <NotebookApp capabilities={capabilities} today={sgToday()} keyDiag={keyDiag} />
 
       <div className="mt-10">
         <h2 className="font-heading text-[17px] font-bold text-charcoal">

@@ -39,7 +39,7 @@ function clock(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function NotebookApp({ capabilities, today }) {
+export default function NotebookApp({ capabilities, today, keyDiag = null }) {
   const router = useRouter();
 
   const [mode, setMode] = useState(() => (capabilities.transcribe ? "recording" : "typed"));
@@ -289,7 +289,7 @@ export default function NotebookApp({ capabilities, today }) {
         {phase === "working" ? (
           <Working label={working} />
         ) : !modeAvailable(mode) ? (
-          <UnavailablePane mode={mode} onUseTyping={() => setMode("typed")} />
+          <UnavailablePane mode={mode} keyDiag={keyDiag} onUseTyping={() => setMode("typed")} />
         ) : mode === "recording" ? (
           <RecordPane
             phase={phase}
@@ -488,7 +488,7 @@ function PhotoPane({ onPick, hasText }) {
  * hit this need different things: a teacher needs to know it isn't their fault
  * and what to do instead, an admin needs the exact variable name.
  */
-function UnavailablePane({ mode, onUseTyping }) {
+function UnavailablePane({ mode, keyDiag, onUseTyping }) {
   const copy =
     mode === "recording"
       ? {
@@ -524,6 +524,38 @@ function UnavailablePane({ mode, onUseTyping }) {
           <span className="font-semibold">{copy.where}</span>.
         </p>
         <p className="mt-1.5 text-[12px] text-charcoal-soft">{copy.note}</p>
+
+        {keyDiag && (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-charcoal-soft">
+              What this server can see right now
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {keyDiag.expected.map((k) => (
+                <li key={k.name} className="flex items-center gap-2 text-[12.5px]">
+                  <span className={k.present ? "text-[#2E8B70]" : "text-rust"}>
+                    <Icon name={k.present ? "check" : "x"} size={13} />
+                  </span>
+                  <code className="font-mono text-[12px] text-charcoal">{k.name}</code>
+                  <span className="text-charcoal-soft">{k.present ? "set" : "not set"}</span>
+                </li>
+              ))}
+            </ul>
+            {keyDiag.similar.length > 0 && (
+              <p className="mt-2 text-[12px] leading-relaxed text-[#8A4030]">
+                Similar names are set here — check for a typo:{" "}
+                <code className="font-mono text-[11.5px]">{keyDiag.similar.join(", ")}</code>
+              </p>
+            )}
+            <p className="mt-2 text-[11.5px] leading-relaxed text-charcoal-soft">
+              Any non-empty value counts as set, so &ldquo;not set&rdquo; means this container never
+              received the variable — not that the key is wrong. A key in a local{" "}
+              <code className="font-mono text-[11px]">.env.local</code>{" "}
+              does not reach the deployed site; it must be added to the host&apos;s own variables and
+              the service restarted.
+            </p>
+          </div>
+        )}
       </div>
 
       <button
