@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { login, register } from "@/lib/actions/auth";
+import { LOCATIONS } from "@/lib/locations";
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 
 const fieldClass =
@@ -134,6 +135,26 @@ function RegisterForm() {
             Email
           </label>
           <input id="reg_email" name="email" type="email" required autoComplete="email" className={fieldClass} />
+        </div>
+        {/* An admin can still pre-assign a branch with an invite; this is what
+            everyone else gets asked, so no account starts branchless. */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg_branch" className="text-[11px] font-semibold text-charcoal-soft">
+            Branch
+          </label>
+          <select id="reg_branch" name="primary_location" required defaultValue="" className={fieldClass}>
+            <option value="" disabled>
+              Select your branch…
+            </option>
+            {LOCATIONS.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-charcoal-soft">
+            Your admin can change this later.
+          </span>
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="reg_password" className="text-[11px] font-semibold text-charcoal-soft">
