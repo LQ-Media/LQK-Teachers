@@ -19,6 +19,7 @@ if (!process.env.NODE_ENV) process.env.NODE_ENV = "production";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../lib/db.js";
 import { hashPassword } from "../lib/hash.js";
+import { attachToRoster } from "../lib/roster.js";
 
 function arg(flag, envKey) {
   const i = process.argv.indexOf(flag);
@@ -46,17 +47,32 @@ const db = getDb();
 const now = new Date().toISOString();
 const existing = db.prepare("SELECT id FROM profiles WHERE email = ?").get(email);
 
+let profileId;
 if (existing) {
   db.prepare("UPDATE profiles SET full_name = ?, password_hash = ?, role = 'admin' WHERE id = ?").run(
     name,
     hashPassword(password),
     existing.id
   );
+  profileId = existing.id;
   console.log(`Updated existing profile ${email} -> admin.`);
 } else {
+  profileId = randomUUID();
   db.prepare(
     `INSERT INTO profiles (id, full_name, email, password_hash, role, primary_location, created_at)
      VALUES (?, ?, ?, ?, 'admin', NULL, ?)`
-  ).run(randomUUID(), name, email, hashPassword(password), now);
+  ).run(profileId, name, email, hashPassword(password), now);
   console.log(`Created admin ${email}.`);
 }
+
+// Every account belongs on the tracked staff roster, the same as registering
+// or being added in Admin. This account has no branch, so it lands in
+// MANAGEMENT TEAM until an admin moves it.
+const roster = attachToRoster(db, { profileId, fullName: name, branch: null, position: "" });
+console.log(
+  roster.action === "created"
+    ? "Added them to the staff roster."
+    : roster.action === "linked"
+      ? "Linked them to their existing roster row."
+      : "Roster row left unlinked — more than one entry shares that name."
+);
