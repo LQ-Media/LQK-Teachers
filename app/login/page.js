@@ -120,6 +120,9 @@ function SignInForm() {
 
 function RegisterForm() {
   const [state, formAction, pending] = useActionState(register, undefined);
+  // HQ is the branch that grants admin, so it asks for the shared code. The
+  // server enforces this regardless of what the form shows.
+  const [branch, setBranch] = useState("");
 
   return (
     <>
@@ -142,7 +145,14 @@ function RegisterForm() {
           <label htmlFor="reg_branch" className="text-[11px] font-semibold text-charcoal-soft">
             Branch
           </label>
-          <select id="reg_branch" name="primary_location" required defaultValue="" className={fieldClass}>
+          <select
+            id="reg_branch"
+            name="primary_location"
+            required
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            className={fieldClass}
+          >
             <option value="" disabled>
               Select your branch…
             </option>
@@ -156,6 +166,25 @@ function RegisterForm() {
             Your admin can change this later.
           </span>
         </div>
+
+        {branch === "HQ" && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="reg_hq_code" className="text-[11px] font-semibold text-charcoal-soft">
+              HQ access code
+            </label>
+            <input
+              id="reg_hq_code"
+              name="hq_code"
+              type="password"
+              required
+              autoComplete="off"
+              className={fieldClass}
+            />
+            <span className="text-[11px] text-charcoal-soft">
+              An HQ account has admin access. Ask an admin for the code.
+            </span>
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="reg_password" className="text-[11px] font-semibold text-charcoal-soft">
             Password
