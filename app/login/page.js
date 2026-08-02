@@ -229,7 +229,7 @@ function RegisterForm() {
       </form>
 
       <p className="mt-4 text-center text-[11px] leading-relaxed text-charcoal-soft">
-        Use the email address your admin invited. If it isn’t on the invite list yet, ask them to add it first.
+        Use your work email. Your admin can adjust your branch and role after you sign up.
       </p>
     </>
   );
