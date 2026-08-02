@@ -11,6 +11,10 @@
  *   node scripts/link-roster-accounts.mjs --dry-run     # report only, no writes
  *   node scripts/link-roster-accounts.mjs               # apply the safe matches
  *   node scripts/link-roster-accounts.mjs --relink      # also redo existing links
+ *   node scripts/link-roster-accounts.mjs --create-missing
+ *       # …and give every remaining account its own roster row, so no login is
+ *       # missing from the roster. Registration does this automatically now;
+ *       # this is the backfill for accounts created before that.
  *
  * Run it in the same environment as the app (same LQK_DATA_DIR) so it writes to
  * the same database — e.g. in the Railway console after a deploy.
@@ -21,9 +25,11 @@
 if (!process.env.NODE_ENV) process.env.NODE_ENV = "production";
 
 import { getDb } from "../lib/db.js";
+import { classForBranch } from "../lib/roster.js";
 
 const dryRun = process.argv.includes("--dry-run");
 const relink = process.argv.includes("--relink");
+const createMissing = process.argv.includes("--create-missing");
 
 // "NURUL  AIN BINTE ALI" -> "nurul ain binte ali". Also drops the honorifics and
 // filial markers that appear on one side of the Sheet but not the other.
@@ -83,6 +89,28 @@ if (!dryRun && matched.length) {
   for (const m of matched) update.run(m.profile.id, m.student.id);
 }
 
+// --create-missing: accounts that matched nothing get a roster row of their
+// own, so every login appears on the roster. Registration does this by itself
+// now (lib/roster.js#attachToRoster); this catches the accounts that predate it.
+const linkedProfiles = new Set([
+  ...students.filter((s) => s.profile_id).map((s) => s.profile_id),
+  ...matched.map((m) => m.profile.id),
+]);
+const rosterless = createMissing ? profiles.filter((p) => !linkedProfiles.has(p.id)) : [];
+
+if (!dryRun && rosterless.length) {
+  const branchOf = db.prepare("SELECT primary_location, position FROM profiles WHERE id = ?");
+  const insert = db.prepare(
+    "INSERT INTO students (id, name, class, juz, position, photo, profile_id, created_at) VALUES (?, ?, ?, 1, ?, '', ?, ?)"
+  );
+  let { max } = db.prepare("SELECT MAX(id) AS max FROM students").get();
+  for (const p of rosterless) {
+    const row = branchOf.get(p.id) || {};
+    max = (max || 0) + 1;
+    insert.run(max, p.full_name, classForBranch(row.primary_location), String(row.position || ""), p.id, new Date().toISOString());
+  }
+}
+
 // ---- Report -----------------------------------------------------------
 
 const line = "─".repeat(64);
@@ -109,6 +137,16 @@ if (unmatched.length) {
 
 if (skipped.length) {
   console.log(`\n· ${skipped.length} already linked (pass --relink to redo them)`);
+}
+
+if (createMissing) {
+  console.log(`\n+ ${rosterless.length} account(s) with no roster row${dryRun ? " (would add)" : " — added"}`);
+  for (const p of rosterless) console.log(`   ${p.full_name} <${p.email}>`);
+} else {
+  const wouldAdd = profiles.filter((p) => !linkedProfiles.has(p.id)).length;
+  if (wouldAdd) {
+    console.log(`\n· ${wouldAdd} account(s) have no roster row — pass --create-missing to add them`);
+  }
 }
 
 console.log(
