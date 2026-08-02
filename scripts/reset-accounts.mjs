@@ -26,8 +26,9 @@
  *     instead of quietly deleting the account it was meant to protect.
  *   - Refuses to run if the result would leave nobody able to sign in or
  *     register as an admin.
- *   - The staff roster (students) and its lessons are never deleted, only
- *     unlinked from the accounts that go away.
+ *   - A deleted account takes its own roster row with it (and that row's
+ *     lessons), the same as deleting from Admin. Roster rows with no account
+ *     attached are left alone.
  *
  * LOCAL DEV ONLY GOTCHA: if the profiles table ends up completely empty
  * (--include-admins with no --keep), seedIfEmpty() refills it with demo accounts
@@ -99,8 +100,10 @@ const OWNED = [
 
 // Rows that outlive the person and just lose the pointer. These have no
 // ON DELETE clause, so SQLite would block the delete — they are NULLed first.
+// students.profile_id is deliberately absent: an account's roster row is part
+// of that person, so it is deleted outright (see rosterFor below), matching
+// what Admin → delete now does.
 const DETACH = [
-  ["students", "profile_id"],
   ["lessons", "teacher_id"],
   ["hafalan_entries", "reviewer_id"],
   ["work_sessions", "reviewer_id"],
@@ -206,9 +209,24 @@ if (noInvites) {
   }
 }
 
+// Roster rows belonging to the deleted accounts go with them, and take their
+// lessons and juz milestones by cascade. Roster rows with no account attached
+// are left alone — nobody asked for those to go.
+const rosterRows = db
+  .prepare(`SELECT count(*) n FROM students WHERE profile_id IN (${placeholders})`)
+  .get(...ids).n;
+const rosterLessons = db
+  .prepare(
+    `SELECT count(*) n FROM lessons WHERE student_id IN (SELECT id FROM students WHERE profile_id IN (${placeholders}))`
+  )
+  .get(...ids).n;
+
 console.log("\nData deleted with those accounts:");
-if (losses.length === 0) console.log("  (none — these accounts have no entries yet)");
+if (losses.length === 0 && rosterRows === 0) console.log("  (none — these accounts have no entries yet)");
 for (const l of losses) console.log(`  ${String(l.n).padStart(4)} × ${l.table}.${l.col}`);
+if (rosterRows > 0) {
+  console.log(`  ${String(rosterRows).padStart(4)} × staff roster row (and ${rosterLessons} logged lesson(s))`);
+}
 
 console.log("\nKept but unlinked from the deleted accounts:");
 if (detaches.length === 0) console.log("  (none)");
@@ -239,6 +257,8 @@ const delProfile = db.prepare("DELETE FROM profiles WHERE id = ?");
 
 db.exec("BEGIN");
 try {
+  // Roster rows first, while profile_id still points at the accounts.
+  db.prepare(`DELETE FROM students WHERE profile_id IN (${placeholders})`).run(...ids);
   for (const [table, col] of DETACH) {
     db.prepare(`UPDATE ${table} SET ${col} = NULL WHERE ${col} IN (${placeholders})`).run(...ids);
   }

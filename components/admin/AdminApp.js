@@ -185,8 +185,8 @@ function UsersTable({ users, onEdit, onCreds }) {
     if (
       !confirm(
         `Delete ${sel.count} account${sel.count === 1 ? "" : "s"}?\n\n${preview}\n\n` +
-          "This removes their logins and everything logged under them — hours, hafalan, notes, certificates. " +
-          "The staff roster is not deleted, only unlinked. This cannot be undone."
+          "This removes their logins, everything logged under them (hours, hafalan, notes, certificates), " +
+          "and their staff roster entries along with those lessons and juz progress. This cannot be undone."
       )
     )
       return;
@@ -209,7 +209,14 @@ function UsersTable({ users, onEdit, onCreds }) {
     });
   }
   function remove(u) {
-    if (!confirm(`Delete ${u.full_name}'s account? This removes their login, reading log, and bookmark. The tracked roster is not affected.`)) return;
+    if (
+      !confirm(
+        `Delete ${u.full_name}'s account?\n\n` +
+          "This removes their login, everything logged under it (hours, hafalan, notes, certificates), " +
+          "and their staff roster entry along with its lessons and juz progress. This cannot be undone."
+      )
+    )
+      return;
     startTransition(async () => {
       const r = await deleteUser(u.id);
       if (r?.error) alert(r.error);
