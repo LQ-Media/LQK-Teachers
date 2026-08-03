@@ -34,61 +34,78 @@ function VerseCard({
     <article
       ref={cardRef}
       data-verse-key={verse.verseKey}
-      className={`bg-white rounded-card p-5 mb-4 border-[0.5px] transition-colors ${
-        isActive ? "border-ink ring-1 ring-ink" : "border-line"
+      className={`-mx-3 rounded-xl border-b-[0.5px] border-line px-3 py-5 transition-colors ${
+        isActive ? "bg-gold-soft/25" : ""
       }`}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <span className="bg-sage-soft text-sage text-[11px] font-bold rounded-pill px-2.5 py-1">
-          Ayah {verse.number}
-        </span>
-        <div className="ml-auto flex gap-2">
-          <IconButton
+      <div className="flex items-start gap-1.5">
+        {/* Quiet per-ayah controls, NU-style at the left of the Arabic line */}
+        <div className="flex flex-none flex-col gap-1 pt-1.5">
+          <GhostButton
             on={isBookmarked}
+            tone="gold"
             label={isBookmarked ? "Bookmarked" : "Bookmark this ayah"}
             title="Save your place"
             onClick={() => store.setBookmark(verse.verseKey)}
           >
             <Icon name="bookmark" size={15} filled={isBookmarked} />
-          </IconButton>
-          <IconButton
+          </GhostButton>
+          <GhostButton
             on={isPlaying}
             label={isPlaying ? "Pause" : "Play this ayah"}
             onClick={() => store.togglePlay(verse.verseKey)}
           >
             <Icon name={isPlaying ? "pause" : "play"} size={14} />
-          </IconButton>
+          </GhostButton>
         </div>
+
+        <p className="font-arabic min-w-0 flex-1 text-right" lang="ar" dir="rtl" style={arabicStyle}>
+          <ArabicBody
+            verse={verse}
+            displayMode={displayMode}
+            wordIndex={wordIndex}
+            arabicColor={settings.arabicColor}
+            onWordTap={onWordTap}
+          />{" "}
+          <AyahMedallion number={verse.number} />
+        </p>
       </div>
 
-      <p className="font-arabic text-right" lang="ar" dir="rtl" style={arabicStyle}>
-        <ArabicBody
-          verse={verse}
-          displayMode={displayMode}
-          wordIndex={wordIndex}
-          arabicColor={settings.arabicColor}
-          onWordTap={onWordTap}
-        />
-      </p>
-
       {(showTransliteration || showTranslation) && (verse.transliteration || verse.translation) && (
-        <div className="border-t-[0.5px] border-line mt-4 pt-3 space-y-1.5">
+        <div className="mt-3 space-y-2">
           {showTransliteration && verse.transliteration && (
             <p
-              className="italic"
+              className="font-semibold leading-relaxed"
               style={{ fontSize: `${settings.translitSize}px`, color: settings.translitColor }}
             >
               {verse.transliteration}
             </p>
           )}
           {showTranslation && verse.translation && (
-            <p style={{ fontSize: `${settings.translationSize}px`, color: settings.translationColor }}>
+            <p
+              className="leading-relaxed"
+              style={{ fontSize: `${settings.translationSize}px`, color: settings.translationColor }}
+            >
               {verse.translation}
             </p>
           )}
         </div>
       )}
     </article>
+  );
+}
+
+/** Ornamental ayah-end marker with the number in Arabic-Indic digits. */
+function AyahMedallion({ number }) {
+  const arabic = String(number).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
+  return (
+    <span
+      className="mx-1 inline-flex h-[30px] w-[30px] -translate-y-0.5 items-center justify-center rounded-full border-[1.5px] border-gold/70 align-middle font-semibold text-[#A8742A]"
+      style={{ fontSize: "13px", lineHeight: 1 }}
+      aria-label={`Ayah ${number}`}
+    >
+      {arabic}
+    </span>
   );
 }
 
@@ -150,17 +167,19 @@ function ArabicBody({ verse, displayMode, wordIndex, arabicColor, onWordTap }) {
   });
 }
 
-function IconButton({ on, label, title, onClick, children }) {
+function GhostButton({ on, tone, label, title, onClick, children }) {
   return (
     <button
       type="button"
       aria-label={label}
       title={title || label}
       onClick={onClick}
-      className={`w-9 h-9 rounded-full text-[13px] flex items-center justify-center border-[0.5px] transition-colors ${
+      className={`flex h-8 w-8 items-center justify-center rounded-full transition-[background-color,color,transform] duration-150 ease-out active:scale-95 ${
         on
-          ? "bg-ink border-ink text-paper"
-          : "bg-white border-line text-charcoal-soft hover:bg-paper-deep hover:text-charcoal"
+          ? tone === "gold"
+            ? "text-gold"
+            : "bg-ink text-paper"
+          : "text-charcoal-soft/60 hover:bg-paper-deep hover:text-charcoal"
       }`}
     >
       {children}

@@ -46,6 +46,7 @@ export default function QuranReader({ initialBookmark = null }) {
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const scrollRef = useRef(null);
+  const tabStripRef = useRef(null);
   const verseRefs = useRef(new Map());
 
   // Load saved display prefs on the client (kept out of the server render so
@@ -115,6 +116,20 @@ export default function QuranReader({ initialBookmark = null }) {
     return () => cancelAnimationFrame(raf);
   }, [state.autoscroll.active, state.autoscroll.speed, store]);
 
+  // Keep the active surah tab centred in the strip (NU-Online-style tabs).
+  // Instant, not smooth: the focus-verse jump that follows a chapter change
+  // cancels in-flight smooth scrolls, and navigation shouldn't animate anyway.
+  useEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    const tab = strip.querySelector(`[data-chapter-tab="${state.chapterId}"]`);
+    if (!tab) return;
+    // offsetLeft is relative to the offsetParent (the page), not the strip —
+    // measure the visual delta between the two rects instead.
+    const delta = tab.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    strip.scrollLeft += delta - (strip.clientWidth - tab.offsetWidth) / 2;
+  }, [state.chapterId, state.status]);
+
   // Confirm to the teacher when a bookmark also logged to My reading.
   const loggedSeen = useRef(null);
   useEffect(() => {
@@ -170,49 +185,85 @@ export default function QuranReader({ initialBookmark = null }) {
     ? state.chapters.find((c) => c.id === Number(state.bookmark.chapterId))
     : null;
 
+  // The juz shown in the pinned toolbar: the first juz that contains the
+  // current surah (a long surah spans several — precise enough for jumping).
+  const currentJuz =
+    state.juzs.find((j) => Object.keys(j.verseMapping).map(Number).includes(Number(state.chapterId)))
+      ?.number ?? "";
+
+  function goToJuz(number) {
+    const juz = state.juzs.find((j) => j.number === Number(number));
+    if (!juz) return;
+    const first = Object.keys(juz.verseMapping)
+      .map(Number)
+      .sort((a, b) => a - b)[0];
+    if (!first) return;
+    const from = String(juz.verseMapping[first]).split("-")[0];
+    store.goTo(first, `${first}:${from}`);
+  }
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-paper max-lg:h-[calc(100dvh-4rem)]">
-      {/* Header */}
-      <header className="flex-none border-b-[0.5px] border-line bg-paper px-5 py-3">
-        <div className="mx-auto flex max-w-[760px] flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-control bg-gold-soft text-ink">
-              <Icon name="book-open" size={18} />
-            </span>
-            <div>
-              <h1 className="font-heading text-[20px] font-semibold text-charcoal">Quran</h1>
-              <p className="text-[12px] text-charcoal-soft">Read and listen</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSheetOpen(true)}
-            className="ml-auto rounded-control bg-ink px-4 py-2 text-[13px] font-semibold text-paper transition-colors hover:bg-ink-deep"
+      {/* Pinned toolbar — juz + surah dropdowns and quick actions stay
+          reachable at any scroll position (NU-Online-style). */}
+      <header className="flex-none border-b-[0.5px] border-line bg-paper">
+        <div className="mx-auto flex max-w-[760px] items-center gap-2 px-4 py-2.5 sm:px-5">
+          <ToolbarSelect
+            label="Jump to juz"
+            value={currentJuz}
+            onChange={(v) => goToJuz(v)}
+            className="w-[92px] flex-none"
           >
-            Browse
-          </button>
-          <div className="flex w-full items-center gap-3">
-            <select
-              aria-label="Translation language"
-              value={state.translationId}
-              onChange={(e) => store.setTranslationId(e.target.value)}
-              className="min-w-0 flex-1 rounded-control border-[0.5px] border-line bg-white px-3 py-2 text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
-            >
-              {state.translations.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.languageName} — {t.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setDisplayOpen(true)}
-              className="flex flex-none items-center gap-2 rounded-control border-[0.5px] border-line bg-white px-3.5 py-2 text-[13px] font-semibold text-charcoal transition-colors hover:bg-paper-deep"
-            >
-              <Icon name="sliders" size={15} />
-              Display
-            </button>
-          </div>
+            {state.juzs.map((j) => (
+              <option key={j.number} value={j.number}>
+                Juz {j.number}
+              </option>
+            ))}
+          </ToolbarSelect>
+          <ToolbarSelect
+            label="Jump to surah"
+            value={state.chapterId}
+            onChange={(v) => store.goTo(Number(v))}
+            className="min-w-0 flex-1"
+          >
+            {state.chapters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.id}. {c.nameSimple}
+              </option>
+            ))}
+          </ToolbarSelect>
+          <ToolbarButton label="Text size and colours" onClick={() => setDisplayOpen(true)}>
+            <Icon name="type" size={16} />
+          </ToolbarButton>
+          <ToolbarButton label="Browse surahs, juz and ayah" onClick={() => setSheetOpen(true)}>
+            <Icon name="book-open" size={16} />
+          </ToolbarButton>
+        </div>
+
+        {/* Surah tab strip — swipe through neighbouring surahs like NU Online */}
+        <div
+          ref={tabStripRef}
+          className="mx-auto flex max-w-[760px] overflow-x-auto px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {state.chapters.map((c) => {
+            const active = c.id === Number(state.chapterId);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                data-chapter-tab={c.id}
+                onClick={() => store.goTo(c.id)}
+                aria-current={active ? "true" : undefined}
+                className={`flex-none whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1.5 text-[13.5px] transition-colors ${
+                  active
+                    ? "border-gold font-bold text-charcoal"
+                    : "border-transparent font-medium text-charcoal-soft hover:text-charcoal"
+                }`}
+              >
+                {c.nameSimple}
+              </button>
+            );
+          })}
         </div>
       </header>
 
@@ -313,6 +364,38 @@ export default function QuranReader({ initialBookmark = null }) {
       {sheetOpen && <BrowseSheet state={state} store={store} onClose={() => setSheetOpen(false)} />}
       {displayOpen && <DisplaySheet state={state} store={store} onClose={() => setDisplayOpen(false)} />}
     </div>
+  );
+}
+
+function ToolbarSelect({ label, value, onChange, className = "", children }) {
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full appearance-none truncate rounded-control border-[0.5px] border-line bg-white py-2 pl-3 pr-7 text-[13px] font-semibold text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
+      >
+        {children}
+      </select>
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-charcoal-soft">
+        <Icon name="chevron-down" size={14} />
+      </span>
+    </div>
+  );
+}
+
+function ToolbarButton({ label, onClick, children }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex h-9 w-9 flex-none items-center justify-center rounded-control border-[0.5px] border-line bg-white text-charcoal transition-[background-color,transform] duration-150 ease-out hover:bg-paper-deep active:scale-95"
+    >
+      {children}
+    </button>
   );
 }
 

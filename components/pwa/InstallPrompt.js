@@ -27,7 +27,11 @@ export default function InstallPrompt() {
   const [ios, setIos] = useState(false);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
+    // Production only: the SW is cache-first for /_next/static/, and dev
+    // (Turbopack) reuses chunk URLs across edits — registering it in dev
+    // serves stale JS/CSS forever. Prod chunk URLs are content-hashed, so
+    // cache-first is safe there.
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
     if (isStandalone()) return;

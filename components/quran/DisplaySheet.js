@@ -54,6 +54,22 @@ export default function DisplaySheet({ state, store, onClose }) {
         <div className="mx-auto mb-3.5 h-1.5 w-11 flex-none rounded-pill bg-line" />
 
         <div className="flex-1 space-y-6 overflow-y-auto px-0.5 pb-2">
+          {/* Translation language (lives here since the toolbar went compact) */}
+          <Section title="Translation language">
+            <select
+              aria-label="Translation language"
+              value={state.translationId}
+              onChange={(e) => store.setTranslationId(e.target.value)}
+              className="w-full rounded-control border-[0.5px] border-line bg-paper px-3 py-2.5 text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
+            >
+              {state.translations.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.languageName} — {t.name}
+                </option>
+              ))}
+            </select>
+          </Section>
+
           {/* Show / hide layers */}
           <Section title="Show">
             <div className="space-y-2.5">
