@@ -17,6 +17,7 @@ import {
 } from "@/lib/actions/admin";
 import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
+import PageHeading from "@/components/PageHeading";
 import HoursAdmin from "@/components/admin/HoursAdmin";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
@@ -115,10 +116,11 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
   return (
     <div className="p-8 max-w-5xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold text-charcoal">Admin</h1>
-          <p className="text-[13px] text-charcoal-soft mt-1">Manage accounts, the tracked staff roster, and work hours.</p>
-        </div>
+        <PageHeading
+          icon="settings"
+          title="Admin"
+          subtitle="Manage accounts, the tracked staff roster, and work hours."
+        />
         {tab !== "hours" && (
           <button
             type="button"

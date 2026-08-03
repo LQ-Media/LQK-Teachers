@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
+import PageHeading from "@/components/PageHeading";
 import { clockIn, clockOut, addPastSession, editSession, deleteSession } from "@/lib/actions/hours";
 import {
   OT_REASONS,
@@ -40,12 +41,11 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
   return (
     <div className="p-6 sm:p-8 max-w-3xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold text-charcoal">Work hours</h1>
-          <p className="text-[13px] text-charcoal-soft mt-1">
-            Clock in when you start, clock out when you’re done. {monthName}.
-          </p>
-        </div>
+        <PageHeading
+          icon="clock"
+          title="Work hours"
+          subtitle={`Clock in when you start, clock out when you’re done. ${monthName}.`}
+        />
       </div>
 
       {notice && (

@@ -5,6 +5,7 @@ import { getRoster } from "@/lib/actions/tracker";
 import { surahByNumber } from "@/lib/quran/surah-list";
 import { titleCase, initials, fmtDate, sgTodayLabel, gradePillClass } from "./util";
 import Icon from "@/components/Icon";
+import PageHeading from "@/components/PageHeading";
 import LogSheet from "./LogSheet";
 import HistoryPanel from "./HistoryPanel";
 
@@ -48,10 +49,11 @@ export default function TrackerApp({ teacherName, allowedClasses, initialClass, 
   return (
     <div className="p-6 md:p-8 max-w-5xl">
       <div className="mb-5">
-        <h1 className="font-heading text-2xl font-semibold text-charcoal">Quran tracker</h1>
-        <p className="text-[13px] text-charcoal-soft mt-1">
-          Ahlan, {teacherName} · {titleCase(cls)} · {sgTodayLabel()}
-        </p>
+        <PageHeading
+          icon="clipboard-check"
+          title="Quran tracker"
+          subtitle={`Ahlan, ${teacherName} · ${titleCase(cls)} · ${sgTodayLabel()}`}
+        />
       </div>
 
       {/* Summary */}

@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { aiCapabilities, aiKeyDiagnostics } from "@/lib/ai/provider";
 import { sgToday } from "@/lib/hours/rates";
 import Icon from "@/components/Icon";
+import PageHeading from "@/components/PageHeading";
 import NotebookApp from "@/components/notebook/NotebookApp";
 
 const SOURCE_ICON = { recording: "mic", photo: "camera", typed: "type" };
@@ -40,11 +41,11 @@ export default async function NotebookPage() {
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-semibold text-charcoal">Halaqah Notebook</h1>
-        <p className="text-[13px] text-charcoal-soft mt-1">
-          Capture a kuliah, a page from a kitab, or your own notes — and get them back as tidy key
-          points, references and class ideas.
-        </p>
+        <PageHeading
+          icon="mic"
+          title="Halaqah Notebook"
+          subtitle="Capture a kuliah, a page from a kitab, or your own notes — and get them back as tidy key points, references and class ideas."
+        />
       </div>
 
       <NotebookApp capabilities={capabilities} today={sgToday()} keyDiag={keyDiag} />

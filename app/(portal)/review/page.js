@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/dal";
 import { getDb } from "@/lib/db";
+import PageHeading from "@/components/PageHeading";
 import ReviewCard from "@/components/ReviewCard";
 
 export default async function ReviewPage() {
@@ -19,10 +20,11 @@ export default async function ReviewPage() {
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-semibold text-charcoal">Hafalan review</h1>
-        <p className="text-[13px] text-charcoal-soft mt-1">
-          All pending submissions across all four locations.
-        </p>
+        <PageHeading
+          icon="clipboard-check"
+          title="Hafalan review"
+          subtitle="All pending submissions across all four locations."
+        />
       </div>
 
       {entries.length === 0 ? (

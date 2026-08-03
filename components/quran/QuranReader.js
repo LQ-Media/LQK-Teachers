@@ -175,9 +175,14 @@ export default function QuranReader({ initialBookmark = null }) {
       {/* Header */}
       <header className="flex-none border-b-[0.5px] border-line bg-paper px-5 py-3">
         <div className="mx-auto flex max-w-[760px] flex-wrap items-center gap-3">
-          <div>
-            <h1 className="font-heading text-[20px] font-semibold text-charcoal">Quran</h1>
-            <p className="text-[12px] text-charcoal-soft">Read and listen</p>
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-control bg-gold-soft text-ink">
+              <Icon name="book-open" size={18} />
+            </span>
+            <div>
+              <h1 className="font-heading text-[20px] font-semibold text-charcoal">Quran</h1>
+              <p className="text-[12px] text-charcoal-soft">Read and listen</p>
+            </div>
           </div>
           <button
             type="button"

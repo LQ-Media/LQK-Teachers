@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { TOPICS, AGE_GROUPS, ageLabel } from "@/lib/notes/taxonomy";
 import Icon from "@/components/Icon";
+import PageHeading from "@/components/PageHeading";
 
 export const metadata = { title: "Ilmu Bank" };
 
@@ -68,11 +69,11 @@ export default async function IlmuPage({ searchParams }) {
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-semibold text-charcoal">Ilmu Bank</h1>
-        <p className="mt-1 text-[13px] text-charcoal-soft">
-          What the rest of the team has been learning. {total} note{total === 1 ? "" : "s"} shared so far —
-          add yours from the Halaqah Notebook.
-        </p>
+        <PageHeading
+          icon="users"
+          title="Ilmu Bank"
+          subtitle={`What the rest of the team has been learning. ${total} note${total === 1 ? "" : "s"} shared so far — add yours from the Halaqah Notebook.`}
+        />
       </div>
 
       {/* Filters are a plain GET form so results are linkable and survive a reload. */}

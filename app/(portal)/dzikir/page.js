@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/dal";
 import { CATALOG } from "@/lib/dzikir/catalog";
+import PageHeading from "@/components/PageHeading";
 import DzikirBrowser from "@/components/dzikir/DzikirBrowser";
 
 export const metadata = { title: "Wirid & Doa" };
@@ -23,13 +24,13 @@ export default async function DzikirPage() {
   );
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-8 max-w-3xl max-lg:pb-28">
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-semibold text-charcoal">Wirid &amp; Doa</h1>
-        <p className="mt-1 text-[13px] text-charcoal-soft">
-          A library of wirid, doa and maulid — {totalPassages.toLocaleString()} passages across{" "}
-          {totalSections} collections. Arabic with transliteration, shown with English or Bahasa.
-        </p>
+        <PageHeading
+          icon="moon-star"
+          title="Wirid & Doa"
+          subtitle={`A library of wirid, doa and maulid — ${totalPassages.toLocaleString()} passages across ${totalSections} collections. Arabic with transliteration, shown with English or Bahasa.`}
+        />
       </div>
 
       <DzikirBrowser catalog={CATALOG} />
