@@ -497,7 +497,10 @@ function UnavailablePane({ mode, keyDiag, onUseTyping }) {
           body: "This server has no transcription key, so recordings can't be turned into text.",
           envVar: "GROQ_API_KEY",
           where: "console.groq.com/keys",
-          note: "It's free, and the same key also writes the summaries.",
+          // Spell the Q out. Groq (the inference host) is one letter from Grok
+          // (xAI's chatbot), and the misspelling is easy to make and invisible
+          // once set — the variable simply never gets read.
+          note: "Groq is spelled with a Q. It's free, and the same key also writes the summaries.",
         }
       : {
           icon: "camera",
@@ -542,9 +545,12 @@ function UnavailablePane({ mode, keyDiag, onUseTyping }) {
               ))}
             </ul>
             {keyDiag.similar.length > 0 && (
-              <p className="mt-2 text-[12px] leading-relaxed text-[#8A4030]">
-                Similar names are set here — check for a typo:{" "}
-                <code className="font-mono text-[11.5px]">{keyDiag.similar.join(", ")}</code>
+              <p className="mt-2 rounded-control bg-rust-soft px-3 py-2 text-[12px] leading-relaxed text-[#8A4030]">
+                <span className="font-bold">
+                  These are set but the app never reads them — they are the wrong names:
+                </span>{" "}
+                <code className="font-mono text-[11.5px]">{keyDiag.similar.join(", ")}</code>. Rename
+                to exactly <code className="font-mono text-[11.5px]">{copy.envVar}</code> above.
               </p>
             )}
             <p className="mt-2 text-[11.5px] leading-relaxed text-charcoal-soft">
