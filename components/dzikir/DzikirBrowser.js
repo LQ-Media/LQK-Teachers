@@ -145,7 +145,7 @@ export default function DzikirBrowser({ catalog }) {
       {groups.length > 1 && (
         <nav
           aria-label="Jump to a collection"
-          className="fixed z-40 flex gap-1.5 rounded-2xl border-[0.5px] border-line bg-white/90 p-1.5 shadow-[0_8px_30px_rgba(38,34,27,0.14)] backdrop-blur-md max-lg:bottom-5 max-lg:left-1/2 max-lg:-translate-x-1/2 max-lg:flex-row lg:right-5 lg:top-1/2 lg:-translate-y-1/2 lg:flex-col"
+          className="fixed z-40 flex gap-1.5 rounded-2xl border-[0.5px] border-line bg-white/90 p-1.5 shadow-[0_8px_30px_rgba(38,34,27,0.14)] backdrop-blur-md max-lg:bottom-[calc(env(safe-area-inset-bottom)_+_5rem)] max-lg:left-1/2 max-lg:-translate-x-1/2 max-lg:flex-row lg:right-5 lg:top-1/2 lg:-translate-y-1/2 lg:flex-col"
         >
           {groups.map((g) => {
             const isActive = active === g.key;

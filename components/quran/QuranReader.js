@@ -171,7 +171,7 @@ export default function QuranReader({ initialBookmark = null }) {
     : null;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-paper">
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper max-lg:h-[calc(100dvh-4rem)]">
       {/* Header */}
       <header className="flex-none border-b-[0.5px] border-line bg-paper px-5 py-3">
         <div className="mx-auto flex max-w-[760px] flex-wrap items-center gap-3">
@@ -355,7 +355,7 @@ function PrimaryButton({ children, onClick, small }) {
 
 function FullState({ children }) {
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-paper px-5 text-center">
+    <div className="flex h-dvh flex-col items-center justify-center bg-paper px-5 text-center max-lg:h-[calc(100dvh-4rem)]">
       <div>{children}</div>
     </div>
   );

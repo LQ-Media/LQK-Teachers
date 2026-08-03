@@ -37,7 +37,7 @@ export default function Sidebar({ role, fullName, avatar }) {
   const initial = (fullName || "?").trim().charAt(0).toUpperCase();
 
   return (
-    <aside className="group sticky top-0 z-30 flex h-screen w-[76px] flex-shrink-0 flex-col gap-1 overflow-hidden border-r border-line bg-paper px-3 py-4 transition-[width] duration-300 ease-out hover:w-[224px]">
+    <aside className="group sticky top-0 z-30 hidden h-screen w-[76px] flex-shrink-0 flex-col gap-1 overflow-hidden border-r border-line bg-paper px-3 py-4 transition-[width] duration-300 ease-out hover:w-[224px] lg:flex">
       {/* Logo */}
       <div className="mb-3 flex items-center gap-2.5 px-1">
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-gold-soft">

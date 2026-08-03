@@ -32,7 +32,7 @@ export default async function ReadingPage() {
   const lastAyah = lastRead?.verse_key ? lastRead.verse_key.split(":")[1] : null;
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
           icon="notebook"

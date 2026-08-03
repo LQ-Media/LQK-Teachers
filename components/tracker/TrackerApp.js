@@ -47,7 +47,7 @@ export default function TrackerApp({ teacherName, allowedClasses, initialClass, 
   const avgJuz = roster.length ? (roster.reduce((a, s) => a + Number(s.juz || 1), 0) / roster.length).toFixed(1) : "—";
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl">
+    <div className="px-4 py-6 sm:p-6 md:p-8 max-w-5xl">
       <div className="mb-5">
         <PageHeading
           icon="clipboard-check"

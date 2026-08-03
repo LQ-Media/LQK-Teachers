@@ -12,7 +12,7 @@ export default async function HafalanPage() {
 
   if (allowedClasses.length === 0) {
     return (
-      <div className="p-8 max-w-3xl">
+      <div className="px-4 py-6 sm:p-8 max-w-3xl">
         <PageHeading
           icon="clipboard-check"
           title="Quran tracker"

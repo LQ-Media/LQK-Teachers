@@ -27,7 +27,7 @@ export default async function ProfilePage() {
   const src = avatarSrc(session.userId, profile.photo);
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading icon="user" title="My profile" subtitle="Update your photo and password." />
       </div>

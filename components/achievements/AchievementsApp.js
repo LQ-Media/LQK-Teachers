@@ -30,7 +30,7 @@ export default function AchievementsApp({
   const pendingForAdmin = (admin?.pendingCerts?.length || 0) + (admin?.pendingNominations?.length || 0);
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="px-4 py-6 sm:p-8 max-w-5xl">
       <div className="mb-6">
         <PageHeading
           icon="trophy"

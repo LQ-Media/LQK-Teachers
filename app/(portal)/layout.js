@@ -2,6 +2,7 @@ import { requireSession } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { avatarSrc } from "@/lib/avatar";
 import Sidebar from "@/components/Sidebar";
+import MobileTabBar from "@/components/MobileTabBar";
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 
 export default async function PortalLayout({ children }) {
@@ -25,7 +26,8 @@ export default async function PortalLayout({ children }) {
         avatar={avatar}
         pendingReviewCount={pendingReviewCount}
       />
-      <main className="flex-1 min-w-0">{children}</main>
+      <main className="flex-1 min-w-0 max-lg:pb-16">{children}</main>
+      <MobileTabBar role={session.role} />
       <InstallPrompt />
     </div>
   );

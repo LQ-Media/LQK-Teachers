@@ -29,7 +29,7 @@ export default async function PackPage({ params }) {
   const totalMinutes = pack.activities.reduce((s, a) => s + a.minutes, 0);
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <Link
         href="/packs"
         className="mb-5 inline-flex items-center gap-1.5 text-[13px] font-semibold text-charcoal-soft transition-colors hover:text-charcoal"

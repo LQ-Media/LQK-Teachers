@@ -75,7 +75,7 @@ export default function InstallPrompt() {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-card border-[0.5px] border-line bg-white p-3.5 shadow-[0_12px_40px_rgba(58,48,38,0.18)] sm:inset-x-auto sm:right-4">
+    <div className="fixed inset-x-3 bottom-20 z-50 mx-auto max-w-md rounded-card border-[0.5px] border-line bg-white p-3.5 shadow-[0_12px_40px_rgba(58,48,38,0.18)] sm:inset-x-auto sm:right-4 lg:bottom-3">
       <div className="flex items-start gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/icon-192.png" alt="" className="h-11 w-11 flex-none rounded-[12px]" />

@@ -161,7 +161,7 @@ export default function QiblaFinder() {
   const aligned = delta !== null && Math.abs(delta) <= ALIGNED_DEG;
 
   return (
-    <div className="p-6 sm:p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
           icon="compass"

@@ -39,7 +39,7 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
   const estCents = totals.approvedCents + totals.pendingCents;
 
   return (
-    <div className="p-6 sm:p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <PageHeading
           icon="clock"

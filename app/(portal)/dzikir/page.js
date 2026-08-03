@@ -24,7 +24,7 @@ export default async function DzikirPage() {
   );
 
   return (
-    <div className="p-8 max-w-3xl max-lg:pb-28">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl max-lg:pb-24">
       <div className="mb-6">
         <PageHeading
           icon="moon-star"

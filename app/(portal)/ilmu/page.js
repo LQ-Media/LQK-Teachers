@@ -67,7 +67,7 @@ export default async function IlmuPage({ searchParams }) {
   const filtering = Boolean(q || topic || age);
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
           icon="users"

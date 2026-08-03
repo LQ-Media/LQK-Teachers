@@ -33,7 +33,7 @@ export default async function DzikirSectionPage({ params }) {
   const nav = neighboursOf(key);
 
   return (
-    <div className={`${naskh.variable} p-8 max-w-3xl`}>
+    <div className={`${naskh.variable} px-4 py-6 sm:p-8 max-w-3xl`}>
       <Link
         href="/dzikir"
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-charcoal-soft transition-colors hover:text-charcoal"

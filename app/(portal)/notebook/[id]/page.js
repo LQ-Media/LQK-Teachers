@@ -36,7 +36,7 @@ export default async function NotePage({ params, searchParams }) {
   const meta = [SOURCE_LABEL[row.source], row.occurred_on, row.speaker, row.venue].filter(Boolean);
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <Link
         href="/notebook"
         className="mb-5 inline-flex items-center gap-1.5 text-[13px] font-semibold text-charcoal-soft transition-colors hover:text-charcoal"

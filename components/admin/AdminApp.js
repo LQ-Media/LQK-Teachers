@@ -114,7 +114,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
   }
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="px-4 py-6 sm:p-8 max-w-5xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <PageHeading
           icon="settings"
