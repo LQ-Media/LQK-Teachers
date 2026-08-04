@@ -48,7 +48,7 @@
 
   --font-heading: var(--font-baloo);
   --font-body: var(--font-nunito);
-  --font-arabic: var(--font-amiri);
+  --font-arabic: var(--font-naskh), var(--font-amiri), "Noto Naskh Arabic", serif;
 
   --radius-card: 20px;
   --radius-control: 12px;
@@ -65,8 +65,12 @@ body {
   font-family: var(--font-heading);
 }
 
+/* Stated in full rather than via var(--font-arabic): Tailwind also generates a
+   .font-arabic utility from that theme token, and whichever rule lands later
+   wins — so both must carry the same stack. Noto Naskh first (heavier strokes,
+   clearer tashkeel at reading sizes), Amiri behind it for any missing glyph. */
 .font-arabic {
-  font-family: var(--font-arabic);
+  font-family: var(--font-naskh), var(--font-amiri), "Noto Naskh Arabic", serif;
 }
 
 /* Subtle fade + rise on load (dashboard cards), staggered via animation-delay. */

@@ -178,10 +178,13 @@ export default function QuranReader({ initialBookmark = null }) {
   }
 
   if (state.status === "error") {
+    const offlineNoCopy = typeof navigator !== "undefined" && navigator.onLine === false;
     return (
       <FullState>
         <p className="mb-4 text-[14px] text-charcoal">
-          We could not load the Quran right now. Please check your connection.
+          {offlineNoCopy
+            ? "You’re offline and no offline copy is saved on this device yet. Reconnect once, then use Display → Offline copy to save it."
+            : "We could not load the Quran right now. Please check your connection."}
         </p>
         <PrimaryButton onClick={() => store.init()}>Try again</PrimaryButton>
       </FullState>
@@ -245,8 +248,8 @@ export default function QuranReader({ initialBookmark = null }) {
           <ToolbarButton label="Text size and colours" onClick={() => setDisplayOpen(true)}>
             <Icon name="type" size={16} />
           </ToolbarButton>
-          <ToolbarButton label="Browse surahs, juz and ayah" onClick={() => setSheetOpen(true)}>
-            <Icon name="book-open" size={16} />
+          <ToolbarButton label="Search surahs, juz and ayah" onClick={() => setSheetOpen(true)}>
+            <Icon name="search" size={16} />
           </ToolbarButton>
         </div>
 
@@ -371,7 +374,9 @@ export default function QuranReader({ initialBookmark = null }) {
         </div>
       )}
 
-      {sheetOpen && <BrowseSheet state={state} store={store} onClose={() => setSheetOpen(false)} />}
+      {sheetOpen && (
+        <BrowseSheet state={state} store={store} autoFocusSearch onClose={() => setSheetOpen(false)} />
+      )}
       {displayOpen && <DisplaySheet state={state} store={store} onClose={() => setDisplayOpen(false)} />}
     </div>
   );

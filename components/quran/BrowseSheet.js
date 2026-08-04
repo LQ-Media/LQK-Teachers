@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 
 // "18:2", "18 2", "18.2" — a surah:ayah reference typed straight into search.
 const REF = /^(\d{1,3})\s*[:.\-\s]\s*(\d{1,3})$/;
 
-export default function BrowseSheet({ state, store, onClose }) {
+export default function BrowseSheet({ state, store, onClose, autoFocusSearch = false }) {
   const [tab, setTab] = useState("surah");
   const [query, setQuery] = useState("");
   const [ayahSurah, setAyahSurah] = useState(String(state.chapterId));
@@ -38,6 +38,13 @@ export default function BrowseSheet({ state, store, onClose }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Opened from the toolbar's search button: put the caret in the field so the
+  // teacher can start typing (and the keyboard is already up on a phone).
+  const searchRef = useRef(null);
+  useEffect(() => {
+    if (autoFocusSearch && tab === "surah") searchRef.current?.focus();
+  }, [autoFocusSearch, tab]);
 
   const filteredChapters = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -139,6 +146,7 @@ export default function BrowseSheet({ state, store, onClose }) {
 
           {tab === "surah" && (
             <input
+              ref={searchRef}
               type="search"
               placeholder="Search by name, or type 18:2"
               value={query}

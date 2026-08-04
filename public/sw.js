@@ -4,8 +4,15 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v1";
+const VERSION = "lqk-v2";
 const STATIC_CACHE = `${VERSION}-static`;
+const PAGE_CACHE = `${VERSION}-pages`;
+
+// Routes whose shell may be kept for offline use. Deliberately narrow: these
+// two hold public religious text only. Everything else — the dashboard, the
+// hafalan tracker, work hours, admin — carries student, pay or roster data and
+// is never written to the cache, so an offline device cannot surface it.
+const OFFLINE_ROUTES = [/^\/quran(\/|$)/, /^\/dzikir(\/|$)/];
 const PRECACHE = [
   "/offline.html",
   "/icon-192.png",
@@ -36,10 +43,30 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Page navigations: always try the network (keeps auth + data fresh); fall
-  // back to the offline page only when the network is unreachable.
+  // Page navigations: always try the network (keeps auth + data fresh). For the
+  // two reader routes the successful response is also kept, so reopening them
+  // without a connection still gets a working page instead of the offline
+  // notice. Anything else falls straight through to /offline.html.
   if (req.mode === "navigate") {
-    event.respondWith(fetch(req).catch(() => caches.match("/offline.html")));
+    const cacheable = OFFLINE_ROUTES.some((re) => re.test(url.pathname));
+    event.respondWith(
+      (async () => {
+        try {
+          const res = await fetch(req);
+          if (cacheable && res.ok) {
+            const cache = await caches.open(PAGE_CACHE);
+            cache.put(req, res.clone());
+          }
+          return res;
+        } catch {
+          if (cacheable) {
+            const cached = await caches.match(req, { cacheName: PAGE_CACHE, ignoreSearch: true });
+            if (cached) return cached;
+          }
+          return caches.match("/offline.html");
+        }
+      })()
+    );
     return;
   }
 

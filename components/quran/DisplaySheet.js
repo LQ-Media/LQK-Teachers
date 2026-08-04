@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Icon from "@/components/Icon";
 import { parseTajweed, tajweedRule, rulesPresent } from "@/lib/quran/tajweed";
 import { MAKHRAJ_REGIONS } from "@/lib/quran/makhraj";
 
@@ -85,6 +86,9 @@ export default function DisplaySheet({ state, store, onClose }) {
               />
             </div>
           </Section>
+
+          {/* On-device copy */}
+          <OfflineSection state={state} store={store} />
 
           {/* My reading link-up */}
           <Section title="My reading">
@@ -224,6 +228,98 @@ export default function DisplaySheet({ state, store, onClose }) {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Offline copy controls. Reading is already network-first with a cache
+ * fallback, so this is about deliberately filling that cache for every surah
+ * rather than only the ones the teacher happens to have opened.
+ */
+function OfflineSection({ state, store }) {
+  const o = state.offline;
+  const complete = o.savedCount >= o.total;
+  const translationName = (() => {
+    const t = state.translations.find((x) => Number(x.id) === Number(state.translationId));
+    return t ? `${t.languageName} — ${t.name}` : "the selected translation";
+  })();
+
+  if (!o.supported) {
+    return (
+      <Section title="Offline copy">
+        <p className="text-[12px] text-charcoal-soft">
+          This browser cannot store an offline copy. The reader still works normally with a connection.
+        </p>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Offline copy">
+      <div className="rounded-card border-[0.5px] border-line bg-paper p-3.5">
+        <div className="flex items-start gap-2.5">
+          <span className={`mt-0.5 flex-none ${complete ? "text-sage" : "text-charcoal-soft"}`}>
+            <Icon name={complete ? "check" : "download"} size={16} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-semibold text-charcoal">
+              {o.saving
+                ? `Saving… ${o.progress} of ${o.total} surahs`
+                : complete
+                  ? "All 114 surahs saved on this device"
+                  : o.savedCount > 0
+                    ? `${o.savedCount} of ${o.total} surahs saved`
+                    : "Not saved on this device yet"}
+            </div>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-charcoal-soft">
+              The reader always loads from the internet when you have a connection, and falls back to
+              the saved copy when you don’t. Saves the Arabic, transliteration and{" "}
+              {translationName}. Recitation audio still needs a connection.
+            </p>
+          </div>
+        </div>
+
+        {o.saving && (
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-pill bg-paper-deep">
+            <div
+              className="h-full rounded-pill bg-gold transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.round((o.progress / o.total) * 100)}%` }}
+            />
+          </div>
+        )}
+
+        {o.error && <p className="mt-2.5 text-[12px] text-rust">{o.error}</p>}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {o.saving ? (
+            <button
+              type="button"
+              onClick={() => store.stopSavingOffline()}
+              className="rounded-control border-[0.5px] border-line bg-white px-3.5 py-2 text-[13px] font-semibold text-charcoal transition-colors hover:bg-paper-deep"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => store.saveOffline()}
+              className="rounded-control bg-ink px-3.5 py-2 text-[13px] font-semibold text-paper transition-[background-color,transform] duration-150 ease-out hover:bg-ink-deep active:scale-[0.98]"
+            >
+              {complete ? "Refresh saved copy" : o.savedCount > 0 ? "Finish saving" : "Save for offline"}
+            </button>
+          )}
+          {o.savedCount > 0 && !o.saving && (
+            <button
+              type="button"
+              onClick={() => store.clearOffline()}
+              className="text-[12.5px] font-semibold text-charcoal-soft underline-offset-2 hover:text-charcoal hover:underline"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </Section>
   );
 }
 

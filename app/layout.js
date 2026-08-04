@@ -1,4 +1,4 @@
-import { Baloo_2, Nunito_Sans, Amiri } from "next/font/google";
+import { Baloo_2, Nunito_Sans, Amiri, Noto_Naskh_Arabic } from "next/font/google";
 import "./globals.css";
 
 // Display / headings — Baloo 2 (rounded, friendly, on-brand).
@@ -14,7 +14,18 @@ const nunito = Nunito_Sans({
   subsets: ["latin"],
 });
 
-// Amiri — Uthmani-style Arabic for the Quran reader ayah text.
+// Noto Naskh Arabic — the ayah face for the Quran reader. A plain, high-legibility
+// naskh with heavier strokes and clearer tashkeel than Amiri at reading sizes,
+// and the same face the Wirid & Doa reader uses, so Arabic looks identical
+// across the portal instead of changing between the two readers.
+const naskh = Noto_Naskh_Arabic({
+  variable: "--font-naskh",
+  subsets: ["arabic"],
+  weight: ["400", "500", "700"],
+  display: "swap",
+});
+
+// Amiri — kept as the fallback face behind Noto Naskh (broad Uthmani coverage).
 const amiri = Amiri({
   variable: "--font-amiri",
   subsets: ["arabic", "latin"],
@@ -40,7 +51,10 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${baloo.variable} ${nunito.variable} ${amiri.variable} h-full`}>
+    <html
+      lang="en"
+      className={`${baloo.variable} ${nunito.variable} ${naskh.variable} ${amiri.variable} h-full`}
+    >
       <body className="min-h-full">{children}</body>
     </html>
   );
