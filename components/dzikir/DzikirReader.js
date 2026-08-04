@@ -49,7 +49,13 @@ const PREF_KEY = "lqk.dzikir.prefs";
  * plus speed) that drives the window scroll and bows out the moment the reader
  * touches the wheel or the screen.
  */
-export default function DzikirReader({ passages, prev = null, next = null }) {
+export default function DzikirReader({
+  passages,
+  prev = null,
+  next = null,
+  siblings = [],
+  activeKey = null,
+}) {
   const router = useRouter();
   const [lang, setLang] = useState("en");
   const [showTranslit, setShowTranslit] = useState(true);
@@ -173,6 +179,31 @@ export default function DzikirReader({ passages, prev = null, next = null }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [goTo, prev, next]);
 
+  // Centre the open collection in the sibling strip on arrival, so the ones
+  // either side are visible without hunting. offsetLeft is relative to the
+  // offsetParent, not the strip, so measure the two rects instead.
+  //
+  // Re-run once the webfonts land: the first measurement happens in the
+  // fallback face, whose wider glyphs put every tab at the wrong offset, and
+  // the strip ends up scrolled well past the active tab. The maths is
+  // idempotent (an already-centred strip computes a zero delta), so repeating
+  // it is free.
+  const tabsRef = useRef(null);
+  useEffect(() => {
+    const centre = () => {
+      const strip = tabsRef.current;
+      if (!strip) return;
+      const tab = strip.querySelector('[data-active="true"]');
+      if (!tab) return;
+      const delta = tab.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+      strip.scrollLeft += delta - (strip.clientWidth - tab.offsetWidth) / 2;
+    };
+    centre();
+    document.fonts?.ready.then(centre).catch(() => {});
+    window.addEventListener("resize", centre);
+    return () => window.removeEventListener("resize", centre);
+  }, [activeKey]);
+
   // Touch paging. Recorded on the container rather than the window so a swipe
   // that starts on the sticky control bar doesn't turn the page.
   const touch = useRef(null);
@@ -206,8 +237,37 @@ export default function DzikirReader({ passages, prev = null, next = null }) {
 
   return (
     <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* Controls */}
-      <div className="sticky top-0 z-10 -mx-8 mb-5 border-b border-line bg-paper/95 px-8 py-3 backdrop-blur">
+      {/* Sibling strip + controls, pinned so both stay reachable mid-litany.
+          The negative margins bleed the bar to the page edges and must track
+          the page's own padding (px-4 on phones, p-8 from sm up). */}
+      <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-line bg-paper/95 px-4 py-2.5 backdrop-blur sm:-mx-8 sm:px-8">
+        {siblings.length > 1 && (
+          <div
+            ref={tabsRef}
+            aria-label="Collections in this section"
+            className="-mx-4 mb-2 flex overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
+          >
+            {siblings.map((s) => {
+              const active = s.key === activeKey;
+              return (
+                <Link
+                  key={s.key}
+                  href={`/dzikir/${s.group}/${s.slug}`}
+                  data-active={active ? "true" : undefined}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex-none whitespace-nowrap border-b-2 px-2.5 pb-1.5 text-[12.5px] transition-colors ${
+                    active
+                      ? "border-gold font-bold text-charcoal"
+                      : "border-transparent font-medium text-charcoal-soft hover:text-charcoal"
+                  }`}
+                >
+                  {s.title}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Segmented value={lang} onChange={setLang} options={LANGS} />
           <Toggle label="Transliteration" on={showTranslit} onClick={() => setShowTranslit((v) => !v)} />

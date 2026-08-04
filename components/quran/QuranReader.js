@@ -119,15 +119,25 @@ export default function QuranReader({ initialBookmark = null }) {
   // Keep the active surah tab centred in the strip (NU-Online-style tabs).
   // Instant, not smooth: the focus-verse jump that follows a chapter change
   // cancels in-flight smooth scrolls, and navigation shouldn't animate anyway.
+  //
+  // Re-run once the webfonts land — the first measurement happens in the
+  // fallback face, whose wider glyphs leave the strip scrolled past the active
+  // tab. The maths is idempotent, so repeating it costs nothing.
   useEffect(() => {
-    const strip = tabStripRef.current;
-    if (!strip) return;
-    const tab = strip.querySelector(`[data-chapter-tab="${state.chapterId}"]`);
-    if (!tab) return;
-    // offsetLeft is relative to the offsetParent (the page), not the strip —
-    // measure the visual delta between the two rects instead.
-    const delta = tab.getBoundingClientRect().left - strip.getBoundingClientRect().left;
-    strip.scrollLeft += delta - (strip.clientWidth - tab.offsetWidth) / 2;
+    const centre = () => {
+      const strip = tabStripRef.current;
+      if (!strip) return;
+      const tab = strip.querySelector(`[data-chapter-tab="${state.chapterId}"]`);
+      if (!tab) return;
+      // offsetLeft is relative to the offsetParent (the page), not the strip —
+      // measure the visual delta between the two rects instead.
+      const delta = tab.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+      strip.scrollLeft += delta - (strip.clientWidth - tab.offsetWidth) / 2;
+    };
+    centre();
+    document.fonts?.ready.then(centre).catch(() => {});
+    window.addEventListener("resize", centre);
+    return () => window.removeEventListener("resize", centre);
   }, [state.chapterId, state.status]);
 
   // Confirm to the teacher when a bookmark also logged to My reading.
@@ -203,7 +213,7 @@ export default function QuranReader({ initialBookmark = null }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-paper max-lg:h-[calc(100dvh-4rem)]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper max-lg:h-[calc(100dvh-var(--tabbar-h))]">
       {/* Pinned toolbar — juz + surah dropdowns and quick actions stay
           reachable at any scroll position (NU-Online-style). */}
       <header className="flex-none border-b-[0.5px] border-line bg-paper">
@@ -438,7 +448,7 @@ function PrimaryButton({ children, onClick, small }) {
 
 function FullState({ children }) {
   return (
-    <div className="flex h-dvh flex-col items-center justify-center bg-paper px-5 text-center max-lg:h-[calc(100dvh-4rem)]">
+    <div className="flex h-dvh flex-col items-center justify-center bg-paper px-5 text-center max-lg:h-[calc(100dvh-var(--tabbar-h))]">
       <div>{children}</div>
     </div>
   );

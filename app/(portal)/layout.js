@@ -26,7 +26,7 @@ export default async function PortalLayout({ children }) {
         avatar={avatar}
         pendingReviewCount={pendingReviewCount}
       />
-      <main className="flex-1 min-w-0 max-lg:pb-16">{children}</main>
+      <main className="flex-1 min-w-0 max-lg:pb-[var(--tabbar-h)]">{children}</main>
       <MobileTabBar role={session.role} />
       <InstallPrompt />
     </div>
