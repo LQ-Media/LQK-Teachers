@@ -6,13 +6,15 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions/auth";
 import Icon from "@/components/Icon";
 
-// The four destinations that earn a permanent slot; everything else lives in
-// the "More" sheet. Mirrors the desktop sidebar's icons exactly.
+// The five destinations that earn a permanent slot; everything else lives in
+// the "More" sheet. Mirrors the desktop sidebar's icons exactly. Labels are
+// kept to one short word — at six columns a phone gives each about 62px.
 const TABS = [
   { href: "/dashboard", label: "Home", icon: "house" },
   { href: "/hafalan", label: "Tracker", icon: "clipboard-check" },
-  { href: "/dzikir", label: "Wirid & Doa", icon: "moon-star" },
+  { href: "/dzikir", label: "Wirid", title: "Wirid & Doa", icon: "moon-star" },
   { href: "/quran", label: "Quran", icon: "book-open" },
+  { href: "/hours", label: "Hours", title: "Work hours", icon: "clock" },
 ];
 
 const MORE_ITEMS = [
@@ -23,7 +25,6 @@ const MORE_ITEMS = [
   { href: "/kalimah", label: "Kalimah", icon: "star" },
   { href: "/qibla", label: "Qibla", icon: "compass" },
   { href: "/achievements", label: "Awards", icon: "trophy" },
-  { href: "/hours", label: "Work hours", icon: "clock" },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
   { href: "/profile", label: "Profile", icon: "user" },
 ];
@@ -58,25 +59,27 @@ export default function MobileTabBar({ role }) {
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-40 border-t-[0.5px] border-line bg-paper/95 pb-[max(env(safe-area-inset-bottom),2.5rem)] backdrop-blur-md lg:hidden"
       >
-        <div className="mx-auto grid h-[4.75rem] max-w-md grid-cols-5">
+        <div className="mx-auto grid h-[4.75rem] max-w-md grid-cols-6">
           {TABS.map((tab) => {
             const active = isUnder(pathname, tab.href);
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
+                title={tab.title || tab.label}
+                aria-label={tab.title || tab.label}
                 aria-current={active ? "page" : undefined}
                 className="flex flex-col items-center justify-center gap-1 transition-transform duration-150 ease-out active:scale-95"
               >
                 <span
-                  className={`flex h-9 w-16 items-center justify-center rounded-pill transition-colors duration-150 ${
+                  className={`flex h-9 w-[3.25rem] items-center justify-center rounded-pill transition-colors duration-150 ${
                     active ? "bg-gold text-ink" : "text-charcoal-soft"
                   }`}
                 >
                   <Icon name={tab.icon} size={24} />
                 </span>
                 <span
-                  className={`text-[11.5px] leading-none ${
+                  className={`whitespace-nowrap text-[11.5px] leading-none ${
                     active ? "font-bold text-charcoal" : "font-semibold text-charcoal-soft"
                   }`}
                 >
@@ -92,14 +95,14 @@ export default function MobileTabBar({ role }) {
             className="flex flex-col items-center justify-center gap-1 transition-transform duration-150 ease-out active:scale-95"
           >
             <span
-              className={`flex h-9 w-16 items-center justify-center rounded-pill transition-colors duration-150 ${
+              className={`flex h-9 w-[3.25rem] items-center justify-center rounded-pill transition-colors duration-150 ${
                 moreActive ? "bg-gold text-ink" : "text-charcoal-soft"
               }`}
             >
               <Icon name="grid" size={24} />
             </span>
             <span
-              className={`text-[11.5px] leading-none ${
+              className={`whitespace-nowrap text-[11.5px] leading-none ${
                 moreActive ? "font-bold text-charcoal" : "font-semibold text-charcoal-soft"
               }`}
             >
