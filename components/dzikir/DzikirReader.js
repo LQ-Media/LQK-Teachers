@@ -204,6 +204,36 @@ export default function DzikirReader({
     return () => window.removeEventListener("resize", centre);
   }, [activeKey]);
 
+  // Drag the strip sideways with a mouse — touch already has native momentum
+  // scrolling, so this is pointer-type gated. A drag must not also open the
+  // collection it started on, hence the capture-phase click swallow.
+  const drag = useRef(null);
+
+  const onStripPointerDown = useCallback((e) => {
+    if (e.pointerType !== "mouse") return;
+    drag.current = { x: e.clientX, scroll: e.currentTarget.scrollLeft, moved: false };
+  }, []);
+
+  const onStripPointerMove = useCallback((e) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) > 4) d.moved = true;
+    e.currentTarget.scrollLeft = d.scroll - dx;
+  }, []);
+
+  const onStripPointerUp = useCallback(() => {
+    if (drag.current) drag.current.up = true;
+  }, []);
+
+  const onStripClickCapture = useCallback((e) => {
+    if (drag.current?.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    drag.current = null;
+  }, []);
+
   // Touch paging. Recorded on the container rather than the window so a swipe
   // that starts on the sticky control bar doesn't turn the page.
   const touch = useRef(null);
@@ -245,7 +275,13 @@ export default function DzikirReader({
           <div
             ref={tabsRef}
             aria-label="Collections in this section"
-            className="-mx-4 mb-2 flex overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
+            onPointerDown={onStripPointerDown}
+            onPointerMove={onStripPointerMove}
+            onPointerUp={onStripPointerUp}
+            onPointerLeave={onStripPointerUp}
+            onClickCapture={onStripClickCapture}
+            className="-mx-4 mb-1.5 flex gap-2 overflow-x-auto px-4 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
+            style={{ touchAction: "pan-x pan-y", cursor: "grab" }}
           >
             {siblings.map((s) => {
               const active = s.key === activeKey;
@@ -255,10 +291,11 @@ export default function DzikirReader({
                   href={`/dzikir/${s.group}/${s.slug}`}
                   data-active={active ? "true" : undefined}
                   aria-current={active ? "page" : undefined}
-                  className={`flex-none whitespace-nowrap border-b-2 px-2.5 pb-1.5 text-[12.5px] transition-colors ${
+                  draggable={false}
+                  className={`flex-none whitespace-nowrap rounded-control border px-4 py-2.5 text-[13px] transition-colors ${
                     active
-                      ? "border-gold font-bold text-charcoal"
-                      : "border-transparent font-medium text-charcoal-soft hover:text-charcoal"
+                      ? "border-gold bg-gold-soft font-bold text-charcoal"
+                      : "border-line bg-white font-medium text-charcoal-soft hover:border-gold/50 hover:text-charcoal"
                   }`}
                 >
                   {s.title}

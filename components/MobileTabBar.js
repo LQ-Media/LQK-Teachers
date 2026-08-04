@@ -56,9 +56,9 @@ export default function MobileTabBar({ role }) {
     <>
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-40 border-t-[0.5px] border-line bg-paper/95 pb-[max(env(safe-area-inset-bottom),1.5rem)] backdrop-blur-md lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t-[0.5px] border-line bg-paper/95 pb-[max(env(safe-area-inset-bottom),2.5rem)] backdrop-blur-md lg:hidden"
       >
-        <div className="mx-auto grid h-16 max-w-md grid-cols-5">
+        <div className="mx-auto grid h-[4.75rem] max-w-md grid-cols-5">
           {TABS.map((tab) => {
             const active = isUnder(pathname, tab.href);
             return (
@@ -66,17 +66,17 @@ export default function MobileTabBar({ role }) {
                 key={tab.href}
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className="flex flex-col items-center justify-center gap-0.5 transition-transform duration-150 ease-out active:scale-95"
+                className="flex flex-col items-center justify-center gap-1 transition-transform duration-150 ease-out active:scale-95"
               >
                 <span
-                  className={`flex h-8 w-14 items-center justify-center rounded-pill transition-colors duration-150 ${
+                  className={`flex h-9 w-16 items-center justify-center rounded-pill transition-colors duration-150 ${
                     active ? "bg-gold text-ink" : "text-charcoal-soft"
                   }`}
                 >
-                  <Icon name={tab.icon} size={20} />
+                  <Icon name={tab.icon} size={24} />
                 </span>
                 <span
-                  className={`text-[10px] leading-none ${
+                  className={`text-[11.5px] leading-none ${
                     active ? "font-bold text-charcoal" : "font-semibold text-charcoal-soft"
                   }`}
                 >
@@ -89,17 +89,17 @@ export default function MobileTabBar({ role }) {
             type="button"
             onClick={() => setMoreOpen(true)}
             aria-expanded={moreOpen}
-            className="flex flex-col items-center justify-center gap-0.5 transition-transform duration-150 ease-out active:scale-95"
+            className="flex flex-col items-center justify-center gap-1 transition-transform duration-150 ease-out active:scale-95"
           >
             <span
-              className={`flex h-8 w-14 items-center justify-center rounded-pill transition-colors duration-150 ${
+              className={`flex h-9 w-16 items-center justify-center rounded-pill transition-colors duration-150 ${
                 moreActive ? "bg-gold text-ink" : "text-charcoal-soft"
               }`}
             >
-              <Icon name="grid" size={20} />
+              <Icon name="grid" size={24} />
             </span>
             <span
-              className={`text-[10px] leading-none ${
+              className={`text-[11.5px] leading-none ${
                 moreActive ? "font-bold text-charcoal" : "font-semibold text-charcoal-soft"
               }`}
             >

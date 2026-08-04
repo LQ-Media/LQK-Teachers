@@ -20,11 +20,12 @@
   --color-line: #EDE4D2;
   --color-gold-hover: #C99430;
 
-  /* Mobile bottom tab bar: 64px of tabs plus ground clearance for thumbs.
-     The floor of 1.5rem matters on Android and older iPhones, where the
-     safe-area inset is 0 and the bar would otherwise sit on the bezel.
-     Anything fixed above the bar offsets by this; page content pads by it. */
-  --tabbar-h: calc(4rem + max(env(safe-area-inset-bottom), 1.5rem));
+  /* Mobile bottom tab bar: the tab row plus ground clearance for thumbs.
+     The 2.5rem floor lifts the bar clear of the iPhone home-indicator area
+     (its own inset is only ~34px) and gives bigger thumbs somewhere to land
+     on small phones. Anything fixed above the bar offsets by this; page
+     content pads by it. */
+  --tabbar-h: calc(4.75rem + max(env(safe-area-inset-bottom), 2.5rem));
 }
 
 @theme inline {
