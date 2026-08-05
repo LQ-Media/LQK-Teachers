@@ -115,7 +115,7 @@ export default function LogSheet({ student, teacherName, className, onClose, onS
       <div
         role="dialog"
         aria-label="Log today's lesson"
-        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-y-auto rounded-t-[24px] bg-white p-5 shadow-[0_-8px_24px_rgba(58,48,38,0.18)]"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-y-auto rounded-t-[24px] bg-white p-5 shadow-[0_-8px_24px_rgba(74,51,64,0.18)]"
       >
         <div className="mx-auto mb-3 h-1.5 w-11 rounded-pill bg-line" />
         <div className="mb-4 flex items-start">
@@ -250,25 +250,25 @@ export default function LogSheet({ student, teacherName, className, onClose, onS
             style={{
               width: 420,
               padding: 28,
-              background: "#FBF4E8",
-              color: "#3A3026",
+              background: "#FDF3F7",
+              color: "#4A3340",
               fontFamily: "system-ui, sans-serif",
               borderRadius: 20,
             }}
           >
-            <div style={{ fontSize: 12, letterSpacing: 2, color: "#A8742A", fontWeight: 700 }}>LITTLE QURAN KIDS</div>
+            <div style={{ fontSize: 12, letterSpacing: 2, color: "#7B62B0", fontWeight: 700 }}>LITTLE QURAN KIDS</div>
             <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6 }}>{titleCase(student.name)}</div>
-            <div style={{ fontSize: 13, color: "#7A6E5C", marginTop: 2 }}>{sgTodayLabel()}</div>
+            <div style={{ fontSize: 13, color: "#7E6B76", marginTop: 2 }}>{sgTodayLabel()}</div>
             <div style={{ height: 1, background: "#E8D9BE", margin: "16px 0" }} />
-            <div style={{ fontSize: 12, color: "#7A6E5C" }}>Today’s portion</div>
+            <div style={{ fontSize: 12, color: "#7E6B76" }}>Today’s portion</div>
             <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{label}</div>
             {grade && (
-              <div style={{ marginTop: 12, display: "inline-block", background: "#DFC591", color: "#3A3026", borderRadius: 999, padding: "4px 14px", fontSize: 14, fontWeight: 700 }}>
+              <div style={{ marginTop: 12, display: "inline-block", background: "#F4D5E1", color: "#4A3340", borderRadius: 999, padding: "4px 14px", fontSize: 14, fontWeight: 700 }}>
                 {grade}
               </div>
             )}
-            {note && <div style={{ marginTop: 14, fontSize: 14, color: "#3A3026" }}>{note}</div>}
-            <div style={{ marginTop: 18, fontSize: 11, color: "#7A6E5C" }}>Teacher: {teacherName}</div>
+            {note && <div style={{ marginTop: 14, fontSize: 14, color: "#4A3340" }}>{note}</div>}
+            <div style={{ marginTop: 18, fontSize: 11, color: "#7E6B76" }}>Teacher: {teacherName}</div>
           </div>
         </div>
       </div>

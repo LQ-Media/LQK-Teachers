@@ -39,7 +39,7 @@ export default async function PackPage({ params }) {
       </Link>
 
       {row.status === "draft" && (
-        <div className="mb-5 flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8A4030]">
+        <div className="mb-5 flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8E3D52]">
           <span className="mt-0.5 flex-shrink-0">
             <Icon name="alert-triangle" size={16} />
           </span>
@@ -57,7 +57,7 @@ export default async function PackPage({ params }) {
       </p>
 
       {pack.objective && (
-        <p className="mt-6 rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#faf5ed] p-5 text-[14px] leading-relaxed text-charcoal">
+        <p className="mt-6 rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#FDF3F7] p-5 text-[14px] leading-relaxed text-charcoal">
           <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-charcoal-soft">
             By the end
           </span>
@@ -160,16 +160,16 @@ export default async function PackPage({ params }) {
       )}
 
       {pack.uncertain.length > 0 && (
-        <div className="mt-6 rounded-card border border-[#E4C9B8] bg-rust-soft p-5">
+        <div className="mt-6 rounded-card border border-[#F2D8E1] bg-rust-soft p-5">
           <div className="mb-2 flex items-center gap-2">
-            <span className="text-[#8A4030]">
+            <span className="text-[#8E3D52]">
               <Icon name="alert-triangle" size={16} />
             </span>
-            <h2 className="font-heading text-[15px] font-bold text-[#8A4030]">Check before teaching</h2>
+            <h2 className="font-heading text-[15px] font-bold text-[#8E3D52]">Check before teaching</h2>
           </div>
           <ul className="space-y-1.5">
             {pack.uncertain.map((u, i) => (
-              <li key={i} className="text-[13px] leading-relaxed text-[#8A4030]">
+              <li key={i} className="text-[13px] leading-relaxed text-[#8E3D52]">
                 · {u}
               </li>
             ))}

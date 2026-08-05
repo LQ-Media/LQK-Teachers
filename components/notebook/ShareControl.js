@@ -74,7 +74,7 @@ export default function ShareControl({ id, sharedAt, topic, ageGroup, canShare, 
   return (
     <div className="mt-6 rounded-card border border-line bg-white px-5 py-4">
       {error && (
-        <div className="mb-3 flex items-start gap-2.5 rounded-control bg-rust-soft px-3.5 py-2.5 text-[13px] text-[#8A4030]">
+        <div className="mb-3 flex items-start gap-2.5 rounded-control bg-rust-soft px-3.5 py-2.5 text-[13px] text-[#8E3D52]">
           <span className="mt-0.5 flex-shrink-0">
             <Icon name="alert-triangle" size={15} />
           </span>
@@ -107,7 +107,7 @@ export default function ShareControl({ id, sharedAt, topic, ageGroup, canShare, 
           <p className="mb-3 font-heading text-[14px] font-bold text-charcoal">Share to the Ilmu Bank</p>
 
           {needsSpeaker && (
-            <p className="mb-3 rounded-control bg-rust-soft px-3.5 py-2.5 text-[13px] text-[#8A4030]">
+            <p className="mb-3 rounded-control bg-rust-soft px-3.5 py-2.5 text-[13px] text-[#8E3D52]">
               This note came from someone else&apos;s talk. Add the speaker&apos;s name above before sharing
               it — their words should always be credited.
             </p>

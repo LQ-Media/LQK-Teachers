@@ -260,7 +260,7 @@ export default function SolatWidget() {
             <div key={p.key} className={`text-center ${isPast ? "opacity-45" : ""}`}>
               <div
                 className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-colors ${
-                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(224,169,59,0.35)]" : "bg-gold-soft text-ink"
+                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(242,169,192,0.35)]" : "bg-gold-soft text-ink"
                 }`}
               >
                 <Icon name={p.icon} size={22} />
@@ -271,7 +271,7 @@ export default function SolatWidget() {
           );
         })}
       </div>
-      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(224,169,59,0.3)]">
+      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(242,169,192,0.3)]">
         <span>Next prayer:</span>
         <span className="text-[15px] font-bold">{next.label}</span>
         <span>in {countdown}</span>

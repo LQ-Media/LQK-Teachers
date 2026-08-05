@@ -117,7 +117,7 @@ export default function BrowseSheet({ state, store, onClose, autoFocusSearch = f
           bottom: kbInset || undefined,
           maxHeight: availH ? `${Math.round(availH * 0.92)}px` : undefined,
         }}
-        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[86dvh] w-full max-w-[560px] flex-col rounded-t-[24px] bg-white shadow-[0_-8px_24px_rgba(58,48,38,0.18)]"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[86dvh] w-full max-w-[560px] flex-col rounded-t-[24px] bg-white shadow-[0_-8px_24px_rgba(74,51,64,0.18)]"
       >
         {/* Everything above the list is flex-none, so it never scrolls away */}
         <div className="flex-none px-4 pt-3">

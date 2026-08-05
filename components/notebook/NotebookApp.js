@@ -276,7 +276,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
       </div>
 
       {error && (
-        <div className="flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8A4030]">
+        <div className="flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8E3D52]">
           <span className="mt-0.5 flex-shrink-0">
             <Icon name="alert-triangle" size={16} />
           </span>
@@ -285,7 +285,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
       )}
 
       {/* Capture surface */}
-      <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(51,58,34,0.04)]">
+      <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(110,66,87,0.04)]">
         {phase === "working" ? (
           <Working label={working} />
         ) : !modeAvailable(mode) ? (
@@ -311,7 +311,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
 
       {/* Review + save */}
       {(canReview || mode === "typed") && phase !== "working" && phase !== "recording" && (
-        <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(51,58,34,0.04)]">
+        <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(110,66,87,0.04)]">
           <h2 className="font-heading text-[17px] font-bold text-charcoal">
             {mode === "typed" ? "Your note" : "Check the text"}
           </h2>
@@ -369,7 +369,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
               type="button"
               disabled={!canReview || saving}
               onClick={() => onSave(true)}
-              className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[14px] font-bold text-ink shadow-[0_4px_12px_rgba(224,169,59,0.35)] transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[14px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Icon name="sparkles" size={16} />
               {saving ? "Saving…" : capabilities.summarise ? "Summarise & save" : "Save note"}
@@ -406,8 +406,8 @@ function RecordPane({ phase, elapsed, bytes, nearLimit, language, setLanguage, o
         onClick={recording ? onStop : onStart}
         className={`flex h-24 w-24 items-center justify-center rounded-full transition-transform hover:scale-105 ${
           recording
-            ? "bg-rust text-white shadow-[0_0_0_10px_rgba(181,87,60,0.12)]"
-            : "bg-gold text-ink shadow-[0_6px_20px_rgba(224,169,59,0.4)]"
+            ? "bg-rust text-white shadow-[0_0_0_10px_rgba(192,94,114,0.12)]"
+            : "bg-gold text-ink shadow-[0_6px_20px_rgba(242,169,192,0.4)]"
         }`}
         aria-label={recording ? "Stop recording" : "Start recording"}
       >
@@ -545,7 +545,7 @@ function UnavailablePane({ mode, keyDiag, onUseTyping }) {
               ))}
             </ul>
             {keyDiag.similar.length > 0 && (
-              <p className="mt-2 rounded-control bg-rust-soft px-3 py-2 text-[12px] leading-relaxed text-[#8A4030]">
+              <p className="mt-2 rounded-control bg-rust-soft px-3 py-2 text-[12px] leading-relaxed text-[#8E3D52]">
                 <span className="font-bold">
                   These are set but the app never reads them — they are the wrong names:
                 </span>{" "}

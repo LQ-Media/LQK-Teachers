@@ -33,13 +33,13 @@ export default function LeaderboardTab({
   return (
     <div className="space-y-8">
       {isOrg && monthlyTitle && (
-        <div className="rounded-card bg-gradient-to-br from-gold-soft to-[#FBF0D8] p-6">
+        <div className="rounded-card bg-gradient-to-br from-gold-soft to-[#FCE9F0] p-6">
           <div className="flex flex-wrap items-center gap-4">
             <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-gold text-ink">
               <Icon name="trophy" size={24} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-[#8A6D1F]">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#8E4A66]">
                 {monthlyTitle.title} · {monthLabel(season)}
               </div>
               <div className="font-heading text-[19px] font-bold text-charcoal">

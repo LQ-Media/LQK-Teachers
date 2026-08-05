@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
+import { subIcon } from "@/lib/dzikir/icons";
 
 // A horizontal drag counts as a page turn when it is decisively sideways:
 // far enough to be deliberate, and clearly more horizontal than vertical so
@@ -144,6 +145,22 @@ export default function DzikirReader({
     }
     return out;
   }, [passages]);
+
+  // Jump to a passage group within this collection. Mirrors the index card on
+  // /dzikir one level up, so the same tap-an-icon-to-jump gesture works at
+  // every level of the library.
+  function jumpToSub(index) {
+    const el = document.getElementById(`sub-${index}`);
+    if (!el) return;
+    setScrolling(false); // an explicit jump ends hands-free scrolling
+    // These collections run to tens of thousands of pixels — Ratib's last group
+    // starts past 80,000px. Animating that far is unusable (and Chrome gives up
+    // partway), so only short hops animate; long ones land immediately.
+    const distance = Math.abs(el.getBoundingClientRect().top);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const smooth = !reduce && distance < 2000;
+    el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  }
 
   const meaningOf = (p) => (lang === "en" ? p.en : p.id_);
   const sz = SIZES[size];
@@ -360,11 +377,47 @@ export default function DzikirReader({
         </p>
       ) : null}
 
+      {/* Passage index — one tile per group inside this collection. */}
+      {groups.length > 1 && groups.some((g) => g.sub) && (
+        <nav
+          aria-label="Passages in this collection"
+          className="mb-6 rounded-card border-[0.5px] border-line bg-white p-3"
+        >
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {groups.map((g, gi) => (
+              <button
+                key={gi}
+                type="button"
+                onClick={() => jumpToSub(gi)}
+                className="flex items-center gap-2.5 rounded-control border-[0.5px] border-line bg-paper px-2.5 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 ease-out hover:border-gold hover:bg-gold-soft/30 active:scale-[0.97]"
+              >
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-control bg-gold-soft text-ink">
+                  <Icon name={subIcon(gi)} size={17} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-bold leading-tight text-charcoal">
+                    {g.sub || "Opening"}
+                  </span>
+                  <span className="block text-[10.5px] leading-tight text-charcoal-soft">
+                    {g.items.length} passage{g.items.length === 1 ? "" : "s"}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
+
       <div className="space-y-6">
         {groups.map((g, gi) => (
-          <section key={gi}>
+          <section key={gi} id={`sub-${gi}`} className="scroll-mt-4">
             {g.sub ? (
-              <h2 className="mb-3 font-heading text-[15px] font-semibold text-ink">{g.sub}</h2>
+              <h2 className="mb-3 flex items-center gap-2 font-heading text-[15px] font-semibold text-ink">
+                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-control bg-gold-soft text-ink">
+                  <Icon name={subIcon(gi)} size={15} />
+                </span>
+                {g.sub}
+              </h2>
             ) : null}
             <div className="space-y-3">
               {g.items.map((p) => {

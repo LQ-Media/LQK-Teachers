@@ -56,13 +56,13 @@ export default async function DashboardPage({ searchParams }) {
   return (
     <div className="min-h-screen bg-paper">
       {sp?.denied && (
-        <div className="mx-6 mt-6 rounded-control bg-rust-soft px-4 py-3 text-[13px] font-medium text-[#8A4030]">
+        <div className="mx-6 mt-6 rounded-control bg-rust-soft px-4 py-3 text-[13px] font-medium text-[#8E3D52]">
           You don’t have access to that page.
         </div>
       )}
 
       {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-white to-[#faf5ed] px-6 py-12 md:px-10">
+      <div className="relative overflow-hidden bg-gradient-to-br from-white to-[#FDF3F7] px-6 py-12 md:px-10">
         <div className="mx-auto max-w-[1100px] text-center">
           <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
             Assalamualaikum, {firstName}.
@@ -141,10 +141,10 @@ export default async function DashboardPage({ searchParams }) {
 }
 
 function StatCard({ tint, icon, label, value, note, valueClass, delay }) {
-  const bg = tint === "sand" ? "bg-gradient-to-br from-sand to-[#e8dfc8]" : "bg-white";
+  const bg = tint === "sand" ? "bg-gradient-to-br from-sand to-[#F5E4EC]" : "bg-white";
   return (
     <div
-      className={`lqk-rise rounded-card ${bg} p-6 shadow-[0_8px_24px_rgba(51,58,34,0.08)]`}
+      className={`lqk-rise rounded-card ${bg} p-6 shadow-[0_8px_24px_rgba(110,66,87,0.08)]`}
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="mb-3 flex items-center gap-3">

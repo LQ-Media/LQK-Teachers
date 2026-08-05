@@ -19,13 +19,25 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE = path.join(ROOT, "scripts/app-icon-source.png");
 
-// The artwork's terracotta ground (sampled from the source). Fills the
-// transparent margins and the maskable inset so everything is one seamless bg.
-const GROUND = "#B05828";
+// The source artwork is white line work on one flat terracotta ground, from the
+// portal's original olive/gold identity. Rather than redraw it for the pastel
+// rose palette, we rotate its hue: the ground moves to rose and the white
+// strokes stay white (a hue rotation cannot tint an unsaturated pixel). Keeps
+// the brand illustration pixel-for-pixel while matching the new theme.
+const SOURCE_GROUND = "#B05828"; // the artwork's own terracotta, pre-shift
+const ROSE_SHIFT = { hue: 320, saturation: 0.85, brightness: 1.32 };
+// What SOURCE_GROUND becomes after the shift. Used for the maskable canvas and
+// mirrored by manifest.background_color so the splash screen matches.
+const GROUND = "#E47687";
+
+/** A fresh pipeline: transparent margins filled, then recoloured to rose. */
+function art() {
+  return sharp(SOURCE).flatten({ background: SOURCE_GROUND }).modulate(ROSE_SHIFT);
+}
 
 async function fullBleed(size, outPath) {
   mkdirSync(path.dirname(outPath), { recursive: true });
-  await sharp(SOURCE).flatten({ background: GROUND }).resize(size, size, { fit: "cover" }).png().toFile(outPath);
+  await art().resize(size, size, { fit: "cover" }).png().toFile(outPath);
   console.log("wrote", path.relative(ROOT, outPath), `(${size}×${size})`);
 }
 
@@ -37,14 +49,7 @@ async function writeIco(sizes, outPath) {
   // ensureAlpha() is required: Next's ICO decoder rejects embedded PNGs that
   // aren't RGBA ("The PNG is not in RGBA format!"), and flatten() drops alpha.
   const pngs = await Promise.all(
-    sizes.map((s) =>
-      sharp(SOURCE)
-        .flatten({ background: GROUND })
-        .resize(s, s, { fit: "cover" })
-        .ensureAlpha()
-        .png()
-        .toBuffer()
-    )
+    sizes.map((s) => art().resize(s, s, { fit: "cover" }).ensureAlpha().png().toBuffer())
   );
 
   const header = Buffer.alloc(6);
@@ -76,10 +81,10 @@ async function writeIco(sizes, outPath) {
 // so the OS safe-zone crop never eats the wordmark/figure.
 async function maskable(size, inset, outPath) {
   mkdirSync(path.dirname(outPath), { recursive: true });
-  const art = await sharp(SOURCE).flatten({ background: GROUND }).resize(inset, inset, { fit: "cover" }).png().toBuffer();
+  const inner = await art().resize(inset, inset, { fit: "cover" }).png().toBuffer();
   const off = Math.round((size - inset) / 2);
   await sharp({ create: { width: size, height: size, channels: 4, background: GROUND } })
-    .composite([{ input: art, top: off, left: off }])
+    .composite([{ input: inner, top: off, left: off }])
     .png()
     .toFile(outPath);
   console.log("wrote", path.relative(ROOT, outPath), `(${size}×${size}, inset ${inset})`);

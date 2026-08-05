@@ -1,24 +1,31 @@
 @import "tailwindcss";
 
-/* LQK brand system — Zaytun olive + Barakah gold, sand tiles, cream page.
-   Gold is the only loud colour; everything dark is the olive "zaytun". */
+/* LQK brand system — pastel rose with hints of pastel lavender.
+   Rose carries the interface; lavender is the second voice, used sparingly for
+   badges and counters so it reads as an accent rather than a second theme.
+   Everything dark is a deep plum, which is what makes pastel backgrounds
+   legible (plum on rose is 5.4:1, plum on page 8.7:1).
+
+   Token NAMES are historical — this palette replaced an olive/gold one and the
+   names are referenced in hundreds of places, so `gold` now means rose and
+   `sage` means lavender. Change the values here, never the names. */
 :root {
-  --color-ink: #333A22;         /* zaytun — dark primary (buttons, on-cream text) */
-  --color-ink-soft: #4C5533;
-  --color-ink-deep: #262B18;
-  --color-gold: #E0A93B;        /* barakah gold — the accent */
-  --color-gold-soft: #F6E7C8;
-  --color-sage: #A8742A;
-  --color-sage-soft: #F2E4C8;
-  --color-sand: #DFC591;        /* tile backgrounds */
-  --color-paper: #FBF6EC;       /* cream page */
-  --color-paper-deep: #F4E9D6;
-  --color-rust: #B5573C;
-  --color-rust-soft: #F2DDD5;
-  --color-charcoal: #333A22;    /* headings/body dark */
-  --color-charcoal-soft: #6E6A58; /* muted */
-  --color-line: #EDE4D2;
-  --color-gold-hover: #C99430;
+  --color-ink: #5E3448;         /* deep plum — dark primary (buttons, on-pastel text) */
+  --color-ink-soft: #8A5A70;
+  --color-ink-deep: #56334A;
+  --color-gold: #F2A9C0;        /* pastel rose — the accent */
+  --color-gold-soft: #FCE6EE;   /* rose wash — icon tiles, active fills */
+  --color-sage: #7B62B0;        /* pastel lavender, deepened for text */
+  --color-sage-soft: #EEE9F9;   /* lavender wash — badges */
+  --color-sand: #F4D5E1;        /* rose tile backgrounds */
+  --color-paper: #FEF8FA;       /* rose-tinted page */
+  --color-paper-deep: #FAEBF1;
+  --color-rust: #C05E72;        /* error — a rose-red, still distinct from the accent */
+  --color-rust-soft: #FBE3E8;
+  --color-charcoal: #5E3448;    /* headings/body dark */
+  --color-charcoal-soft: #7E6B76; /* muted */
+  --color-line: #F3E1E8;
+  --color-gold-hover: #E890AE;
 
   /* Mobile bottom tab bar: the tab row plus ground clearance for thumbs.
      The 2.5rem floor lifts the bar clear of the iPhone home-indicator area

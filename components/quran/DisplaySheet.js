@@ -25,8 +25,8 @@ const COLOR_KEYS = {
 
 // Curated on-brand palette + a few high-contrast extras.
 const SWATCHES = [
-  "#3A3026", "#7A6E5C", "#D88A4F", "#B86F3A", "#C99A35",
-  "#A8742A", "#B5573C", "#2E8B70", "#3B6FB0", "#111111",
+  "#4A3340", "#7E6B76", "#D88A4F", "#C77E96", "#E0A0BC",
+  "#7B62B0", "#6E58A8", "#C05E72", "#2E8B70", "#111111",
 ];
 
 export default function DisplaySheet({ state, store, onClose }) {
@@ -50,7 +50,7 @@ export default function DisplaySheet({ state, store, onClose }) {
       <div
         role="dialog"
         aria-label="Display settings"
-        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[86vh] w-full max-w-[560px] flex-col rounded-t-[24px] bg-white p-4 shadow-[0_-8px_24px_rgba(58,48,38,0.18)]"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[86vh] w-full max-w-[560px] flex-col rounded-t-[24px] bg-white p-4 shadow-[0_-8px_24px_rgba(74,51,64,0.18)]"
       >
         <div className="mx-auto mb-3.5 h-1.5 w-11 flex-none rounded-pill bg-line" />
 

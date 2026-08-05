@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import Icon from "@/components/Icon";
-import { groupIcon, sectionIcon } from "@/lib/dzikir/icons";
+import { groupIcon, groupImage, sectionIcon } from "@/lib/dzikir/icons";
 
 /**
  * The /dzikir landing browser. A plain client-side filter over the static
@@ -47,8 +47,11 @@ export default function DzikirBrowser({ catalog }) {
   function jumpTo(key) {
     const el = document.getElementById(`dzikir-${key}`);
     if (!el) return;
+    // Short hops animate; a long one lands immediately (see DzikirReader).
+    const distance = Math.abs(el.getBoundingClientRect().top);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    const smooth = !reduce && distance < 2000;
+    el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
   }
 
   return (
@@ -63,9 +66,20 @@ export default function DzikirBrowser({ catalog }) {
               onClick={() => jumpTo(g.key)}
               className="flex flex-col items-center gap-1.5 rounded-control border-[0.5px] border-line bg-paper px-2 py-3.5 text-center transition-[background-color,border-color,transform] duration-150 ease-out hover:border-gold hover:bg-gold-soft/30 active:scale-[0.97]"
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-control bg-gold-soft text-ink">
-                <Icon name={groupIcon(g.key)} size={22} />
-              </span>
+              {groupImage(g.key) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={groupImage(g.key)}
+                  alt=""
+                  width={56}
+                  height={56}
+                  className="h-14 w-14 rounded-control bg-white object-contain"
+                />
+              ) : (
+                <span className="flex h-14 w-14 items-center justify-center rounded-control bg-gold-soft text-ink">
+                  <Icon name={groupIcon(g.key)} size={24} />
+                </span>
+              )}
               <span className="text-[12.5px] font-bold leading-tight text-charcoal">{g.label}</span>
               <span className="text-[10.5px] leading-tight text-charcoal-soft">
                 {g.sections} {g.sections === 1 ? "collection" : "collections"}
@@ -96,9 +110,20 @@ export default function DzikirBrowser({ catalog }) {
           {groups.map((g) => (
             <section key={g.key} id={`dzikir-${g.key}`} className="scroll-mt-4">
               <div className="mb-3 flex items-center gap-2.5">
-                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-control bg-sand/60 text-ink">
-                  <Icon name={groupIcon(g.key)} size={16} />
-                </span>
+                {groupImage(g.key) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={groupImage(g.key)}
+                    alt=""
+                    width={40}
+                    height={40}
+                    className="h-10 w-10 flex-shrink-0 rounded-control bg-white object-contain"
+                  />
+                ) : (
+                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-sand/60 text-ink">
+                    <Icon name={groupIcon(g.key)} size={18} />
+                  </span>
+                )}
                 <div className="min-w-0">
                   <h2 className="font-heading text-[17px] font-semibold text-charcoal">{g.label}</h2>
                   <p className="text-[12px] text-charcoal-soft">{g.blurb}</p>

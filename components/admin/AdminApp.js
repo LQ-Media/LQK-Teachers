@@ -893,7 +893,7 @@ function Modal({ title, children, onClose }) {
       <div
         role="dialog"
         aria-label={title}
-        className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100%-2rem)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 flex-col rounded-card bg-white p-5 shadow-[0_12px_40px_rgba(58,48,38,0.25)]"
+        className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100%-2rem)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 flex-col rounded-card bg-white p-5 shadow-[0_12px_40px_rgba(74,51,64,0.25)]"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-heading text-[17px] font-semibold text-charcoal">{title}</h2>

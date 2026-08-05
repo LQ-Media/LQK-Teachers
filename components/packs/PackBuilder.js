@@ -70,7 +70,7 @@ export default function PackBuilder({ surahs, canGenerate }) {
   }
 
   return (
-    <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(51,58,34,0.04)]">
+    <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(110,66,87,0.04)]">
       <h2 className="font-heading text-[17px] font-bold text-charcoal">Build a pack</h2>
       <p className="mt-1 mb-4 text-[13px] text-charcoal-soft">
         Pick a portion and an age group. Checking the portion is free; building the plan uses one
@@ -78,7 +78,7 @@ export default function PackBuilder({ surahs, canGenerate }) {
       </p>
 
       {error && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8A4030]">
+        <div className="mb-4 flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8E3D52]">
           <span className="mt-0.5 flex-shrink-0">
             <Icon name="alert-triangle" size={16} />
           </span>
@@ -194,7 +194,7 @@ export default function PackBuilder({ surahs, canGenerate }) {
           onClick={onGenerate}
           disabled={busy !== null || !canGenerate}
           title={canGenerate ? undefined : "Pack generation is not configured on this server"}
-          className="flex items-center gap-2 rounded-control bg-gold px-5 py-2 text-[13px] font-bold text-ink shadow-[0_4px_12px_rgba(224,169,59,0.35)] transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-2 rounded-control bg-gold px-5 py-2 text-[13px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name="sparkles" size={15} />
           {busy === "generate" ? "Building…" : "Build the plan"}

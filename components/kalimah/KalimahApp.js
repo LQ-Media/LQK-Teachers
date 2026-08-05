@@ -119,7 +119,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
             <button
               type="button"
               onClick={() => setPhase("quiz")}
-              className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[14px] font-bold text-ink shadow-[0_4px_12px_rgba(224,169,59,0.35)] transition-colors hover:bg-gold-hover"
+              className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[14px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover"
             >
               <Icon name="check" size={16} />
               Check what I remember
@@ -161,7 +161,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
                       reveal && isAnswer
                         ? "bg-[#E4F0E4] font-semibold text-[#2E6B3E] ring-1 ring-[#8FBF9A]"
                         : reveal && chosen
-                          ? "bg-rust-soft text-[#8A4030] ring-1 ring-[#E4C9B8]"
+                          ? "bg-rust-soft text-[#8E3D52] ring-1 ring-[#F2D8E1]"
                           : "bg-paper text-charcoal hover:bg-paper-deep"
                     } ${reveal ? "cursor-default" : ""}`}
                   >
@@ -187,7 +187,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
       )}
 
       {phase === "done" && (
-        <div className="rounded-card border border-line bg-gradient-to-br from-white to-[#faf5ed] p-8 text-center">
+        <div className="rounded-card border border-line bg-gradient-to-br from-white to-[#FDF3F7] p-8 text-center">
           <span className="mx-auto mb-3 block w-fit text-gold">
             <Icon name="sparkles" size={28} />
           </span>

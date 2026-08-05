@@ -109,7 +109,7 @@ function Tab({ active, onClick, icon, children }) {
       type="button"
       onClick={onClick}
       className={`flex items-center gap-2 rounded-[9px] px-3.5 py-2 text-[13px] font-semibold transition-colors ${
-        active ? "bg-white text-charcoal shadow-[0_1px_3px_rgba(51,58,34,0.10)]" : "text-charcoal-soft hover:text-charcoal"
+        active ? "bg-white text-charcoal shadow-[0_1px_3px_rgba(110,66,87,0.10)]" : "text-charcoal-soft hover:text-charcoal"
       }`}
     >
       <Icon name={icon} size={15} />

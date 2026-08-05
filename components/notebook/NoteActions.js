@@ -32,7 +32,7 @@ export default function NoteActions({ id, canSummarise, hasSummary }) {
   return (
     <div className="mt-6">
       {error && (
-        <div className="mb-3 flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8A4030]">
+        <div className="mb-3 flex items-start gap-2.5 rounded-control bg-rust-soft px-4 py-3 text-[13px] text-[#8E3D52]">
           <span className="mt-0.5 flex-shrink-0">
             <Icon name="alert-triangle" size={16} />
           </span>

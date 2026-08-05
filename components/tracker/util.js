@@ -38,6 +38,6 @@ export function gradePillClass(grade) {
   const g = (grade || "").toLowerCase();
   if (g === "excellent") return "bg-sage-soft text-sage";
   if (g === "repeat") return "bg-rust-soft text-rust";
-  if (g === "pass") return "bg-gold-soft/50 text-[#8A6D1F]";
+  if (g === "pass") return "bg-gold-soft/50 text-[#8E4A66]";
   return "bg-paper-deep text-charcoal-soft";
 }

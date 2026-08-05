@@ -330,7 +330,7 @@ function Dial({ rotation, qibla, live, aligned }) {
           />
           <circle cx={c} cy={30} r="15" fill="var(--color-gold)" />
           {/* Kaaba glyph */}
-          <rect x={c - 6} y={24} width="12" height="12" rx="1.5" fill="#333A22" />
+          <rect x={c - 6} y={24} width="12" height="12" rx="1.5" fill="#5E3448" />
           <rect x={c - 6} y={27} width="12" height="2.5" fill="var(--color-gold)" />
         </g>
 

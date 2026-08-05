@@ -42,7 +42,7 @@ export default async function ReadingPage() {
       </div>
 
       {/* Last read — connected to the Quran reader */}
-      <div className="mb-6 rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#faf5ed] p-5">
+      <div className="mb-6 rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#FDF3F7] p-5">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-gold">
             <Icon name="bookmark" size={16} filled />
