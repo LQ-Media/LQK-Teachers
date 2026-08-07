@@ -4,6 +4,7 @@ import { avatarSrc } from "@/lib/avatar";
 import Sidebar from "@/components/Sidebar";
 import MobileTabBar from "@/components/MobileTabBar";
 import InstallPrompt from "@/components/pwa/InstallPrompt";
+import AzanPlayer from "@/components/solat/AzanPlayer";
 
 export default async function PortalLayout({ children }) {
   const session = await requireSession();
@@ -29,6 +30,7 @@ export default async function PortalLayout({ children }) {
       <main className="flex-1 min-w-0 max-lg:pb-[var(--tabbar-h)]">{children}</main>
       <MobileTabBar role={session.role} />
       <InstallPrompt />
+      <AzanPlayer />
     </div>
   );
 }

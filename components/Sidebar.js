@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/dzikir", label: "Wirid & Doa", icon: "moon-star" },
   { href: "/quran", label: "Quran reader", icon: "book-open" },
   { href: "/qibla", label: "Qibla finder", icon: "compass" },
+  { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Achievements", icon: "trophy" },
   { href: "/hours", label: "Work hours", icon: "clock" },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
@@ -79,7 +80,7 @@ export default function Sidebar({ role, fullName, avatar }) {
               href={item.href}
               className={`flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px] transition-colors ${
                 isActive
-                  ? "bg-gold font-semibold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)]"
+                  ? "bg-gold-soft font-semibold text-ink"
                   : "text-charcoal hover:bg-paper-deep"
               }`}
             >
@@ -99,7 +100,7 @@ export default function Sidebar({ role, fullName, avatar }) {
           title={`${fullName} — profile`}
           className={`flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-[13px] transition-colors ${
             pathname === "/profile"
-              ? "bg-gold font-semibold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)]"
+              ? "bg-gold-soft font-semibold text-ink"
               : "text-charcoal hover:bg-paper-deep"
           }`}
         >

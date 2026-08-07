@@ -4,7 +4,7 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v2";
+const VERSION = "lqk-v3";
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
@@ -93,4 +93,44 @@ self.addEventListener("fetch", (event) => {
     );
   }
   // Everything else (API, dynamic data): pass through to the network untouched.
+});
+
+// ---- Azan push notifications -------------------------------------------
+// The server (lib/azan/scheduler.js) sends a push at each enabled prayer's
+// time. Browsers require userVisibleOnly subscriptions, so every push shows
+// a notification; tapping it opens the Solat & Azan page, which plays the
+// user's chosen azan on arrival (see components/solat/AzanPlayer.js).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    // non-JSON push — show a generic notice
+  }
+  const title = data.title || "Prayer time";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "It's time to pray.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: data.prayer ? `azan-${data.prayer}` : "azan",
+      data: { url: data.url || "/solat", prayer: data.prayer || null },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/solat";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });

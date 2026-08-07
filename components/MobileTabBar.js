@@ -24,6 +24,7 @@ const MORE_ITEMS = [
   { href: "/packs", label: "Lesson Packs", icon: "clipboard-check" },
   { href: "/kalimah", label: "Kalimah", icon: "star" },
   { href: "/qibla", label: "Qibla", icon: "compass" },
+  { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Awards", icon: "trophy" },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
   { href: "/profile", label: "Profile", icon: "user" },

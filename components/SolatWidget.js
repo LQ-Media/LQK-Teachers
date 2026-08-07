@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import Icon from "@/components/Icon";
 import { COUNTRIES, BY_CODE, countryForTimezone } from "@/lib/countries";
+import { AZAN_SETTINGS_EVENT } from "@/components/solat/AzanPlayer";
 
 const PRAYERS = [
   { key: "Fajr", label: "Subuh", icon: "sunrise" },
@@ -169,6 +171,61 @@ export default function SolatWidget() {
     }
   }
 
+  // Azan quick-mute: mirrors the master mute on the Solat & Azan page.
+  // null = settings not loaded yet (bell hidden until then).
+  const [muted, setMuted] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/azan/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => !cancelled && data && setMuted(!!data.settings?.muted))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function toggleMute() {
+    const next = !muted;
+    setMuted(next);
+    fetch("/api/azan/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ muted: next }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.settings) {
+          window.dispatchEvent(new CustomEvent(AZAN_SETTINGS_EVENT, { detail: { settings: data.settings } }));
+        }
+      })
+      .catch(() => {});
+  }
+
+  const azanControls = (
+    <span className="flex items-center gap-1.5">
+      {muted !== null && (
+        <button
+          type="button"
+          onClick={toggleMute}
+          title={muted ? "Azan muted — tap to unmute" : "Azan on — tap to mute"}
+          className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+            muted ? "bg-paper-deep text-charcoal-soft" : "bg-gold text-white"
+          }`}
+        >
+          <Icon name={muted ? "bell-off" : "bell"} size={13} />
+        </button>
+      )}
+      <Link
+        href="/solat"
+        title="Azan & prayer settings"
+        className="flex h-7 w-7 items-center justify-center rounded-full bg-gold-soft text-ink transition-colors hover:bg-sand"
+      >
+        <Icon name="settings" size={13} />
+      </Link>
+    </span>
+  );
+
   const picker = (
     <label className="flex items-center gap-1.5">
       <span className="sr-only">Country for prayer times</span>
@@ -250,7 +307,10 @@ export default function SolatWidget() {
         <span className="text-[12px] font-bold uppercase tracking-wider text-charcoal-soft">
           Prayer times · {placeLabel || "Singapore"}
         </span>
-        {picker}
+        <span className="flex items-center gap-2">
+          {picker}
+          {azanControls}
+        </span>
       </div>
       <div className="mb-4 grid grid-cols-5 justify-items-center gap-2">
         {parsed.map((p, i) => {
@@ -260,7 +320,7 @@ export default function SolatWidget() {
             <div key={p.key} className={`text-center ${isPast ? "opacity-45" : ""}`}>
               <div
                 className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-colors ${
-                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(242,169,192,0.35)]" : "bg-gold-soft text-ink"
+                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(140,122,168,0.35)]" : "bg-gold-soft text-ink"
                 }`}
               >
                 <Icon name={p.icon} size={22} />
@@ -271,7 +331,7 @@ export default function SolatWidget() {
           );
         })}
       </div>
-      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(242,169,192,0.3)]">
+      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(140,122,168,0.3)]">
         <span>Next prayer:</span>
         <span className="text-[15px] font-bold">{next.label}</span>
         <span>in {countdown}</span>
