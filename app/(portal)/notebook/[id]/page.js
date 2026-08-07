@@ -46,7 +46,7 @@ export default async function NotePage({ params, searchParams }) {
       </Link>
 
       {sp?.warn && (
-        <div className="mb-5 flex items-start gap-2.5 rounded-control bg-gold-soft px-4 py-3 text-[13px] text-ink">
+        <div className="mb-5 flex items-start gap-2.5 rounded-control bg-sage-soft px-4 py-3 text-[13px] text-ink">
           <span className="mt-0.5 flex-shrink-0">
             <Icon name="alert-triangle" size={16} />
           </span>

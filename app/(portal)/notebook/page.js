@@ -70,7 +70,7 @@ export default async function NotebookPage() {
                   href={`/notebook/${note.id}`}
                   className="flex items-start gap-3 rounded-card border border-line bg-white px-5 py-4 transition-colors hover:border-gold hover:bg-paper"
                 >
-                  <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-control bg-gold-soft text-ink">
+                  <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-control bg-sage-soft text-ink">
                     <Icon name={SOURCE_ICON[note.source] || "notebook"} size={15} />
                   </span>
                   <span className="min-w-0 flex-1">

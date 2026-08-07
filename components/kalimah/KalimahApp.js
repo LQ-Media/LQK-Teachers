@@ -59,7 +59,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
       {/* The ayah itself */}
       <div className="rounded-card border border-line bg-white p-6">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="rounded-pill bg-gold-soft px-2.5 py-1 text-[11px] font-bold text-ink">
+          <span className="rounded-pill bg-sand px-2.5 py-1 text-[11px] font-bold text-ink">
             {surahName} · {verse.key}
           </span>
           {alreadyDone && (

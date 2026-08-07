@@ -1,37 +1,34 @@
 @import "tailwindcss";
 
-/* LQK brand system — palette "3d Pastel set" (design handoff, Aug 2026).
-   One neutral: a violet-grey ink on a cool near-white base. Lavender, rose and
-   peach are *surfaces only* — category/status tiles, never text and never a
-   button fill. The lone mid-tone accent (#8C7AA8) is for links, active nav,
-   focus rings and selected states. Primary buttons are ink-filled. Text on a
-   pastel always uses that pastel's dark "on-" partner, never white.
+/* LQK brand system — pastel trio on cream (Karim's direction, Aug 2026).
+   Cream page, white cards floating on it, and THREE equal pastel voices —
+   lavender #DCD3F0, rose #F6D3DD, peach #FBDCC8 — spread across pages to
+   highlight tiles, headers and stats (no single dominant pastel). Pastels are
+   *surfaces only* — never text, never a button fill; text on a pastel uses a
+   dark partner, never white. The lone mid-tone accent (#8C7AA8) is for links,
+   active nav, focus rings and selected states. Primary buttons are ink-filled.
 
-   Fixed pastel meanings (keep consistent across screens):
-   lavender = selected/active + mastered; rose = people/badges; peach = pending
-   and warm tiles (avatars). Max three pastel surfaces per viewport.
-
-   Token NAMES are historical — this palette replaced rose/lavender, which
-   itself replaced olive/gold, and the names are referenced in hundreds of
-   places, so `gold` now means the violet accent, `gold-soft` the lavender
-   surface, `sage`/`sage-soft` the rose pair, and `sand` peach. Change the
-   values here, never the names. */
+   Token NAMES are historical — this evolved from handoff palette 3d, which
+   replaced rose/lavender, which replaced olive/gold; the names are referenced
+   in hundreds of places, so `gold` means the violet accent, `gold-soft` the
+   lavender surface, `sage`/`sage-soft` the rose pair, and `sand` peach.
+   Change the values here, never the names. */
 :root {
   --color-ink: #403548;         /* violet-grey ink — dark primary (buttons, headings) */
   --color-ink-soft: #61536D;    /* hairline/soft on dark */
-  --color-ink-deep: #4C4056;    /* hover fill for ink buttons (raised, per handoff) */
+  --color-ink-deep: #4C4056;    /* hover fill for ink buttons */
   --color-gold: #8C7AA8;        /* the accent — links, active nav, focus, selection */
-  --color-gold-soft: #DCD3F0;   /* pastel lavender surface — icon tiles, active fills */
+  --color-gold-soft: #DCD3F0;   /* pastel lavender surface */
   --color-sage: #6B3E4C;        /* on-rose text (labels/numbers on the rose surface) */
-  --color-sage-soft: #F6D3DD;   /* pastel rose surface — badges, counters */
-  --color-sand: #FBDCC8;        /* pastel peach surface — avatar/warm tiles */
-  --color-paper: #F7F5F8;       /* page base */
-  --color-paper-deep: #F0EDF4;  /* deeper base — hover fills, muted chips */
+  --color-sage-soft: #F6D3DD;   /* pastel rose surface */
+  --color-sand: #FBDCC8;        /* pastel peach surface */
+  --color-paper: #FBF6EC;       /* cream page */
+  --color-paper-deep: #F4ECDB;  /* deeper cream — hover fills, muted chips */
   --color-rust: #C05E72;        /* error — rose-red, distinct from the accent */
   --color-rust-soft: #FBE3E8;
-  --color-charcoal: #403548;    /* headings/body dark (11:1 on base) */
-  --color-charcoal-soft: #7A7080; /* muted — labels, helper text */
-  --color-line: #EAE5EE;
+  --color-charcoal: #403548;    /* headings/body dark (10.9:1 on cream) */
+  --color-charcoal-soft: #7E7368; /* muted — warm taupe, sits with the cream */
+  --color-line: #EDE4D2;        /* warm hairline */
   --color-gold-hover: #7B6996;
 
   /* Mobile bottom tab bar: the tab row plus ground clearance for thumbs.

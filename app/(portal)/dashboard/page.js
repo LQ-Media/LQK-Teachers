@@ -62,7 +62,7 @@ export default async function DashboardPage({ searchParams }) {
       )}
 
       {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-white to-[#FDF3F7] px-6 py-12 md:px-10">
+      <div className="relative overflow-hidden bg-gradient-to-br from-white to-paper-deep px-6 py-12 md:px-10">
         <div className="mx-auto max-w-[1100px] text-center">
           <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
             Assalamualaikum, {firstName}.
@@ -89,13 +89,13 @@ export default async function DashboardPage({ searchParams }) {
           />
           <StatCard
             delay={100}
-            tint="white"
+            tint="rose"
             icon="clipboard-check"
             label="Students logged"
             value={classSummary.length ? `${loggedToday} / ${studentTotal}` : "—"}
             note="Today"
           />
-          <StatCard delay={200} tint="white" icon="notebook" label="Reading entries" value={String(readingThisWeek)} note="This week" />
+          <StatCard delay={200} tint="lavender" icon="notebook" label="Reading entries" value={String(readingThisWeek)} note="This week" />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -140,21 +140,31 @@ export default async function DashboardPage({ searchParams }) {
   );
 }
 
+// One brand pastel per tile — peach / rose / lavender, each fading toward a
+// paler self so the row reads airy rather than blocky. Label colours are the
+// pastel's dark partner (never the cream-tuned muted, which fails on pastel).
+const STAT_TINTS = {
+  sand: { bg: "bg-gradient-to-br from-sand to-[#FDEEE2]", label: "text-[#6E4830]" },
+  rose: { bg: "bg-gradient-to-br from-sage-soft to-[#FBE9EE]", label: "text-[#6B3E4C]" },
+  lavender: { bg: "bg-gradient-to-br from-gold-soft to-[#EFEAF8]", label: "text-[#4A3D63]" },
+  white: { bg: "bg-white", label: "text-charcoal-soft" },
+};
+
 function StatCard({ tint, icon, label, value, note, valueClass, delay }) {
-  const bg = tint === "sand" ? "bg-gradient-to-br from-sand to-[#F5E4EC]" : "bg-white";
+  const t = STAT_TINTS[tint] || STAT_TINTS.white;
   return (
     <div
-      className={`lqk-rise rounded-card ${bg} p-6 shadow-[0_8px_24px_rgba(110,66,87,0.08)]`}
+      className={`lqk-rise rounded-card ${t.bg} p-6 shadow-[0_8px_24px_rgba(64,53,72,0.08)]`}
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="mb-3 flex items-center gap-3">
         <span className="text-ink">
           <Icon name={icon} size={26} strokeWidth={1.5} />
         </span>
-        <span className="text-[12px] font-semibold uppercase tracking-wide text-charcoal-soft">{label}</span>
+        <span className={`text-[12px] font-semibold uppercase tracking-wide ${t.label}`}>{label}</span>
       </div>
       <div className={`font-heading text-[22px] font-bold ${valueClass || "text-charcoal"}`}>{value}</div>
-      <div className="text-[13px] text-charcoal-soft">{note}</div>
+      <div className={`text-[13px] ${t.label}`}>{note}</div>
     </div>
   );
 }

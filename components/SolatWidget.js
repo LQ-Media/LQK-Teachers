@@ -6,12 +6,14 @@ import Icon from "@/components/Icon";
 import { COUNTRIES, BY_CODE, countryForTimezone } from "@/lib/countries";
 import { AZAN_SETTINGS_EVENT } from "@/components/solat/AzanPlayer";
 
+// Each prayer wears one of the three brand pastels — dawn/night in lavender,
+// the bright hours in peach and rose (no two neighbours share a colour).
 const PRAYERS = [
-  { key: "Fajr", label: "Subuh", icon: "sunrise" },
-  { key: "Dhuhr", label: "Zohor", icon: "sun" },
-  { key: "Asr", label: "Asar", icon: "cloud-sun" },
-  { key: "Maghrib", label: "Maghrib", icon: "sunset" },
-  { key: "Isha", label: "Isyak", icon: "moon-star" },
+  { key: "Fajr", label: "Subuh", icon: "sunrise", tone: "bg-gold-soft text-ink" },
+  { key: "Dhuhr", label: "Zohor", icon: "sun", tone: "bg-sand text-ink" },
+  { key: "Asr", label: "Asar", icon: "cloud-sun", tone: "bg-sage-soft text-ink" },
+  { key: "Maghrib", label: "Maghrib", icon: "sunset", tone: "bg-sand text-ink" },
+  { key: "Isha", label: "Isyak", icon: "moon-star", tone: "bg-gold-soft text-ink" },
 ];
 
 // ---- Source ------------------------------------------------------------
@@ -320,7 +322,7 @@ export default function SolatWidget() {
             <div key={p.key} className={`text-center ${isPast ? "opacity-45" : ""}`}>
               <div
                 className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-colors ${
-                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(140,122,168,0.35)]" : "bg-gold-soft text-ink"
+                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(140,122,168,0.35)]" : p.tone
                 }`}
               >
                 <Icon name={p.icon} size={22} />

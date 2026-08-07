@@ -150,7 +150,7 @@ export default async function IlmuPage({ searchParams }) {
               >
                 <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                   {n.topic && (
-                    <span className="rounded-pill bg-gold-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
+                    <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
                       {n.topic}
                     </span>
                   )}

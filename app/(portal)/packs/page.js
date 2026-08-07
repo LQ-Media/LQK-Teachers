@@ -99,7 +99,7 @@ function PackRow({ pack }) {
         href={`/packs/${pack.id}`}
         className="flex items-center gap-3 rounded-card border border-line bg-white px-5 py-4 transition-colors hover:border-gold hover:bg-paper"
       >
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-control bg-gold-soft text-ink">
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-control bg-sage-soft text-ink">
           <Icon name="clipboard-check" size={15} />
         </span>
         <span className="min-w-0 flex-1">

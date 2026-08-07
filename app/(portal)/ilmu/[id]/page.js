@@ -52,7 +52,7 @@ export default async function SharedNotePage({ params }) {
 
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {row.topic && (
-          <span className="rounded-pill bg-gold-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink">
+          <span className="rounded-pill bg-sand px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink">
             {row.topic}
           </span>
         )}

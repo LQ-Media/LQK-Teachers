@@ -147,7 +147,7 @@ function StudentCard({ student, onOpenHistory, onLog }) {
   return (
     <div className="rounded-card border-[0.5px] border-line bg-white p-4">
       <button type="button" onClick={onOpenHistory} className="flex w-full items-center gap-3 text-left">
-        <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-gold-soft text-[13px] font-bold text-charcoal">
+        <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-sage-soft text-[13px] font-bold text-charcoal">
           {initials(student.name)}
         </span>
         <span className="min-w-0 flex-1">

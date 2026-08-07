@@ -18,6 +18,16 @@ import { AZAN_SETTINGS_EVENT } from "./AzanPlayer";
 // azan toggles + sound choice, sound previews/uploads, and push notifications
 // for when the app is closed.
 
+// Same per-prayer pastel assignment as the dashboard SolatWidget — dawn/night
+// lavender, the bright hours peach and rose.
+const PRAYER_TONES = {
+  Fajr: "bg-gold-soft text-ink",
+  Dhuhr: "bg-sand text-ink",
+  Asr: "bg-sage-soft text-ink",
+  Maghrib: "bg-sand text-ink",
+  Isha: "bg-gold-soft text-ink",
+};
+
 function broadcast(settings) {
   window.dispatchEvent(new CustomEvent(AZAN_SETTINGS_EVENT, { detail: { settings } }));
 }
@@ -384,7 +394,7 @@ export default function AzanSettingsClient() {
                 <li key={p.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
                   <span
                     className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full ${
-                      isNext ? "bg-gold text-white" : "bg-gold-soft text-ink"
+                      isNext ? "bg-gold text-white" : PRAYER_TONES[p.key] || "bg-gold-soft text-ink"
                     }`}
                   >
                     <Icon name={p.icon} size={20} />

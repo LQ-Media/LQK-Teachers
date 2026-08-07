@@ -120,7 +120,7 @@ export default async function PackPage({ params }) {
           <ol className="space-y-3">
             {pack.activities.map((a, i) => (
               <li key={i} className="flex gap-3">
-                <span className="mt-0.5 flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center rounded-control bg-gold-soft text-ink">
+                <span className="mt-0.5 flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center rounded-control bg-sage-soft text-ink">
                   <span className="font-heading text-[14px] font-bold leading-none">{a.minutes}</span>
                   <span className="text-[9px] font-bold uppercase leading-none">min</span>
                 </span>
