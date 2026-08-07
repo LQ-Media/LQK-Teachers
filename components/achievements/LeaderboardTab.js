@@ -33,13 +33,13 @@ export default function LeaderboardTab({
   return (
     <div className="space-y-8">
       {isOrg && monthlyTitle && (
-        <div className="rounded-card bg-gradient-to-br from-gold-soft to-[#FCE9F0] p-6">
+        <div className="rounded-card bg-gradient-to-br from-gold-soft to-[#EEE9F7] p-6">
           <div className="flex flex-wrap items-center gap-4">
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-gold text-ink">
+            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-gold text-white">
               <Icon name="trophy" size={24} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-[#8E4A66]">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#4A3D63]">
                 {monthlyTitle.title} · {monthLabel(season)}
               </div>
               <div className="font-heading text-[19px] font-bold text-charcoal">
@@ -177,7 +177,7 @@ export default function LeaderboardTab({
 }
 
 function PodiumRow({ row, place, isMe }) {
-  const medal = place === 1 ? "bg-gold text-ink" : place === 2 ? "bg-sand text-ink" : place === 3 ? "bg-sage-soft text-sage" : "bg-paper-deep text-charcoal-soft";
+  const medal = place === 1 ? "bg-gold-soft text-ink" : place === 2 ? "bg-sand text-ink" : place === 3 ? "bg-sage-soft text-sage" : "bg-paper-deep text-charcoal-soft";
   return (
     <Card
       className={`flex items-center gap-3 p-4 ${isMe ? "border-gold/50 bg-gold-soft/20" : ""}`}

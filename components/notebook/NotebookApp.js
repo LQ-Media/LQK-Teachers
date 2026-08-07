@@ -369,7 +369,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
               type="button"
               disabled={!canReview || saving}
               onClick={() => onSave(true)}
-              className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[14px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 rounded-control bg-ink px-5 py-2.5 text-[14px] font-bold text-paper shadow-[0_4px_12px_rgba(64,53,72,0.24)] transition-colors hover:bg-ink-deep disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Icon name="sparkles" size={16} />
               {saving ? "Saving…" : capabilities.summarise ? "Summarise & save" : "Save note"}
@@ -407,7 +407,7 @@ function RecordPane({ phase, elapsed, bytes, nearLimit, language, setLanguage, o
         className={`flex h-24 w-24 items-center justify-center rounded-full transition-transform hover:scale-105 ${
           recording
             ? "bg-rust text-white shadow-[0_0_0_10px_rgba(192,94,114,0.12)]"
-            : "bg-gold text-ink shadow-[0_6px_20px_rgba(242,169,192,0.4)]"
+            : "bg-gold text-white shadow-[0_6px_20px_rgba(140,122,168,0.4)]"
         }`}
         aria-label={recording ? "Stop recording" : "Start recording"}
       >

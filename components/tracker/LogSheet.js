@@ -251,24 +251,24 @@ export default function LogSheet({ student, teacherName, className, onClose, onS
               width: 420,
               padding: 28,
               background: "#FDF3F7",
-              color: "#4A3340",
+              color: "#403548",
               fontFamily: "system-ui, sans-serif",
               borderRadius: 20,
             }}
           >
-            <div style={{ fontSize: 12, letterSpacing: 2, color: "#7B62B0", fontWeight: 700 }}>LITTLE QURAN KIDS</div>
+            <div style={{ fontSize: 12, letterSpacing: 2, color: "#8C7AA8", fontWeight: 700 }}>LITTLE QURAN KIDS</div>
             <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6 }}>{titleCase(student.name)}</div>
-            <div style={{ fontSize: 13, color: "#7E6B76", marginTop: 2 }}>{sgTodayLabel()}</div>
+            <div style={{ fontSize: 13, color: "#7A7080", marginTop: 2 }}>{sgTodayLabel()}</div>
             <div style={{ height: 1, background: "#E8D9BE", margin: "16px 0" }} />
-            <div style={{ fontSize: 12, color: "#7E6B76" }}>Today’s portion</div>
+            <div style={{ fontSize: 12, color: "#7A7080" }}>Today’s portion</div>
             <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{label}</div>
             {grade && (
-              <div style={{ marginTop: 12, display: "inline-block", background: "#F4D5E1", color: "#4A3340", borderRadius: 999, padding: "4px 14px", fontSize: 14, fontWeight: 700 }}>
+              <div style={{ marginTop: 12, display: "inline-block", background: "#FBDCC8", color: "#573523", borderRadius: 999, padding: "4px 14px", fontSize: 14, fontWeight: 700 }}>
                 {grade}
               </div>
             )}
-            {note && <div style={{ marginTop: 14, fontSize: 14, color: "#4A3340" }}>{note}</div>}
-            <div style={{ marginTop: 18, fontSize: 11, color: "#7E6B76" }}>Teacher: {teacherName}</div>
+            {note && <div style={{ marginTop: 14, fontSize: 14, color: "#403548" }}>{note}</div>}
+            <div style={{ marginTop: 18, fontSize: 11, color: "#7A7080" }}>Teacher: {teacherName}</div>
           </div>
         </div>
       </div>

@@ -119,7 +119,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
             <button
               type="button"
               onClick={() => setPhase("quiz")}
-              className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[14px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover"
+              className="flex items-center gap-2 rounded-control bg-ink px-5 py-2.5 text-[14px] font-bold text-paper shadow-[0_4px_12px_rgba(64,53,72,0.24)] transition-colors hover:bg-ink-deep"
             >
               <Icon name="check" size={16} />
               Check what I remember

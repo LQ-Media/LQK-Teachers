@@ -11,8 +11,8 @@ const RATINGS = [
 ];
 
 const RATING_STYLES = {
-  lancar: "bg-[#FCE9F0] border-[#8E4A66] text-[#8E4A66]",
-  mutqin: "bg-[#EEE9F9] border-[#5E3448] text-[#5E3448]",
+  lancar: "bg-[#F6D3DD] border-[#6B3E4C] text-[#6B3E4C]",
+  mutqin: "bg-[#DCD3F0] border-[#4A3D63] text-[#4A3D63]",
   needs_review: "bg-[#FBE3E8] border-[#8E3D52] text-[#8E3D52]",
 };
 

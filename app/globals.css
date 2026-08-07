@@ -1,31 +1,38 @@
 @import "tailwindcss";
 
-/* LQK brand system — pastel rose with hints of pastel lavender.
-   Rose carries the interface; lavender is the second voice, used sparingly for
-   badges and counters so it reads as an accent rather than a second theme.
-   Everything dark is a deep plum, which is what makes pastel backgrounds
-   legible (plum on rose is 5.4:1, plum on page 8.7:1).
+/* LQK brand system — palette "3d Pastel set" (design handoff, Aug 2026).
+   One neutral: a violet-grey ink on a cool near-white base. Lavender, rose and
+   peach are *surfaces only* — category/status tiles, never text and never a
+   button fill. The lone mid-tone accent (#8C7AA8) is for links, active nav,
+   focus rings and selected states. Primary buttons are ink-filled. Text on a
+   pastel always uses that pastel's dark "on-" partner, never white.
 
-   Token NAMES are historical — this palette replaced an olive/gold one and the
-   names are referenced in hundreds of places, so `gold` now means rose and
-   `sage` means lavender. Change the values here, never the names. */
+   Fixed pastel meanings (keep consistent across screens):
+   lavender = selected/active + mastered; rose = people/badges; peach = pending
+   and warm tiles (avatars). Max three pastel surfaces per viewport.
+
+   Token NAMES are historical — this palette replaced rose/lavender, which
+   itself replaced olive/gold, and the names are referenced in hundreds of
+   places, so `gold` now means the violet accent, `gold-soft` the lavender
+   surface, `sage`/`sage-soft` the rose pair, and `sand` peach. Change the
+   values here, never the names. */
 :root {
-  --color-ink: #5E3448;         /* deep plum — dark primary (buttons, on-pastel text) */
-  --color-ink-soft: #8A5A70;
-  --color-ink-deep: #56334A;
-  --color-gold: #F2A9C0;        /* pastel rose — the accent */
-  --color-gold-soft: #FCE6EE;   /* rose wash — icon tiles, active fills */
-  --color-sage: #7B62B0;        /* pastel lavender, deepened for text */
-  --color-sage-soft: #EEE9F9;   /* lavender wash — badges */
-  --color-sand: #F4D5E1;        /* rose tile backgrounds */
-  --color-paper: #FEF8FA;       /* rose-tinted page */
-  --color-paper-deep: #FAEBF1;
-  --color-rust: #C05E72;        /* error — a rose-red, still distinct from the accent */
+  --color-ink: #403548;         /* violet-grey ink — dark primary (buttons, headings) */
+  --color-ink-soft: #61536D;    /* hairline/soft on dark */
+  --color-ink-deep: #4C4056;    /* hover fill for ink buttons (raised, per handoff) */
+  --color-gold: #8C7AA8;        /* the accent — links, active nav, focus, selection */
+  --color-gold-soft: #DCD3F0;   /* pastel lavender surface — icon tiles, active fills */
+  --color-sage: #6B3E4C;        /* on-rose text (labels/numbers on the rose surface) */
+  --color-sage-soft: #F6D3DD;   /* pastel rose surface — badges, counters */
+  --color-sand: #FBDCC8;        /* pastel peach surface — avatar/warm tiles */
+  --color-paper: #F7F5F8;       /* page base */
+  --color-paper-deep: #F0EDF4;  /* deeper base — hover fills, muted chips */
+  --color-rust: #C05E72;        /* error — rose-red, distinct from the accent */
   --color-rust-soft: #FBE3E8;
-  --color-charcoal: #5E3448;    /* headings/body dark */
-  --color-charcoal-soft: #7E6B76; /* muted */
-  --color-line: #F3E1E8;
-  --color-gold-hover: #E890AE;
+  --color-charcoal: #403548;    /* headings/body dark (11:1 on base) */
+  --color-charcoal-soft: #7A7080; /* muted — labels, helper text */
+  --color-line: #EAE5EE;
+  --color-gold-hover: #7B6996;
 
   /* Mobile bottom tab bar: the tab row plus ground clearance for thumbs.
      The 2.5rem floor lifts the bar clear of the iPhone home-indicator area

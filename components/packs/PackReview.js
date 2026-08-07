@@ -26,7 +26,7 @@ export default function PackReview({ id, status }) {
           type="button"
           onClick={() => run("approve", approvePack)}
           disabled={busy !== null}
-          className="flex items-center gap-2 rounded-control bg-gold px-5 py-2.5 text-[13px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover disabled:opacity-50"
+          className="flex items-center gap-2 rounded-control bg-ink px-5 py-2.5 text-[13px] font-bold text-paper shadow-[0_4px_12px_rgba(64,53,72,0.24)] transition-colors hover:bg-ink-deep disabled:opacity-50"
         >
           <Icon name="check" size={15} />
           {busy === "approve" ? "Approving…" : "Approve for teachers"}

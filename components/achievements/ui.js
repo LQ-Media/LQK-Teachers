@@ -65,7 +65,7 @@ export function ProgressBar({ value, className = "" }) {
 export function Pill({ children, tone = "default" }) {
   const tones = {
     default: "bg-paper-deep text-charcoal-soft",
-    gold: "bg-gold-soft text-[#8E4A66]",
+    gold: "bg-gold-soft text-[#4A3D63]",
     good: "bg-sage-soft text-sage",
     bad: "bg-rust-soft text-rust",
   };

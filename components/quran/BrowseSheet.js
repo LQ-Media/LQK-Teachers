@@ -171,7 +171,7 @@ export default function BrowseSheet({ state, store, onClose, autoFocusSearch = f
                 onClick={() => go(typedRef.chapter.id, `${typedRef.chapter.id}:${typedRef.ayah}`)}
                 className="flex w-full items-center gap-3 rounded-card border-[0.5px] border-gold bg-gold-soft/40 px-3.5 py-3 text-left transition-colors hover:bg-gold-soft"
               >
-                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-gold text-ink">
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-gold text-white">
                   <Icon name="chevron-right" size={16} />
                 </span>
                 <span className="min-w-0 flex-1">

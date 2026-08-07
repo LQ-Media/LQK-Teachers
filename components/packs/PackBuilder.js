@@ -194,7 +194,7 @@ export default function PackBuilder({ surahs, canGenerate }) {
           onClick={onGenerate}
           disabled={busy !== null || !canGenerate}
           title={canGenerate ? undefined : "Pack generation is not configured on this server"}
-          className="flex items-center gap-2 rounded-control bg-gold px-5 py-2 text-[13px] font-bold text-ink shadow-[0_4px_12px_rgba(242,169,192,0.35)] transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-2 rounded-control bg-ink px-5 py-2 text-[13px] font-bold text-paper shadow-[0_4px_12px_rgba(64,53,72,0.24)] transition-colors hover:bg-ink-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name="sparkles" size={15} />
           {busy === "generate" ? "Building…" : "Build the plan"}

@@ -15,7 +15,7 @@ export default function manifest() {
     dir: "ltr",
     categories: ["education", "productivity"],
     background_color: "#E47687", // rose — matches the app-icon artwork on the launch splash
-    theme_color: "#5E3448", // deep plum — matches the app's UI chrome / status bar
+    theme_color: "#403548", // violet-grey ink — matches the app's UI chrome / status bar
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },

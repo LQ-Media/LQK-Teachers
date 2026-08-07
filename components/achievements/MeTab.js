@@ -230,7 +230,7 @@ function BadgeTile({ badge }) {
     >
       <span
         className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${
-          earned ? "bg-gold text-ink" : "bg-paper-deep text-charcoal-soft/60"
+          earned ? "bg-gold text-white" : "bg-paper-deep text-charcoal-soft/60"
         }`}
       >
         <Icon name={earned ? badge.icon : "lock"} size={17} />
