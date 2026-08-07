@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { updateReadingEntry, deleteReadingEntry } from "@/lib/actions/reading";
 import { formatDateTime } from "@/lib/date";
 import Icon from "@/components/Icon";
+import EmptyArt from "@/components/EmptyArt";
 
 function isoToLocalInput(iso) {
   if (!iso) return "";
@@ -25,7 +26,7 @@ function label(entry) {
 
 export default function ReadingHistory({ entries }) {
   if (!entries.length) {
-    return <p className="py-4 text-[13px] text-charcoal-soft">No reading entries yet — log one above.</p>;
+    return <EmptyArt art="reading">No reading entries yet — log one above.</EmptyArt>;
   }
   return (
     <ul>

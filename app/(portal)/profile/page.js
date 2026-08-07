@@ -29,7 +29,12 @@ export default async function ProfilePage() {
   return (
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
-        <PageHeading icon="user" title="My profile" subtitle="Update your photo and password." />
+        <PageHeading
+          route="/profile"
+          icon="user"
+          title="My profile"
+          subtitle="Update your photo and password."
+        />
       </div>
 
       {/* Account details (managed by an admin) */}

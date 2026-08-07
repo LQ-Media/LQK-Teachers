@@ -6,6 +6,7 @@ import { surahByNumber } from "@/lib/quran/surah-list";
 import { titleCase, initials, fmtDate, sgTodayLabel, gradePillClass } from "./util";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
+import EmptyArt from "@/components/EmptyArt";
 import LogSheet from "./LogSheet";
 import HistoryPanel from "./HistoryPanel";
 
@@ -50,6 +51,7 @@ export default function TrackerApp({ teacherName, allowedClasses, initialClass, 
     <div className="px-4 py-6 sm:p-6 md:p-8 max-w-5xl">
       <div className="mb-5">
         <PageHeading
+          route="/hafalan"
           icon="clipboard-check"
           title="Quran tracker"
           subtitle={`Ahlan, ${teacherName} · ${titleCase(cls)} · ${sgTodayLabel()}`}
@@ -83,8 +85,10 @@ export default function TrackerApp({ teacherName, allowedClasses, initialClass, 
       {loading ? (
         <div className="py-16 text-center text-[13px] text-charcoal-soft">Loading class…</div>
       ) : roster.length === 0 ? (
-        <div className="rounded-card border-[0.5px] border-line bg-white p-8 text-center text-[13px] text-charcoal-soft">
-          No students in <strong className="text-charcoal">{titleCase(cls)}</strong> yet.
+        <div className="rounded-card border-[0.5px] border-line bg-white">
+          <EmptyArt art="tracker">
+            No students in <strong className="text-charcoal">{titleCase(cls)}</strong> yet.
+          </EmptyArt>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">

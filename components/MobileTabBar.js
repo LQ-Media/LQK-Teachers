@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions/auth";
 import Icon from "@/components/Icon";
+import { spotImage } from "@/lib/spot";
 
 // The five destinations that earn a permanent slot; everything else lives in
 // the "More" sheet. Mirrors the desktop sidebar's icons exactly. Labels are
@@ -126,19 +127,35 @@ export default function MobileTabBar({ role }) {
             <div className="grid grid-cols-4 gap-1.5">
               {moreItems.map((item) => {
                 const active = isUnder(pathname, item.href);
+                const spot = spotImage(item.href);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     className="flex flex-col items-center gap-1.5 rounded-card p-2.5 transition-transform duration-150 ease-out active:scale-95"
                   >
-                    <span
-                      className={`flex h-11 w-11 items-center justify-center rounded-control ${
-                        active ? "bg-gold text-ink" : "bg-sand/50 text-ink"
-                      }`}
-                    >
-                      <Icon name={item.icon} size={20} />
-                    </span>
+                    {spot ? (
+                      // The active ring replaces the fill a line icon would get:
+                      // the pastel ground is already baked into the render.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={spot}
+                        alt=""
+                        width={44}
+                        height={44}
+                        className={`h-11 w-11 rounded-control object-cover ${
+                          active ? "ring-2 ring-gold ring-offset-2 ring-offset-paper" : ""
+                        }`}
+                      />
+                    ) : (
+                      <span
+                        className={`flex h-11 w-11 items-center justify-center rounded-control ${
+                          active ? "bg-gold text-ink" : "bg-sand/50 text-ink"
+                        }`}
+                      >
+                        <Icon name={item.icon} size={20} />
+                      </span>
+                    )}
                     <span className="text-center text-[11px] font-semibold leading-tight text-charcoal">
                       {item.label}
                     </span>

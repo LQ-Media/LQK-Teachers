@@ -8,6 +8,7 @@ import { monthLabel } from "@/lib/hours/rates";
 import { titleCase } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
 import { Avatar, Card, Empty, field, Pill, ProgressBar, SectionTitle, StarRow } from "./ui";
+import EmptyArt from "@/components/EmptyArt";
 
 /**
  * The two social views. Only a Top 5 is ever listed, and each row shows a score
@@ -57,10 +58,10 @@ export default function LeaderboardTab({
       <div>
         <SectionTitle note={monthLabel(season)}>{heading} · Top 5 this season</SectionTitle>
         {rows.length === 0 ? (
-          <Empty>
+          <EmptyArt art="achievements">
             No points scored {isOrg ? "yet" : "in this branch yet"} this season. Reading in the Quran
             reader is the quickest way onto the board.
-          </Empty>
+          </EmptyArt>
         ) : (
           <div className="space-y-2.5">
             {rows.map((r, i) => (

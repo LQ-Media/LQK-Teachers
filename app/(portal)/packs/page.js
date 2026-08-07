@@ -6,6 +6,7 @@ import { ageLabel } from "@/lib/notes/taxonomy";
 import { ALL_SURAHS } from "@/lib/quran/surah-list";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
+import EmptyArt from "@/components/EmptyArt";
 import PackBuilder from "@/components/packs/PackBuilder";
 
 export const metadata = { title: "Lesson Packs" };
@@ -40,6 +41,7 @@ export default async function PacksPage() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/packs"
           icon="clipboard-check"
           title="Lesson Packs"
           subtitle="A ready 30-minute plan for any portion — the same plan for every teacher covering the same ayat. Built once, reviewed once, then free to use forever."
@@ -75,11 +77,13 @@ export default async function PacksPage() {
           )}
         </h2>
         {approved.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-white/60 px-5 py-10 text-center text-[13px] text-charcoal-soft">
-            {canReview
-              ? "No approved packs yet. Build one above, check it, then approve it."
-              : "No packs have been published yet. Your reviewer builds these."}
-          </p>
+          <div className="rounded-card border border-dashed border-line bg-white/60">
+            <EmptyArt art="packs">
+              {canReview
+                ? "No approved packs yet. Build one above, check it, then approve it."
+                : "No packs have been published yet. Your reviewer builds these."}
+            </EmptyArt>
+          </div>
         ) : (
           <ul className="space-y-2">
             {approved.map((p) => (

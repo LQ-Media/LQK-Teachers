@@ -164,6 +164,7 @@ export default function QiblaFinder() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/qibla"
           icon="compass"
           title="Qibla finder"
           subtitle="Lay your phone flat and turn until the Kaaba marker reaches the top."

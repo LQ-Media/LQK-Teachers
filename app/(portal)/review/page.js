@@ -21,6 +21,7 @@ export default async function ReviewPage() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/review"
           icon="clipboard-check"
           title="Hafalan review"
           subtitle="All pending submissions across all four locations."

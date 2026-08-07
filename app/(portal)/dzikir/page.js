@@ -27,6 +27,7 @@ export default async function DzikirPage() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/dzikir"
           icon="moon-star"
           title="Wirid & Doa"
           subtitle={`A library of wirid, doa and maulid — ${totalPassages.toLocaleString()} passages across ${totalSections} collections. Arabic with transliteration, shown with English or Bahasa.`}

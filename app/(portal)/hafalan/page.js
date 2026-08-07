@@ -14,6 +14,7 @@ export default async function HafalanPage() {
     return (
       <div className="px-4 py-6 sm:p-8 max-w-3xl">
         <PageHeading
+          route="/hafalan"
           icon="clipboard-check"
           title="Quran tracker"
           subtitle="No class is assigned to your account yet. Ask an admin to set your branch so your student roster appears here."

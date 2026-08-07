@@ -40,6 +40,7 @@ export default async function KalimahPage() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/kalimah"
           icon="star"
           title="Kalimah"
           subtitle={`Five minutes of Quranic Arabic a day, word by word. Everyone at LQK studies the same ayah today — day ${position.day} of ${position.total}.`}

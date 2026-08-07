@@ -61,14 +61,44 @@ export default async function DashboardPage({ searchParams }) {
         </div>
       )}
 
-      {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-white to-paper-deep px-6 py-12 md:px-10">
-        <div className="mx-auto max-w-[1100px] text-center">
+      {/* Hero. The welcome party and the corner props are white-ground renders
+          composited with multiply (see components/EmptyArt for why) — this
+          gradient runs white → cream, so their plates vanish into it. */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-white to-paper-deep px-6 pb-12 pt-6 md:px-10">
+        {/* eslint-disable @next/next/no-img-element */}
+        {/* The lantern hangs off the hero's top edge — the one place in the
+            portal with a "ceiling" for its cord to disappear into. */}
+        <img
+          src="/prop/lantern.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-4 left-10 hidden w-20 select-none opacity-70 mix-blend-multiply md:block"
+        />
+        <img
+          src="/prop/crescent.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-8 bottom-6 hidden w-24 select-none opacity-70 mix-blend-multiply md:block"
+        />
+        <img
+          src="/prop/stars.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute right-2 top-1 hidden w-36 select-none opacity-70 mix-blend-multiply md:block"
+        />
+        <div className="relative mx-auto max-w-[1100px] text-center">
+          <img
+            src="/hero-dashboard.png"
+            alt=""
+            aria-hidden="true"
+            className="mx-auto mb-1 h-[132px] w-auto select-none mix-blend-multiply md:h-[164px]"
+          />
           <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
             Assalamualaikum, {firstName}.
           </h1>
           <HeroClock />
         </div>
+        {/* eslint-enable @next/next/no-img-element */}
       </div>
 
       {/* Prayer times (overlaps the hero slightly) */}
@@ -83,6 +113,7 @@ export default async function DashboardPage({ searchParams }) {
             delay={0}
             tint="sand"
             icon="clock"
+            prop="crescent"
             label="Work hours"
             value={formatHM(workMinutes)}
             note={clockedIn ? "Clocked in now" : "This month"}
@@ -91,11 +122,20 @@ export default async function DashboardPage({ searchParams }) {
             delay={100}
             tint="rose"
             icon="clipboard-check"
+            prop="stars"
             label="Students logged"
             value={classSummary.length ? `${loggedToday} / ${studentTotal}` : "—"}
             note="Today"
           />
-          <StatCard delay={200} tint="lavender" icon="notebook" label="Reading entries" value={String(readingThisWeek)} note="This week" />
+          <StatCard
+            delay={200}
+            tint="lavender"
+            icon="notebook"
+            prop="cloud"
+            label="Reading entries"
+            value={String(readingThisWeek)}
+            note="This week"
+          />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -150,28 +190,54 @@ const STAT_TINTS = {
   white: { bg: "bg-white", label: "text-charcoal-soft" },
 };
 
-function StatCard({ tint, icon, label, value, note, valueClass, delay }) {
+// Where each clay prop leaves the card. The lantern hangs, so its cord has to
+// run off the TOP edge — crop it at the bottom and it reads as a jar.
+const PROP_PLACE = {
+  lantern: "-top-7 right-6 w-20",
+  cloud: "-bottom-5 -right-4 w-28",
+  stars: "-bottom-4 -right-2 w-32",
+  crescent: "-bottom-6 -right-4 w-24",
+  default: "-bottom-6 -right-5 w-28",
+};
+
+function StatCard({ tint, icon, prop, label, value, note, valueClass, delay }) {
   const t = STAT_TINTS[tint] || STAT_TINTS.white;
   return (
     <div
-      className={`lqk-rise rounded-card ${t.bg} p-6 shadow-[0_8px_24px_rgba(64,53,72,0.08)]`}
+      className={`lqk-rise relative overflow-hidden rounded-card ${t.bg} p-6 shadow-[0_8px_24px_rgba(64,53,72,0.08)]`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="mb-3 flex items-center gap-3">
+      {/* Clay prop bleeding off one edge — multiply drops its white plate onto
+          the pastel, so it tints rather than sitting on top. Each prop leaves
+          by the edge its own gravity implies (see PROP_PLACE). */}
+      {prop ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/prop/${prop}.png`}
+          alt=""
+          aria-hidden="true"
+          className={`pointer-events-none absolute select-none opacity-45 mix-blend-multiply ${
+            PROP_PLACE[prop] || PROP_PLACE.default
+          }`}
+        />
+      ) : null}
+      <div className="relative mb-3 flex items-center gap-3">
         <span className="text-ink">
           <Icon name={icon} size={26} strokeWidth={1.5} />
         </span>
         <span className={`text-[12px] font-semibold uppercase tracking-wide ${t.label}`}>{label}</span>
       </div>
-      <div className={`font-heading text-[22px] font-bold ${valueClass || "text-charcoal"}`}>{value}</div>
-      <div className={`text-[13px] ${t.label}`}>{note}</div>
+      <div className={`relative font-heading text-[22px] font-bold ${valueClass || "text-charcoal"}`}>
+        {value}
+      </div>
+      <div className={`relative text-[13px] ${t.label}`}>{note}</div>
     </div>
   );
 }
 
 function TrackerCard({ title, href, image, children }) {
   return (
-    <div className="lqk-rise relative overflow-hidden rounded-card border border-line bg-white p-7">
+    <div className="lqk-rise group relative overflow-hidden rounded-card border border-line bg-white p-7 shadow-[0_1px_2px_rgba(64,53,72,0.04)] transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(64,53,72,0.10)] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={image}

@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
+import EmptyArt from "@/components/EmptyArt";
 import { clockIn, clockOut, addPastSession, editSession, deleteSession } from "@/lib/actions/hours";
 import {
   OT_REASONS,
@@ -42,6 +43,7 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <PageHeading
+          route="/hours"
           icon="clock"
           title="Work hours"
           subtitle={`Clock in when you start, clock out when you’re done. ${monthName}.`}
@@ -99,8 +101,8 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
       </div>
 
       {sessions.length === 0 ? (
-        <div className="rounded-card border-[0.5px] border-line bg-white p-8 text-center text-[13px] text-charcoal-soft">
-          No sessions logged this month yet.
+        <div className="rounded-card border-[0.5px] border-line bg-white">
+          <EmptyArt art="hours">No sessions logged this month yet.</EmptyArt>
         </div>
       ) : (
         <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">

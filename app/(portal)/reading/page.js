@@ -35,6 +35,7 @@ export default async function ReadingPage() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/reading"
           icon="notebook"
           title="My reading"
           subtitle="Self-logged reading practice — saved immediately, no approval needed."

@@ -42,6 +42,7 @@ export default async function NotebookPage() {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/notebook"
           icon="mic"
           title="Halaqah Notebook"
           subtitle="Capture a kuliah, a page from a kitab, or your own notes — and get them back as tidy key points, references and class ideas."

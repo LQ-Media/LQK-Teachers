@@ -117,6 +117,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
     <div className="px-4 py-6 sm:p-8 max-w-5xl">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <PageHeading
+          route="/admin"
           icon="settings"
           title="Admin"
           subtitle="Manage accounts, the tracked staff roster, and work hours."

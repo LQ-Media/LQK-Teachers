@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { TOPICS, AGE_GROUPS, ageLabel } from "@/lib/notes/taxonomy";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
+import EmptyArt from "@/components/EmptyArt";
 
 export const metadata = { title: "Ilmu Bank" };
 
@@ -70,6 +71,7 @@ export default async function IlmuPage({ searchParams }) {
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
       <div className="mb-6">
         <PageHeading
+          route="/ilmu"
           icon="users"
           title="Ilmu Bank"
           subtitle={`What the rest of the team has been learning. ${total} note${total === 1 ? "" : "s"} shared so far — add yours from the Halaqah Notebook.`}
@@ -135,11 +137,15 @@ export default async function IlmuPage({ searchParams }) {
       </form>
 
       {notes.length === 0 ? (
-        <p className="rounded-card border border-dashed border-line bg-white/60 px-5 py-10 text-center text-[13px] text-charcoal-soft">
-          {filtering
-            ? "Nothing matches that search yet."
-            : "The bank is empty. Summarise a note in your Halaqah Notebook, then share it here."}
-        </p>
+        <div className="rounded-card border border-dashed border-line bg-white/60">
+          {/* A search that found nothing isn't an empty bank — keep the art for
+              the genuinely-empty case so it doesn't read as a dead end. */}
+          <EmptyArt art={filtering ? null : "ilmu"}>
+            {filtering
+              ? "Nothing matches that search yet."
+              : "The bank is empty. Summarise a note in your Halaqah Notebook, then share it here."}
+          </EmptyArt>
+        </div>
       ) : (
         <ul className="space-y-2.5">
           {notes.map((n) => (
