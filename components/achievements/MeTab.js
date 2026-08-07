@@ -152,8 +152,19 @@ export default function MeTab({ me, season, myCerts, certTypes, myHonours, myNom
             if (!inGroup.length) return null;
             return (
               <div key={group}>
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-charcoal-soft">
-                  {group}
+                <div className="mb-2 flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/badge/${group.toLowerCase()}.png`}
+                    alt=""
+                    aria-hidden="true"
+                    width={28}
+                    height={28}
+                    className="h-7 w-7 flex-shrink-0 rounded-[8px] object-cover"
+                  />
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-charcoal-soft">
+                    {group}
+                  </span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {inGroup.map((b) => (

@@ -1,3 +1,10 @@
+// ⚠️ SUPERSEDED 2026-08-07 — DO NOT RUN without reading this first.
+// The checked-in icons were replaced by hand with a transparent-background set
+// (rose mark, no plate) plus an opaque plum apple-touch tile. This script
+// flattens alpha onto a solid ground by design, so re-running it will overwrite
+// those files and bring the old squarish backgrounds back. Update the script (or
+// delete it) before using it again.
+//
 // Regenerates the home-screen / PWA app icons from the LQK brand artwork.
 //
 // Source: scripts/app-icon-source.png (the terracotta "LQK Teachers Portal"
