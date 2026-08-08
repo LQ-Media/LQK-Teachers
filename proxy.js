@@ -3,8 +3,22 @@ import { decrypt } from "@/lib/session";
 
 const PUBLIC_ROUTES = ["/login"];
 
+// Open routes are served to everyone and redirect nobody — unlike /login,
+// which bounces an already-signed-in user to the dashboard.
+//
+// /invite/<slug> is the event invitation a parent opens from their email or
+// WhatsApp. Parents have no portal account, so gating it would make every
+// invite a dead end; and bouncing signed-in staff to /dashboard would stop an
+// admin ever opening their own invite to check it.
+const OPEN_PREFIXES = ["/invite/"];
+
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
+
+  if (OPEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
 
   const token = request.cookies.get("lqk_session")?.value;

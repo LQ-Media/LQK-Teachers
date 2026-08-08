@@ -88,6 +88,18 @@ redeploy (proves the volume is wired correctly).
 - Wait for propagation, then confirm `https://teachers.littlequrankids.sg`
   serves the portal with a valid certificate.
 
+## Event invites
+
+Admins can design an event invitation at `/events` and send it to parents by
+email (Google Workspace SMTP) and WhatsApp (WATI). Parents open a public page
+at `/invite/<slug>` — no login — and RSVP; responses appear live in the portal.
+
+Both channels stay switched off until their environment variables are set; the
+builder works without them and says so. **WhatsApp additionally needs a message
+template you create in WATI and Meta approves** — that step cannot be done from
+this repo. Setup, the exact template wording, and the sending limits are in
+[`docs/EVENTS.md`](docs/EVENTS.md).
+
 ## Notes
 
 - `next.config.mjs` uses `output: "standalone"`. The build warns that the whole
