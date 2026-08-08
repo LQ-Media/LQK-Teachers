@@ -6,7 +6,7 @@ import Icon from "@/components/Icon";
 import InviteCard from "./InviteCard";
 import SendPanel from "./SendPanel";
 import { saveEvent, uploadEventAsset, clearEventAsset } from "@/lib/actions/events";
-import { FONTS, ALIGNMENTS, LANGUAGES, OVERLAY_MIN, OVERLAY_MAX } from "@/lib/events/design";
+import { FONTS, ALIGNMENTS, LANGUAGES, OVERLAY_MIN, OVERLAY_MAX, t } from "@/lib/events/design";
 
 // ── Small form primitives ──────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ function Swatch({ label, value, onChange }) {
 
 const SAVE_DEBOUNCE_MS = 900;
 
-export default function InviteBuilder({ initialEvent, initialRecipients, lists, channels }) {
+export default function InviteBuilder({ initialEvent, initialRecipients, initialCounts, initialJob, lists, channels }) {
   const [event, setEvent] = useState(initialEvent);
   const [recipients, setRecipients] = useState(initialRecipients);
   const [saveState, setSaveState] = useState("saved"); // saved | saving | error
@@ -372,6 +372,8 @@ export default function InviteBuilder({ initialEvent, initialRecipients, lists, 
             event={event}
             recipients={recipients}
             setRecipients={setRecipients}
+            counts={initialCounts}
+            initialJob={initialJob}
             lists={lists}
             channels={channels}
             onBeforeSend={flush}
@@ -386,22 +388,22 @@ export default function InviteBuilder({ initialEvent, initialRecipients, lists, 
           <div className="overflow-hidden rounded-card border border-line" style={{ background: event.design.pageColor }}>
             <div className="p-4">
               <InviteCard event={event}>
+                {/* A dead stand-in for the real RSVP panel: same wording and
+                    same colours, but nothing to press in a preview. */}
                 <div className="border-t px-8 py-6 text-center" style={{ borderColor: `${event.design.mutedColor}22` }}>
-                  <p className="text-[15px] font-bold">
-                    {event.language === "ms" ? "Adakah anda akan hadir?" : "Will you be joining us?"}
-                  </p>
+                  <p className="text-[15px] font-bold">{t(event.language).willYouCome}</p>
                   <div className="mt-3 flex flex-wrap justify-center gap-2">
                     <span
                       className="rounded-full px-5 py-2.5 text-[14px] font-bold"
                       style={{ background: event.design.accentColor, color: event.design.buttonTextColor }}
                     >
-                      {event.language === "ms" ? "Ya, saya akan hadir" : "Yes, I'll be there"}
+                      {t(event.language).yes}
                     </span>
                     <span
                       className="rounded-full px-5 py-2.5 text-[14px] font-bold"
                       style={{ color: event.design.mutedColor, boxShadow: `inset 0 0 0 1.5px ${event.design.mutedColor}55` }}
                     >
-                      {event.language === "ms" ? "Maaf, saya tidak dapat hadir" : "Sorry, I can't make it"}
+                      {t(event.language).no}
                     </span>
                   </div>
                 </div>

@@ -25,10 +25,16 @@ Nothing here needs a parent to have a login.
   authorisation story for an RSVP: it identifies the parent so they don't have
   to type anything, and it is why a forwarded link (no token) shows the invite
   but no RSVP buttons.
-- **Sending runs in batches from the browser**, eight parents at a time with a
-  pause between each. A 200-parent send would otherwise outlive the request
-  timeout. Each recipient row records its own outcome, so re-running only picks
-  up whoever is still pending — a retry never double-sends.
+- **Sending runs on the server**, one parent at a time with a pause between
+  each (`lib/events/job.js`). The browser starts the job and then only polls
+  aggregate counts, so you can close the page mid-send and the invites keep
+  going out — which matters, because 1,000 parents takes about fifteen minutes.
+  Each recipient row records its own outcome, so pressing Send again picks up
+  only whoever is still pending and never messages a parent twice.
+- **A server restart mid-send stops it.** The job lives in the service's
+  memory, not a queue. Nobody is messaged twice, and the page will show the
+  remaining parents with a "Send to the remaining N" button — but nothing
+  restarts it automatically, so glance at the page after a deploy.
 
 ## Setup
 
@@ -150,19 +156,76 @@ EVENT_SEND_DELAY_MS=900   # pause between parents; lower only if both providers 
 4. **Test it on yourself.** Put your own email and WhatsApp number in step 3 of
    the Send panel and press *Send test*. Read it on your phone. There is no
    unsend.
-5. **Send.** The button names the exact number of parents it will reach. A
-   progress bar tracks the batches; failures are listed per parent with the
-   reason, and can be retried per channel without touching anyone else.
+5. **Send.** The button names the exact number of parents it will reach. The
+   send runs on the server, so you can close the page and come back — the
+   progress bar picks up where it is. Failures are listed per parent with the
+   reason and can be retried per channel without touching anyone else.
 
-## Language
+## Languages
 
-Each event has a language toggle (English / Bahasa Melayu) that changes the
-fixed wording — "You're invited", "Will you be joining us?", the RSVP buttons.
-Your own event text is used exactly as you type it.
+Each event has a language toggle. Five are supported:
 
-> **The Malay strings in `lib/events/design.js` are a first pass and have not
-> been reviewed by a native speaker.** Please read them before the first Malay
-> invite goes out; they are all in the `ms` block of the `STRINGS` object.
+| Code | Language | Notes |
+| ---- | -------- | ----- |
+| `en` | English | |
+| `ms` | Bahasa Melayu | |
+| `zh` | 中文 (Mandarin) | |
+| `ta` | தமிழ் (Tamil) | |
+| `ar` | العربية (Arabic) | **Right-to-left** — the whole invite flips |
+
+The toggle changes only the fixed scaffolding: "You're invited", "Will you be
+joining us?", the RSVP buttons, the field labels. Your own event text is used
+exactly as you type it, so type it in the language you picked.
+
+**Arabic flips the layout.** The invite page and the email both carry
+`dir="rtl"`, and the alignment control follows suit — picking "left" puts the
+text where Arabic starts reading, on the right. Arabic reuses the Naskh face
+the Quran reader already loads; Chinese and Tamil name explicit system-font
+fallbacks so they look the same on every device.
+
+**Dates are formatted deterministically.** Time of day is assembled from parts
+rather than taken from `Intl` whole, because Node's ICU and the browser's
+disagree on where Tamil puts AM/PM — which produced a hydration error and could
+have shown a parent one time in the email and a different one on the page it
+linked to. The cost is that Tamil reads "10:00 AM" rather than the
+CLDR-preferred "AM 10:00".
+
+> **The Malay, Mandarin, Tamil and Arabic wording is a first pass and has NOT
+> been checked by a native speaker.** Please read it before the first invite
+> goes out in that language. It is all in the `STRINGS` object in
+> `lib/events/design.js`, one block per language.
+
+### WhatsApp templates are per language
+
+A WhatsApp template's body is fixed when Meta approves it — WATI does not
+translate it at send time. An invite set to Tamil, sent through an English
+template, arrives in English with Tamil values dropped into it.
+
+So create one approved template per language you actually send in, and name
+them with `WATI_TEMPLATE_NAME_MS`, `_ZH`, `_TA`, `_AR`. Anything unset falls
+back to `WATI_TEMPLATE_NAME`, and the builder shows a warning before the send
+when it is about to do that. The five placeholders and their order are the same
+in every language.
+
+## Sending to a large list
+
+A 1,000-parent send takes roughly **fifteen minutes** and the builder tells you
+so before you press the button. Two provider limits bite at that size:
+
+- **Google Workspace: ~2,000 recipients per day** (a free gmail.com account:
+  500). One invite to 1,000 parents fits, but it is half your daily allowance —
+  and a second send the same day may start bouncing.
+- **WhatsApp messaging tier.** Meta caps how many *unique* people a business
+  number may message in 24 hours: commonly **250** for a new number, then
+  1,000, then 10,000 as your tier is raised. Above the cap the remaining
+  messages **fail rather than queue** — they will show as failed in the
+  responses table, and "retry" the next day picks up exactly those.
+
+Both warnings appear in the Send panel once a list passes 200 parents.
+
+The responses table shows the first 250 rows and filters (Attending / Can't /
+No reply / Failed) narrow it — a thousand rows in one scroll box is not
+something anyone reads.
 
 ## Testing
 

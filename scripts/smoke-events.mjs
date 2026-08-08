@@ -9,8 +9,8 @@
 
 import assert from "node:assert/strict";
 import { parseCsv, guessMapping, looksLikeHeader, rowsToContacts, normalizePhone } from "../lib/events/csv.js";
-import { normalizeDesign, DEFAULT_DESIGN, t } from "../lib/events/design.js";
-import { formatWhen, formatWhenShort } from "../lib/events/format.js";
+import { normalizeDesign, DEFAULT_DESIGN, t, LANGUAGES, isRtl, dirFor, resolveAlign, fontCss, fontEmail } from "../lib/events/design.js";
+import { formatWhen, formatWhenShort, formatEventTime } from "../lib/events/format.js";
 import { renderInviteEmail, renderInviteText, safeUrl, escapeHtml } from "../lib/events/email-html.js";
 
 let failures = 0;
@@ -202,6 +202,118 @@ check("produces a plain-text alternative", () => {
   assert.match(text, /Graduation Day 2026/);
   assert.match(text, /https:\/\/x\.test\/i/);
   assert.ok(!text.includes("<"), "text part must not contain markup");
+});
+
+console.log("\nLanguages");
+
+check("offers all five languages", () => {
+  assert.deepEqual(LANGUAGES.map((l) => l.id), ["en", "ms", "zh", "ta", "ar"]);
+});
+
+check("every language defines every string", () => {
+  const keys = Object.keys(t("en"));
+  for (const { id } of LANGUAGES) {
+    const strings = t(id);
+    for (const key of keys) {
+      assert.ok(strings[key], `${id} is missing "${key}"`);
+    }
+    // A missing translation silently falling back to English is worse than a
+    // loud failure, so check the non-English ones actually differ.
+    if (id !== "en") {
+      assert.notEqual(strings.yes, t("en").yes, `${id} "yes" is still English`);
+    }
+  }
+});
+
+check("only Arabic is right-to-left", () => {
+  assert.equal(isRtl("ar"), true);
+  assert.equal(dirFor("ar"), "rtl");
+  for (const id of ["en", "ms", "zh", "ta"]) {
+    assert.equal(isRtl(id), false, `${id} should be LTR`);
+    assert.equal(dirFor(id), "ltr");
+  }
+});
+
+check("alignment flips for Arabic but not for the others", () => {
+  assert.equal(resolveAlign("left", "ar"), "right");
+  assert.equal(resolveAlign("right", "ar"), "left");
+  assert.equal(resolveAlign("center", "ar"), "center");
+  assert.equal(resolveAlign("left", "zh"), "left");
+  assert.equal(resolveAlign("left", "ta"), "left");
+});
+
+check("script fallbacks are appended for non-Latin languages", () => {
+  assert.match(fontCss("georgia", "ar"), /Naskh/);
+  assert.match(fontCss("georgia", "zh"), /PingFang/);
+  assert.match(fontCss("georgia", "ta"), /Tamil/);
+  assert.equal(fontCss("georgia", "en"), "Georgia, 'Times New Roman', serif");
+  // The email stack must never name a webfont variable.
+  assert.ok(!fontEmail("baloo", "ar").includes("var("), "email fonts must be system faces");
+});
+
+check("time always reads clock-first, in every language", () => {
+  // Regression guard. Node's ICU and Chrome's disagree on where Tamil puts
+  // AM/PM ("10:00 AM" vs "AM 10:00"), which produced a React hydration error
+  // and could have shown a parent one time in the email and another on the
+  // page it linked to. formatEventTime assembles the order itself; this checks
+  // it stayed that way.
+  for (const { id } of LANGUAGES) {
+    const time = formatEventTime("2026-09-12T10:00", id);
+    assert.match(time, /^10:00(\s|$)/, `${id} did not start with the clock: ${JSON.stringify(time)}`);
+    assert.ok(!/[\u202f\u00a0]/.test(time), `${id} leaked a non-breaking space: ${JSON.stringify(time)}`);
+  }
+});
+
+check("dates carry no non-breaking spaces to trip hydration", () => {
+  for (const { id } of LANGUAGES) {
+    const when = formatWhen("2026-09-12T10:00", "2026-09-12T12:30", id);
+    assert.ok(!/[\u202f\u00a0]/.test(when), `${id} leaked a non-breaking space`);
+  }
+});
+
+check("dates format per language without crashing", () => {
+  for (const { id } of LANGUAGES) {
+    const when = formatWhen("2026-09-12T10:00", "2026-09-12T12:30", id);
+    assert.ok(when && when.length > 4, `${id} produced no date`);
+  }
+  // Arabic is pinned to Latin digits so the date matches the rest of the card.
+  const arabic = formatWhen("2026-09-12T10:00", "", "ar");
+  assert.match(arabic, /2026/, `expected Latin digits, got: ${arabic}`);
+  assert.ok(!/[٠-٩]/.test(arabic), `expected Latin digits, got: ${arabic}`);
+});
+
+console.log("\nRight-to-left email");
+
+check("Arabic email carries dir=rtl on html and body", () => {
+  const html = renderInviteEmail({ ...sampleEvent, language: "ar" }, { inviteUrl: "https://x.test/i" });
+  assert.match(html, /<html lang="ar" dir="rtl">/);
+  assert.match(html, /<body dir="rtl"/);
+});
+
+check("non-Arabic email stays ltr", () => {
+  for (const id of ["en", "ms", "zh", "ta"]) {
+    const html = renderInviteEmail({ ...sampleEvent, language: id }, { inviteUrl: "https://x.test/i" });
+    assert.match(html, new RegExp(`<html lang="${id}" dir="ltr">`));
+  }
+});
+
+check("every language renders a complete email", () => {
+  for (const { id } of LANGUAGES) {
+    const html = renderInviteEmail({ ...sampleEvent, language: id }, { inviteUrl: "https://x.test/i", recipientName: "Siti" });
+    // Compare against the ESCAPED wording: "You're invited" reaches the email
+    // as "You&#39;re invited", and it must — an unescaped apostrophe here would
+    // mean the renderer was interpolating raw text into attributes elsewhere.
+    assert.ok(html.includes(escapeHtml(t(id).youreInvited)), `${id} heading missing`);
+    assert.ok(html.includes(escapeHtml(t(id).willYouCome)), `${id} RSVP wording missing`);
+    assert.ok(html.includes("Graduation Day 2026"), `${id} title missing`);
+    assert.ok(!/undefined/.test(html), `${id} rendered "undefined"`);
+  }
+});
+
+check("WhatsApp parent fallback is translated", () => {
+  assert.equal(t("ta").parentFallback, "பெற்றோர்");
+  assert.equal(t("ar").parentFallback, "ولي الأمر");
+  assert.equal(t("zh").parentFallback, "家长");
 });
 
 // ── Part 2: the live public page ──────────────────────────────────────────

@@ -16,6 +16,8 @@ export default async function EventBuilderPage({ params }) {
     <InviteBuilder
       initialEvent={detail.event}
       initialRecipients={detail.recipients}
+      initialCounts={detail.counts}
+      initialJob={detail.job}
       lists={detail.lists}
       channels={detail.channels}
     />

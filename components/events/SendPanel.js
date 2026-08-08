@@ -1,9 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Icon from "@/components/Icon";
-import { attachList, sendTestInvite, sendEventBatch, retryFailed, checkChannels } from "@/lib/actions/events";
+import {
+  attachList,
+  sendTestInvite,
+  startSend,
+  sendProgress,
+  refreshRecipients,
+  retryFailed,
+  checkChannels,
+} from "@/lib/actions/events";
+import { LANGUAGES } from "@/lib/events/design";
 
 const STATUS_STYLE = {
   sent: "bg-[#DCD3F0] text-[#4A3D63]",
@@ -12,50 +21,102 @@ const STATUS_STYLE = {
   skipped: "bg-paper-deep text-charcoal-soft/70",
 };
 
+// A thousand rows in the DOM is a scroll container nobody reads. Show a window
+// of them and let the filter do the finding.
+const TABLE_LIMIT = 250;
+
 function Pill({ status, title }) {
   return (
-    <span title={title || undefined} className={`inline-flex rounded-pill px-2 py-0.5 text-[11px] font-bold ${STATUS_STYLE[status] || STATUS_STYLE.pending}`}>
+    <span
+      title={title || undefined}
+      className={`inline-flex rounded-pill px-2 py-0.5 text-[11px] font-bold ${STATUS_STYLE[status] || STATUS_STYLE.pending}`}
+    >
       {status}
     </span>
   );
+}
+
+function minutesFor(count, delayMs) {
+  const minutes = Math.round((count * (delayMs || 900)) / 60000);
+  if (minutes < 1) return "under a minute";
+  return `about ${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
 /**
  * Everything between a finished design and a parent's phone: pick the list,
  * test it on yourself, send, then watch what happened.
  *
- * The send loop runs here in the browser, one batch per round trip, because a
- * 200-parent send at ~1s per parent outlives any request timeout. Each round
- * returns the refreshed recipient rows, so the table below is a live view of
- * the send rather than a guess at its progress.
+ * The send itself runs on the server (lib/events/job.js). This panel starts it
+ * and polls aggregate counts — so closing the tab no longer stops a send
+ * half-way, which at 1,000 parents is a fifteen-minute window in which that
+ * would otherwise be very easy to do.
  */
-export default function SendPanel({ event, recipients, setRecipients, lists, channels, onBeforeSend }) {
+export default function SendPanel({ event, recipients, setRecipients, counts, initialJob, lists, channels, onBeforeSend }) {
   const [listId, setListId] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [testResult, setTestResult] = useState(null);
-  const [progress, setProgress] = useState(null);
   const [useEmail, setUseEmail] = useState(true);
   const [useWhatsapp, setUseWhatsapp] = useState(true);
   const [verify, setVerify] = useState(null);
+  const [stats, setStats] = useState(counts);
+  const [job, setJob] = useState(initialJob || { running: false });
+  const [filter, setFilter] = useState("all");
 
-  const stats = useMemo(() => {
-    const s = {
-      total: recipients.length,
-      emailable: recipients.filter((r) => r.email).length,
-      whatsappable: recipients.filter((r) => r.phone).length,
-      emailSent: recipients.filter((r) => r.emailStatus === "sent").length,
-      emailFailed: recipients.filter((r) => r.emailStatus === "failed").length,
-      waSent: recipients.filter((r) => r.whatsappStatus === "sent").length,
-      waFailed: recipients.filter((r) => r.whatsappStatus === "failed").length,
-      yes: recipients.filter((r) => r.rsvp === "yes").length,
-      no: recipients.filter((r) => r.rsvp === "no").length,
+  const pollRef = useRef(null);
+
+  const pullRecipients = useCallback(async () => {
+    const result = await refreshRecipients(event.id);
+    if (result?.recipients) {
+      setRecipients(result.recipients);
+      setStats(result.counts);
+    }
+  }, [event.id, setRecipients]);
+
+  // Poll only while a send is in flight, and stop the moment it ends.
+  useEffect(() => {
+    if (!job.running) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+      return undefined;
+    }
+
+    pollRef.current = setInterval(async () => {
+      const result = await sendProgress(event.id);
+      if (!result) return;
+      setStats(result.counts);
+      if (!result.job?.running) {
+        setJob(result.job || { running: false });
+        await pullRecipients();
+      }
+    }, 2000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     };
-    s.awaiting = s.total - s.yes - s.no;
-    return s;
-  }, [recipients]);
+  }, [job.running, event.id, pullRecipients]);
+
+  const emailRemaining = useEmail ? stats.emailPending : 0;
+  const waRemaining = useWhatsapp ? stats.waPending : 0;
+  const remaining = emailRemaining + waRemaining;
+
+  const filtered = useMemo(() => {
+    switch (filter) {
+      case "yes":
+        return recipients.filter((r) => r.rsvp === "yes");
+      case "no":
+        return recipients.filter((r) => r.rsvp === "no");
+      case "awaiting":
+        return recipients.filter((r) => !r.rsvp);
+      case "failed":
+        return recipients.filter((r) => r.emailStatus === "failed" || r.whatsappStatus === "failed");
+      default:
+        return recipients;
+    }
+  }, [recipients, filter]);
 
   async function onAttach() {
     if (!listId) return;
@@ -64,7 +125,10 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
     const result = await attachList(event.id, listId);
     setBusy("");
     if (result?.error) setError(result.error);
-    else setRecipients(result.recipients);
+    else {
+      setRecipients(result.recipients);
+      await pullRecipients();
+    }
   }
 
   async function onVerify() {
@@ -90,25 +154,14 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
     setError("");
     setBusy("send");
     await onBeforeSend?.();
-
-    const channelsToUse = { email: useEmail, whatsapp: useWhatsapp };
-    let guard = 0;
-
-    // Loop until the server says nothing is pending. The guard is a runaway
-    // stop, not an expected exit: 400 rounds covers 3,200 parents.
-    while (guard < 400) {
-      guard += 1;
-      const result = await sendEventBatch(event.id, channelsToUse);
-      if (result?.error) {
-        setError(result.error);
-        break;
-      }
-      setRecipients(result.recipients);
-      setProgress({ done: result.total - result.remaining, total: result.total });
-      if (result.done) break;
-    }
-
+    const result = await startSend(event.id, { email: useEmail, whatsapp: useWhatsapp });
     setBusy("");
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setJob(result.job || { running: true });
+    if (result.counts) setStats(result.counts);
   }
 
   async function onRetry(channel) {
@@ -117,11 +170,25 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
     const result = await retryFailed(event.id, channel);
     setBusy("");
     if (result?.error) setError(result.error);
-    else setRecipients(result.recipients);
+    else {
+      if (result.counts) setStats(result.counts);
+      if (result.job) setJob(result.job);
+    }
   }
 
-  const canSend = recipients.length > 0 && (useEmail || useWhatsapp);
-  const sendLabel = busy === "send" ? "Sending…" : `Send to ${recipients.length} parent${recipients.length === 1 ? "" : "s"}`;
+  const canSend = stats.total > 0 && (useEmail || useWhatsapp) && !job.running;
+  const sendLabel = job.running
+    ? "Sending…"
+    : remaining && remaining < stats.total
+      ? `Send to the remaining ${remaining}`
+      : `Send to ${stats.total} parent${stats.total === 1 ? "" : "s"}`;
+
+  const done = stats.total ? stats.emailSent + stats.emailFailed + stats.waSent + stats.waFailed : 0;
+  const totalDeliveries =
+    (useEmail ? stats.emailable : 0) + (useWhatsapp ? stats.whatsappable : 0) || 1;
+
+  const languageLabel = LANGUAGES.find((l) => l.id === event.language)?.label || event.language;
+  const hasOwnTemplate = (channels.whatsappTemplateLanguages || []).includes(event.language);
 
   return (
     <section className="rounded-card border border-line bg-white">
@@ -159,7 +226,7 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
               <button
                 type="button"
                 onClick={onAttach}
-                disabled={!listId || busy === "attach"}
+                disabled={!listId || busy === "attach" || job.running}
                 className="rounded-control bg-paper-deep px-4 py-2.5 text-[13px] font-bold text-charcoal disabled:opacity-50"
               >
                 {busy === "attach" ? "Attaching…" : "Use this list"}
@@ -167,9 +234,10 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
             </div>
           )}
 
-          {recipients.length > 0 ? (
+          {stats.total > 0 ? (
             <p className="mt-2 text-[12px] text-charcoal-soft">
-              {stats.total} parents attached · {stats.emailable} with an email · {stats.whatsappable} with a WhatsApp number
+              {stats.total} parents attached · {stats.emailable} with an email · {stats.whatsappable} with a WhatsApp
+              number
             </p>
           ) : null}
         </div>
@@ -184,16 +252,34 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
             </label>
             <label className="flex items-center gap-2 text-[13px] text-charcoal">
               <input type="checkbox" checked={useWhatsapp} onChange={(e) => setUseWhatsapp(e.target.checked)} className="accent-gold" />
-              WhatsApp {channels.whatsapp ? <span className="text-charcoal-soft">— template “{channels.whatsappTemplate}”</span> : <span className="text-rust">— not configured</span>}
+              WhatsApp{" "}
+              {channels.whatsapp ? (
+                <span className="text-charcoal-soft">— template “{channels.whatsappTemplate}”</span>
+              ) : (
+                <span className="text-rust">— not configured</span>
+              )}
             </label>
           </div>
+
+          {/* A WhatsApp template's wording is fixed at approval time, so a
+              non-English invite silently arrives in English unless that
+              language has its own approved template. Say so before the send,
+              not after a thousand messages. */}
+          {channels.whatsapp && useWhatsapp && event.language !== "en" && !hasOwnTemplate ? (
+            <p className="mt-2 rounded-control bg-[#FDF3E0] px-3 py-2 text-[12px] leading-relaxed text-[#7A5A25]">
+              This invite is in <strong>{languageLabel}</strong>, but no WhatsApp template is configured for it — the
+              WhatsApp message will arrive in whatever language “{channels.whatsappTemplate}” was approved in. The email
+              and the invite page will still be in {languageLabel}. See <code className="font-mono">docs/EVENTS.md</code>.
+            </p>
+          ) : null}
+
           <button type="button" onClick={onVerify} disabled={busy === "verify"} className="mt-2 text-[12px] text-gold underline disabled:opacity-50">
             {busy === "verify" ? "Checking…" : "Check the connection"}
           </button>
           {verify ? (
             <p className="mt-1 text-[12px] text-charcoal-soft">
-              Email: {verify.email.configured ? (verify.email.ok ? "connected" : `error — ${verify.email.error}`) : "not configured"} · WhatsApp:{" "}
-              {verify.whatsapp.configured ? `configured (${verify.whatsapp.template})` : "not configured"}
+              Email: {verify.email.configured ? (verify.email.ok ? "connected" : `error — ${verify.email.error}`) : "not configured"} ·
+              WhatsApp: {verify.whatsapp.configured ? `configured (${verify.whatsapp.template})` : "not configured"}
             </p>
           ) : null}
         </div>
@@ -247,36 +333,42 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
         {/* 4 — send */}
         <div>
           <p className="text-[12px] font-bold text-charcoal-soft">4 · Send the invitations</p>
+
+          <LargeListNotice total={stats.total} channels={channels} useEmail={useEmail} useWhatsapp={useWhatsapp} />
+
           <button
             type="button"
             onClick={onSend}
-            disabled={!canSend || busy === "send"}
-            className="mt-1.5 w-full rounded-control bg-ink px-5 py-3 text-[14px] font-bold text-white transition hover:bg-ink-deep disabled:opacity-50"
+            disabled={!canSend}
+            className="mt-2 w-full rounded-control bg-ink px-5 py-3 text-[14px] font-bold text-white transition hover:bg-ink-deep disabled:opacity-50"
           >
             {sendLabel}
           </button>
-          {progress ? (
+
+          {job.running ? (
             <div className="mt-2">
               <div className="h-1.5 w-full overflow-hidden rounded-pill bg-paper-deep">
                 <div
-                  className="h-full rounded-pill bg-gold transition-[width] duration-300"
-                  style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
+                  className="h-full rounded-pill bg-gold transition-[width] duration-500"
+                  style={{ width: `${Math.min(100, Math.round((done / totalDeliveries) * 100))}%` }}
                 />
               </div>
               <p className="mt-1 text-[12px] text-charcoal-soft">
-                {progress.done} of {progress.total} done
+                {done} of {totalDeliveries} messages sent — this runs on the server, so you can close this page and come
+                back.
               </p>
             </div>
           ) : null}
-          {!recipients.length ? (
-            <p className="mt-1.5 text-[12px] text-charcoal-soft">Attach a parent list above first.</p>
-          ) : null}
+
+          {job.error ? <p className="mt-1.5 text-[12px] text-rust">The send stopped: {job.error}</p> : null}
+
+          {!stats.total ? <p className="mt-1.5 text-[12px] text-charcoal-soft">Attach a parent list above first.</p> : null}
         </div>
 
         {error ? <p className="text-[12px] text-rust">{error}</p> : null}
 
         {/* Results */}
-        {recipients.length > 0 ? (
+        {stats.total > 0 ? (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-[12px] font-bold text-charcoal-soft">Responses</p>
@@ -285,12 +377,17 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
               </p>
             </div>
 
-            <div className="mt-1.5 flex flex-wrap gap-2 text-[12px] text-charcoal-soft">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-charcoal-soft">
               <span>
                 Email {stats.emailSent}/{stats.emailable} sent
               </span>
               {stats.emailFailed ? (
-                <button type="button" onClick={() => onRetry("email")} disabled={busy === "retry-email"} className="text-rust underline disabled:opacity-50">
+                <button
+                  type="button"
+                  onClick={() => onRetry("email")}
+                  disabled={busy === "retry-email" || job.running}
+                  className="text-rust underline disabled:opacity-50"
+                >
                   {stats.emailFailed} failed — retry
                 </button>
               ) : null}
@@ -299,10 +396,40 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
                 WhatsApp {stats.waSent}/{stats.whatsappable} sent
               </span>
               {stats.waFailed ? (
-                <button type="button" onClick={() => onRetry("whatsapp")} disabled={busy === "retry-whatsapp"} className="text-rust underline disabled:opacity-50">
+                <button
+                  type="button"
+                  onClick={() => onRetry("whatsapp")}
+                  disabled={busy === "retry-whatsapp" || job.running}
+                  className="text-rust underline disabled:opacity-50"
+                >
                   {stats.waFailed} failed — retry
                 </button>
               ) : null}
+              <button type="button" onClick={pullRecipients} className="ml-auto text-gold underline">
+                Refresh
+              </button>
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[
+                ["all", `All (${stats.total})`],
+                ["yes", `Attending (${stats.yes})`],
+                ["no", `Can't (${stats.no})`],
+                ["awaiting", `No reply (${stats.awaiting})`],
+                ["failed", `Failed (${stats.emailFailed + stats.waFailed})`],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilter(key)}
+                  aria-pressed={filter === key}
+                  className={`rounded-pill px-2.5 py-1 text-[11px] font-bold transition ${
+                    filter === key ? "bg-ink text-white" : "bg-paper-deep text-charcoal-soft hover:bg-line"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             <div className="mt-2.5 max-h-[420px] overflow-auto rounded-control border border-line">
@@ -316,7 +443,7 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
                   </tr>
                 </thead>
                 <tbody>
-                  {recipients.map((r) => (
+                  {filtered.slice(0, TABLE_LIMIT).map((r) => (
                     <tr key={r.id} className="border-t border-line">
                       <td className="px-3 py-2">
                         <div className="font-bold text-charcoal">{r.name || r.email || r.phone}</div>
@@ -345,12 +472,52 @@ export default function SendPanel({ event, recipients, setRecipients, lists, cha
                 </tbody>
               </table>
             </div>
+
             <p className="mt-1.5 text-[11px] text-charcoal-soft">
-              Hover a failed pill to see why. Responses update when you reload this page.
+              {filtered.length > TABLE_LIMIT
+                ? `Showing the first ${TABLE_LIMIT} of ${filtered.length} — narrow it with the filters above. `
+                : ""}
+              Hover a failed pill to see why.
             </p>
           </div>
         ) : null}
       </div>
     </section>
+  );
+}
+
+/**
+ * What a big send actually costs, said before the button is pressed.
+ *
+ * Both providers have limits that a 1,000-parent list runs straight into, and
+ * neither fails loudly in a way the operator would connect to the cause —
+ * Gmail starts deferring, and WhatsApp simply stops delivering past the tier
+ * cap. Better to say it here than to explain it afterwards.
+ */
+function LargeListNotice({ total, channels, useEmail, useWhatsapp }) {
+  if (total < 200) return null;
+
+  const minutes = minutesFor(total, channels.sendDelayMs);
+  const overGmail = useEmail && total > 1900;
+
+  return (
+    <div className="mt-2 rounded-control bg-[#FDF3E0] px-3 py-2.5 text-[12px] leading-relaxed text-[#7A5A25]">
+      <p className="font-bold">Sending to {total} parents will take {minutes}.</p>
+      <ul className="mt-1 list-disc space-y-1 ps-4">
+        <li>It runs on the server — you can close this page and come back to it.</li>
+        {useEmail ? (
+          <li>
+            Google Workspace allows roughly 2,000 recipients a day.
+            {overGmail ? " This list is over that — split it across two days." : " This list fits, but only just if you send anything else today."}
+          </li>
+        ) : null}
+        {useWhatsapp ? (
+          <li>
+            WhatsApp caps how many <em>new</em> people a business number may message in 24 hours — commonly 250 or 1,000
+            until Meta raises your tier. Above your tier the remainder fail rather than queue; retry them tomorrow.
+          </li>
+        ) : null}
+      </ul>
+    </div>
   );
 }

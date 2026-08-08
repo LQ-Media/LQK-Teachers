@@ -1,5 +1,5 @@
 import { getEventBySlug, getRecipientByToken } from "@/lib/events/store";
-import { t } from "@/lib/events/design";
+import { t, dirFor } from "@/lib/events/design";
 import { formatWhen } from "@/lib/events/format";
 import InviteCard from "@/components/events/InviteCard";
 import RsvpPanel from "@/components/events/RsvpPanel";
@@ -55,7 +55,12 @@ export default async function InvitePage({ params, searchParams }) {
   const valid = recipient && recipient.eventId === event.id ? recipient : null;
 
   return (
-    <main className="min-h-screen py-8 px-3" style={{ background: event.design.pageColor }}>
+    <main
+      lang={event.language}
+      dir={dirFor(event.language)}
+      className="min-h-screen py-8 px-3"
+      style={{ background: event.design.pageColor }}
+    >
       <InviteCard event={event}>
         <RsvpPanel
           token={valid?.token || ""}

@@ -1,4 +1,4 @@
-import { fontCss, t } from "@/lib/events/design";
+import { fontCss, t, dirFor, resolveAlign } from "@/lib/events/design";
 import { formatWhen } from "@/lib/events/format";
 
 // The invite itself. One component, three callers: the builder's live preview,
@@ -8,6 +8,12 @@ import { formatWhen } from "@/lib/events/format";
 //
 // No hooks, so it renders happily inside the Client Component builder and as a
 // Server Component on the public page.
+
+function blockAlign(align) {
+  if (align === "center") return { marginLeft: "auto", marginRight: "auto" };
+  if (align === "right") return { marginLeft: "auto", marginRight: 0 };
+  return { marginLeft: 0, marginRight: "auto" };
+}
 
 function Field({ label, children, muted, align }) {
   if (!children) return null;
@@ -27,7 +33,13 @@ function Field({ label, children, muted, align }) {
 export default function InviteCard({ event, scale = 1, children }) {
   const d = event.design;
   const s = t(event.language);
-  const align = d.align;
+  // Arabic flips the whole card. The alignment control reads as physical
+  // left/centre/right, but means "reading start / centre / reading end" — so in
+  // Arabic a "left" choice resolves to the right-hand side, where Arabic text
+  // begins. `align` below is the resolved PHYSICAL side; everything downstream
+  // treats it as physical rather than mixing in logical properties.
+  const dir = dirFor(event.language);
+  const align = resolveAlign(d.align, event.language);
 
   const logoUrl = d.showLogo && event.logoPath ? `/api/events/asset/${event.logoPath}` : "";
   const bgUrl = event.backgroundPath ? `/api/events/asset/${event.backgroundPath}` : "";
@@ -39,10 +51,11 @@ export default function InviteCard({ event, scale = 1, children }) {
 
   return (
     <div
+      dir={dir}
       style={{
         background: d.pageColor,
         color: d.textColor,
-        fontFamily: fontCss(d.bodyFont),
+        fontFamily: fontCss(d.bodyFont, event.language),
         // The builder preview shrinks the whole invite rather than reflowing
         // it, so what the operator judges is the real layout at a smaller size.
         ...(scale !== 1 ? { transform: `scale(${scale})`, transformOrigin: "top center" } : null),
@@ -73,7 +86,15 @@ export default function InviteCard({ event, scale = 1, children }) {
           {bgUrl ? (
             <div
               className="absolute inset-0 flex flex-col justify-end p-7"
-              style={{ textAlign: align, alignItems: align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start" }}
+              style={{
+                textAlign: align,
+                alignItems:
+                  align === "center"
+                    ? "center"
+                    : (align === "right") === (dir === "rtl")
+                      ? "flex-start"
+                      : "flex-end",
+              }}
             >
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -87,7 +108,7 @@ export default function InviteCard({ event, scale = 1, children }) {
               </div>
               <h1
                 className="mt-1 text-[26px] font-bold leading-tight"
-                style={{ fontFamily: fontCss(d.headingFont), color: "#fff" }}
+                style={{ fontFamily: fontCss(d.headingFont, event.language), color: "#fff" }}
               >
                 {event.title}
               </h1>
@@ -110,13 +131,13 @@ export default function InviteCard({ event, scale = 1, children }) {
                 src={logoUrl}
                 alt=""
                 className="mb-3 h-auto w-[68px] object-contain"
-                style={{ marginLeft: align === "center" ? "auto" : 0, marginRight: align === "center" || align === "left" ? "auto" : 0 }}
+                style={blockAlign(align)}
               />
             ) : null}
             <div className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: d.accentColor }}>
               {s.youreInvited}
             </div>
-            <h1 className="mt-1 text-[26px] font-bold leading-tight" style={{ fontFamily: fontCss(d.headingFont) }}>
+            <h1 className="mt-1 text-[26px] font-bold leading-tight" style={{ fontFamily: fontCss(d.headingFont, event.language) }}>
               {event.title}
             </h1>
             {event.tagline ? (
@@ -156,14 +177,14 @@ export default function InviteCard({ event, scale = 1, children }) {
               <div className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: d.mutedColor }}>
                 {s.programme}
               </div>
-              <table className="mt-2" style={{ marginLeft: align === "center" ? "auto" : 0, marginRight: align === "center" || align === "right" ? "auto" : 0 }}>
+              <table className="mt-2" style={blockAlign(align)}>
                 <tbody>
                   {event.agenda.map((a, i) => (
                     <tr key={i}>
-                      <td className="whitespace-nowrap pr-3 pb-1.5 align-top text-[14px] font-bold" style={{ color: d.accentColor }}>
+                      <td className="whitespace-nowrap pe-3 pb-1.5 align-top text-[14px] font-bold" style={{ color: d.accentColor }}>
                         {a.time}
                       </td>
-                      <td className="pb-1.5 align-top text-left text-[14px]">{a.activity}</td>
+                      <td className="pb-1.5 align-top text-start text-[14px]">{a.activity}</td>
                     </tr>
                   ))}
                 </tbody>

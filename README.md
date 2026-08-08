@@ -93,12 +93,19 @@ redeploy (proves the volume is wired correctly).
 Admins can design an event invitation at `/events` and send it to parents by
 email (Google Workspace SMTP) and WhatsApp (WATI). Parents open a public page
 at `/invite/<slug>` — no login — and RSVP; responses appear live in the portal.
+Invites can be written in English, Bahasa Melayu, Mandarin, Tamil or Arabic
+(right-to-left).
+
+Sending runs on the server, so a large list keeps going after you close the
+page — a 1,000-parent send takes about fifteen minutes and runs into both
+Google's daily cap and WhatsApp's messaging tier, which the builder warns about
+before you press send.
 
 Both channels stay switched off until their environment variables are set; the
 builder works without them and says so. **WhatsApp additionally needs a message
-template you create in WATI and Meta approves** — that step cannot be done from
-this repo. Setup, the exact template wording, and the sending limits are in
-[`docs/EVENTS.md`](docs/EVENTS.md).
+template you create in WATI and Meta approves, one per language** — that step
+cannot be done from this repo. Setup, the exact template wording, the language
+notes and the sending limits are in [`docs/EVENTS.md`](docs/EVENTS.md).
 
 ## Notes
 
