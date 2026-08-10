@@ -117,7 +117,24 @@ Two traps: only $10/15/20/25 are expressible (the portal stores a *tier*, not a 
 
 ## 5. Verified vs not
 
-**Verified locally**, on the code now in `main`: clean production build; 11/11 geo logic tests (validation, null-island rejection, accuracy ceiling, formatting); a live Nominatim lookup resolving a real Singapore address; and a full round trip of a tagged OT session appearing correctly in the teacher list, the admin approval queue, and the CSV export with label, coordinates, accuracy and map link.
+**Verified locally**, on the code now in `main`: clean production build; the full `npm test` suite green (51 offline, plus 2 live-network tests when opted in); a live Nominatim lookup resolving a real Singapore address; and a full round trip of a tagged OT session appearing correctly in the teacher list, the admin approval queue, and the CSV export with label, coordinates, accuracy and map link.
+
+The ad-hoc logic tests are now permanent — see §5a.
+
+### 5a. The test suite
+
+```bash
+npm test
+```
+
+Node's built-in runner, no dependencies added, files in `test/*.test.mjs`. 51 tests over the two pure modules: `rates.js` (tiers, the flat OT rate, tier-from-position matching order, SG time boundaries, duration and rounding, money formatting) and `geo.js` (fix validation, null-island and accuracy-ceiling rejection, display helpers, label building).
+
+Two things to know:
+
+- **The live Nominatim round-trip is opt-in**, so the default run is offline and deterministic: `LQK_TEST_NETWORK=1 npm test`.
+- Tests are `.mjs` deliberately. The repo has no `"type": "module"`, and setting one to tidy the `MODULE_TYPELESS_PACKAGE_JSON` warning would change module resolution for every plain `.js` file in the project — not worth it for a cosmetic warning.
+
+The tests assert *rules*, not current output, and each says which rule it protects. If one goes red, the fix is almost never to update the expectation.
 
 **Verified in production**: deploy succeeded, container healthy, `/login` 200, `/hours` redirects to login, the CSV route returns 401 rather than 500 for an unauthenticated caller.
 
@@ -135,7 +152,7 @@ One thing to watch for specifically: **geolocation requires a secure context.** 
 2. **Nominatim load.** Fine today: tagging is rare and human-paced, requests are throttled to 1/sec and cached. If OT tagging becomes routine across all ~77 staff, revisit — the usage policy is aimed at exactly this kind of app, and a self-hosted or commercial geocoder is the escape hatch.
 3. **No geofencing or validation.** A stamp records where the teacher's device says it was when they tapped. It is a record for the approving admin to eyeball, not proof. If Karim ever wants it to *enforce* anything (must be within X metres of a branch), that is a new feature and a very different conversation about staff trust — raise it with him first.
 4. **`claude-test@lqk.test`** is a leftover admin account in the local dev DB with a known password. Harmless locally; delete it if you prefer. Confirm it does **not** exist in production.
-5. **No automated test suite.** Verification is a clean build plus manual checks. Logic tests for the hours math have been written ad hoc and thrown away each time — worth making permanent if you'll be in here often.
+5. **Test coverage stops at the pure helpers.** `npm test` covers `lib/hours/rates.js` and `lib/hours/geo.js`. It does **not** cover the server actions in `lib/actions/hours.js` — including the monthly totals in `hoursAdminData`, where approved sessions use their snapshotted `rate_cents` and pending ones use the teacher's current tier. That branch is the most valuable thing still untested, but covering it means either a DB fixture harness or extracting the aggregation into a pure function. The extraction is the tidier option and it touches payroll code, so agree it with Karim first.
 
 ---
 
