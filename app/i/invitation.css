@@ -64,6 +64,130 @@
   margin-top: clamp(16px, 3vw, 24px);
 }
 
+/* ---- studio preview -----------------------------------------------------
+   The admin design studio renders this same stylesheet inside a panel. Only
+   the things that assume "I am the whole viewport" need adjusting; every other
+   rule must apply unchanged, or the preview stops being evidence. */
+
+[data-inv-preview="true"] {
+  min-height: 420px;
+  padding-block: 24px 32px;
+}
+
+/* position: fixed would escape the preview panel and wash the admin page. */
+[data-inv-preview="true"] .inv-bgart {
+  position: absolute;
+}
+
+/* The stand-in RSVP controls are inert spans, so they must not offer a
+   text cursor or a pointer that promises something will happen. */
+[data-inv-preview="true"] .inv-choice > span,
+[data-inv-preview="true"] .inv-btn {
+  cursor: default;
+}
+
+/* ---- layouts ------------------------------------------------------------
+   The six names in LAYOUTS (lib/events/theme.js) are drawn HERE. Each is a
+   `[data-inv-layout]` selector on the root, set once by InvitationShell, so a
+   generated theme repaints the whole page structure without the component
+   branching on it. Only photo-hero and framed-panel need an extra element.
+
+   Every one of these is written with logical properties and % padding, which
+   is what lets a model pick any of them without being able to produce a layout
+   that overflows a 375px phone or collapses under dir="rtl". */
+
+/* framed-panel — an inset ornamental rule inside the card edge. */
+.inv-frame {
+  position: absolute;
+  inset: 10px;
+  border: 1px solid var(--inv-accent);
+  border-radius: calc(var(--inv-radius) * 0.7);
+  opacity: 0.38;
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-inv-layout="framed-panel"] .inv-card {
+  padding: clamp(36px, 7vw, 64px) clamp(26px, 6vw, 52px);
+}
+
+/* photo-hero — a full-bleed art band above the content.
+
+   The negative inline margins cancel the card's own horizontal padding, which
+   is a clamp() and so has to be repeated rather than assumed. There is NO
+   negative top margin: the layout rule below zeroes the card's top padding, so
+   the band already sits flush — pulling it up as well would just push a strip
+   of the image under the card's overflow:hidden and throw it away. */
+.inv-hero {
+  display: block;
+  margin: 0 calc(-1 * clamp(20px, 5vw, 48px)) clamp(20px, 4vw, 30px);
+  block-size: clamp(150px, 34vw, 230px);
+  background-size: cover;
+  background-position: center;
+  /* Not var(--inv-bg-image-opacity): as a hero this IS the image, shown at
+     full strength. That variable governs the washed-out full-page treatment. */
+}
+
+[data-inv-layout="photo-hero"] .inv-card {
+  padding-block-start: 0;
+}
+
+/* The top ornament would land on top of the hero art. */
+[data-inv-layout="photo-hero"] .inv-ornament:not(.inv-ornament-bottom) {
+  display: none;
+}
+
+/* side-band — a vertical decorative edge. inset-inline-start mirrors itself in
+   Arabic for free, which is the entire reason it is safe to offer. */
+[data-inv-layout="side-band"] .inv-card {
+  padding-inline-start: clamp(32px, 7vw, 64px);
+}
+
+[data-inv-layout="side-band"] .inv-card::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 8px;
+  background: linear-gradient(
+    to bottom,
+    var(--inv-accent),
+    color-mix(in srgb, var(--inv-accent) 35%, transparent)
+  );
+}
+
+/* arch-window — a mihrab silhouette. The elliptical radius keeps the arch
+   proportional at every width instead of flattening on a phone. */
+[data-inv-layout="arch-window"] .inv-card {
+  border-start-start-radius: 50%;
+  border-start-end-radius: 50%;
+  border-end-start-radius: var(--inv-radius);
+  border-end-end-radius: var(--inv-radius);
+  /* Horizontal / vertical radii split: 50% wide but only 30% tall, or the arch
+     becomes a semicircle that eats the title. */
+  border-radius: 50% 50% var(--inv-radius) var(--inv-radius) / 30% 30%
+    var(--inv-radius) var(--inv-radius);
+  padding-block-start: clamp(52px, 12vw, 96px);
+}
+
+[data-inv-layout="arch-window"] .inv-ornament:not(.inv-ornament-bottom) {
+  inset-block-start: clamp(18px, 4vw, 30px);
+}
+
+/* minimal-rule — no card, no shadow. Type, air and hairlines. */
+[data-inv-layout="minimal-rule"] .inv-card {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-block: 1px solid var(--inv-line);
+  border-radius: 0;
+  padding-inline: clamp(4px, 2vw, 16px);
+}
+
+[data-inv-layout="minimal-rule"] .inv-card + .inv-card {
+  border-block-start: 0;
+}
+
 /* ---- entrance ----------------------------------------------------------- */
 
 /* Staggered by nth-child rather than inline delays so the markup stays clean
@@ -72,6 +196,44 @@
   opacity: 0;
   transform: translateY(10px);
   animation: inv-rise 520ms var(--inv-ease) forwards;
+}
+
+/* MOTION — the four names in MOTIONS. "rise" is the .inv-rise default above.
+
+   `none` still has to end at opacity 1: the base rule starts the card hidden
+   and relies on the animation to reveal it, so switching the animation off
+   without restoring opacity would render a blank invitation. That is the one
+   way a theme setting here could break a guest's page, so it is handled first. */
+[data-inv-motion="none"] .inv-rise {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
+[data-inv-motion="fade"] .inv-rise {
+  transform: none;
+  animation-name: inv-fade-in;
+  animation-duration: 420ms;
+}
+
+[data-inv-motion="reveal"] .inv-rise {
+  transform: none;
+  clip-path: inset(0 0 100% 0);
+  animation-name: inv-reveal;
+  animation-duration: 700ms;
+}
+
+@keyframes inv-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes inv-reveal {
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 .inv-rise:nth-child(1) { animation-delay: 0ms; }
@@ -150,6 +312,11 @@
   margin: 0;
   font-size: clamp(15px, 3.4vw, 17px);
   line-height: 1.5;
+}
+
+.inv-detail-sub {
+  color: var(--inv-muted);
+  font-size: 0.92em;
 }
 
 .inv-section-title {
@@ -458,13 +625,16 @@
   margin-bottom: 16px;
 }
 
+/* --inv-on-bg, not --inv-muted: this row sits on the PAGE, not on the card,
+   and the palette only guarantees contrast against the card. A generated dark
+   page behind a light card drops muted to ~1.6:1 here. */
 .inv-lang {
   padding: 6px 14px;
   font-size: 13px;
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--inv-muted);
+  color: var(--inv-on-bg);
   text-decoration: none;
   cursor: pointer;
   transition: color 200ms ease, border-color 200ms ease;
@@ -507,12 +677,14 @@
   border: 0;
 }
 
+/* Also on the page rather than the card — same reason as .inv-lang above. */
 .inv-footer {
   position: relative;
   z-index: 1;
   margin-top: 22px;
   font-size: 12px;
-  color: var(--inv-muted);
+  color: var(--inv-on-bg);
+  opacity: 0.85;
   text-align: center;
 }
 
@@ -536,8 +708,13 @@
    Fewer and gentler, not zero: the fade still communicates "this arrived",
    only the movement is dropped. */
 @media (prefers-reduced-motion: reduce) {
-  .inv-rise {
+  /* Matches the [data-inv-motion] selectors' specificity deliberately. Those
+     sit at (0,2,0); a bare `.inv-rise` here would lose to them and a guest who
+     asked for less motion would still get the reveal wipe. */
+  .inv-rise,
+  [data-inv-motion] .inv-rise {
     transform: none;
+    clip-path: none;
     animation: inv-fade 220ms ease forwards;
   }
 
@@ -561,9 +738,13 @@
     display: none !important;
   }
 
-  .inv-rise {
+  /* Same specificity note as the reduced-motion block above — a printed
+     invitation must never come out half-wiped by the reveal clip-path. */
+  .inv-rise,
+  [data-inv-motion] .inv-rise {
     opacity: 1;
     transform: none;
+    clip-path: none;
     animation: none;
   }
 

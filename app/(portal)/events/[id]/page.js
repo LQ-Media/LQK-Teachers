@@ -61,6 +61,23 @@ export default async function EventPage({ params }) {
         <Stat label="Photos" value={stats.photos} />
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Link
+          href={`/events/${id}/theme`}
+          className="rounded-pill border border-line px-5 py-2.5 text-sm font-semibold text-ink transition-transform duration-150 ease-out active:scale-[0.97]"
+        >
+          Design studio
+        </Link>
+        {/* A waiting draft is invisible from the guest side by design, so it
+            has to be visible here — otherwise a generated design sits unnoticed
+            and Karim assumes the studio didn't work. */}
+        {event.themeDraft ? (
+          <span className="rounded-control bg-sand px-3 py-1.5 text-sm text-sage">
+            A design draft is waiting for approval
+          </span>
+        ) : null}
+      </div>
+
       <EventDetail
         event={event}
         guests={guests}
