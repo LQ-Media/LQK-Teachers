@@ -30,6 +30,7 @@ const ICON_TONE = {
   users: "honey", // ilmu bank
   trophy: "honey", // achievements
   settings: "sage", // admin
+  calendar: "clay", // event invitations
   compass: "clay", // qibla
   clock: "honey", // work hours
   bell: "honey", // solat & azan

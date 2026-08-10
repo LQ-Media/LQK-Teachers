@@ -1,0 +1,574 @@
+/* Guest invitation styling.
+
+   Scoped away from the portal's Tailwind theme on purpose: this page is painted
+   entirely from the approved design spec (lib/events/theme.js) via --inv-*
+   custom properties, so a generated theme can repaint it without touching a
+   single class name. Nothing here may reference the portal's brand tokens —
+   an invite themed emerald must not leak cream.
+
+   MOTION NOTES
+   A guest sees this page once, maybe twice. That puts it in the "rare" bucket
+   where delight is affordable — but it is also a ceremony, so the entrance is
+   deliberately a touch slower than standard UI (520ms) and uses `ease` rather
+   than `ease-out`, which reads as elegant instead of snappy. The RSVP controls
+   underneath are the opposite: they are UI, so they stay under 200ms with a
+   strong ease-out.
+
+   Everything animated is transform or opacity only. Direction-neutral by
+   design — the entrance translates on Y, never X, so it is identical in RTL. */
+
+:root {
+  --inv-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --inv-ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inv-root {
+  background: var(--inv-bg);
+  color: var(--inv-ink);
+  font-family: var(--inv-font-body);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(16px, 4vw, 48px) clamp(14px, 4vw, 32px) 64px;
+  position: relative;
+  overflow-x: clip; /* ornaments may bleed; the page must never scroll sideways */
+}
+
+/* Generated background art sits behind everything at low opacity so type keeps
+   its contrast ratio no matter what the model produced. */
+.inv-bgart {
+  position: fixed;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: var(--inv-bg-image-opacity, 0.18);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.inv-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 640px;
+  background: var(--inv-surface);
+  border: 1px solid var(--inv-line);
+  border-radius: var(--inv-radius);
+  padding: clamp(28px, 6vw, 56px) clamp(20px, 5vw, 48px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 32px -12px rgb(0 0 0 / 0.10);
+  overflow: hidden;
+}
+
+.inv-card + .inv-card {
+  margin-top: clamp(16px, 3vw, 24px);
+}
+
+/* ---- entrance ----------------------------------------------------------- */
+
+/* Staggered by nth-child rather than inline delays so the markup stays clean
+   and server-rendered — no mount effect, no flash of unstyled content. */
+.inv-rise {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: inv-rise 520ms var(--inv-ease) forwards;
+}
+
+.inv-rise:nth-child(1) { animation-delay: 0ms; }
+.inv-rise:nth-child(2) { animation-delay: 60ms; }
+.inv-rise:nth-child(3) { animation-delay: 120ms; }
+.inv-rise:nth-child(4) { animation-delay: 180ms; }
+.inv-rise:nth-child(5) { animation-delay: 240ms; }
+.inv-rise:nth-child(6) { animation-delay: 300ms; }
+.inv-rise:nth-child(n + 7) { animation-delay: 340ms; }
+
+@keyframes inv-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- type --------------------------------------------------------------- */
+
+.inv-eyebrow {
+  font-size: clamp(11px, 2.4vw, 12px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--inv-muted);
+  text-align: center;
+  margin: 0 0 14px;
+}
+
+.inv-title {
+  font-family: var(--inv-font-heading);
+  font-size: calc(clamp(28px, 7vw, 44px) * var(--inv-scale, 1));
+  line-height: 1.2;
+  font-weight: 500;
+  text-align: center;
+  margin: 0 0 8px;
+  text-wrap: balance;
+}
+
+.inv-guest {
+  text-align: center;
+  font-size: clamp(15px, 3.4vw, 17px);
+  color: var(--inv-ink);
+  margin: 0 0 4px;
+}
+
+.inv-host {
+  text-align: center;
+  font-size: clamp(13px, 3vw, 14px);
+  color: var(--inv-muted);
+  margin: 0;
+}
+
+.inv-rule {
+  width: 56px;
+  height: 1px;
+  background: var(--inv-accent);
+  opacity: 0.5;
+  margin: 24px auto;
+  border: 0;
+}
+
+.inv-detail {
+  text-align: center;
+  margin: 0 0 18px;
+}
+
+.inv-detail dt {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--inv-muted);
+  margin-bottom: 5px;
+}
+
+.inv-detail dd {
+  margin: 0;
+  font-size: clamp(15px, 3.4vw, 17px);
+  line-height: 1.5;
+}
+
+.inv-section-title {
+  font-family: var(--inv-font-heading);
+  font-size: clamp(19px, 4.6vw, 23px);
+  font-weight: 500;
+  text-align: center;
+  margin: 0 0 6px;
+}
+
+.inv-note {
+  text-align: center;
+  color: var(--inv-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 22px;
+}
+
+/* ---- controls ----------------------------------------------------------- */
+
+.inv-choices {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 22px;
+}
+
+@media (min-width: 480px) {
+  .inv-choices {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* The radio itself is visually hidden but still focusable and still the thing
+   screen readers and keyboards operate — the label is only paint. */
+.inv-choice input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.inv-choice > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.55);
+  font-size: 15px;
+  cursor: pointer;
+  background: transparent;
+  transition:
+    transform 160ms ease-out,
+    border-color 200ms ease,
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-choice > span:hover {
+    border-color: var(--inv-accent);
+  }
+}
+
+.inv-choice > span:active {
+  transform: scale(0.97);
+}
+
+.inv-choice input:focus-visible + span {
+  outline: 2px solid var(--inv-accent);
+  outline-offset: 2px;
+}
+
+.inv-choice input:checked + span {
+  background: var(--inv-accent);
+  border-color: var(--inv-accent);
+  color: var(--inv-surface);
+}
+
+.inv-field {
+  margin: 0 0 18px;
+}
+
+.inv-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.inv-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--inv-muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.inv-input,
+.inv-textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 16px; /* 16px minimum or iOS Safari zooms the page on focus */
+  color: var(--inv-ink);
+  background: var(--inv-bg);
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.45);
+  padding: 11px 13px;
+  transition: border-color 200ms ease;
+}
+
+.inv-textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.inv-input:focus,
+.inv-textarea:focus {
+  outline: none;
+  border-color: var(--inv-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--inv-accent) 18%, transparent);
+}
+
+/* Stepper — logical properties throughout so the row mirrors itself in RTL
+   without a single [dir] override. */
+.inv-steppers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.inv-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.45);
+  padding: 8px 10px;
+}
+
+.inv-stepper-label {
+  font-size: 13px;
+  color: var(--inv-muted);
+}
+
+.inv-stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inv-step-btn {
+  inline-size: 32px;
+  block-size: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--inv-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--inv-ink);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 140ms ease-out, border-color 200ms ease;
+  user-select: none;
+}
+
+.inv-step-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.inv-step-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.inv-step-value {
+  min-inline-size: 28px;
+  text-align: center;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 24px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--inv-surface);
+  background: var(--inv-accent);
+  border: 1px solid var(--inv-accent);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 160ms ease-out, opacity 200ms ease;
+}
+
+.inv-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.inv-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.inv-btn-quiet {
+  color: var(--inv-accent);
+  background: transparent;
+  border-color: var(--inv-line);
+}
+
+.inv-btn-link {
+  display: inline-block;
+  color: var(--inv-accent);
+  background: none;
+  border: 0;
+  padding: 6px 2px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.inv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.inv-actions .inv-btn {
+  width: auto;
+  min-width: 160px;
+}
+
+/* ---- photo -------------------------------------------------------------- */
+
+.inv-photo-drop {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 148px;
+  border: 1px dashed var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.5);
+  padding: 18px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--inv-muted);
+  font-size: 14px;
+  transition: border-color 200ms ease, background-color 200ms ease;
+}
+
+.inv-photo-drop:hover {
+  border-color: var(--inv-accent);
+}
+
+.inv-photo-preview {
+  display: block;
+  max-width: 100%;
+  width: 220px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: calc(var(--inv-radius) * 0.5);
+  margin: 0 auto 10px;
+}
+
+.inv-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--inv-muted);
+  cursor: pointer;
+}
+
+.inv-check input {
+  inline-size: 18px;
+  block-size: 18px;
+  margin-block-start: 1px;
+  accent-color: var(--inv-accent);
+  flex: none;
+}
+
+/* ---- misc --------------------------------------------------------------- */
+
+.inv-langbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.inv-lang {
+  padding: 6px 14px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--inv-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 200ms ease, border-color 200ms ease;
+}
+
+.inv-lang[aria-current="true"] {
+  color: var(--inv-ink);
+  border-color: var(--inv-line);
+  background: var(--inv-surface);
+}
+
+.inv-status {
+  text-align: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  background: color-mix(in srgb, var(--inv-accent) 12%, transparent);
+  color: var(--inv-ink);
+  margin: 0 0 18px;
+}
+
+.inv-error {
+  text-align: center;
+  font-size: 14px;
+  color: #B0533A;
+  margin: 0 0 14px;
+}
+
+/* Visible to screen readers only. Declared locally so the invite page never
+   depends on a portal utility class that could be renamed. */
+.inv-root .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.inv-footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 22px;
+  font-size: 12px;
+  color: var(--inv-muted);
+  text-align: center;
+}
+
+.inv-ornament {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 74px;
+  opacity: var(--inv-ornament-opacity, 0.12);
+  pointer-events: none;
+  color: var(--inv-accent);
+}
+
+.inv-ornament-bottom {
+  inset-block-start: auto;
+  inset-block-end: 0;
+  transform: scaleY(-1);
+}
+
+/* ---- reduced motion -----------------------------------------------------
+   Fewer and gentler, not zero: the fade still communicates "this arrived",
+   only the movement is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .inv-rise {
+    transform: none;
+    animation: inv-fade 220ms ease forwards;
+  }
+
+  @keyframes inv-fade {
+    to {
+      opacity: 1;
+    }
+  }
+
+  .inv-btn:active,
+  .inv-choice > span:active,
+  .inv-step-btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media print {
+  .inv-langbar,
+  .inv-rsvp-block,
+  .inv-footer {
+    display: none !important;
+  }
+
+  .inv-rise {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  .inv-card {
+    box-shadow: none;
+    border-color: #ccc;
+  }
+}

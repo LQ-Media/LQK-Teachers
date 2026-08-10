@@ -27,6 +27,7 @@ const MORE_ITEMS = [
   { href: "/qibla", label: "Qibla", icon: "compass" },
   { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Awards", icon: "trophy" },
+  { href: "/events", label: "Events", icon: "calendar", roles: ["admin"] },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
   { href: "/profile", label: "Profile", icon: "user" },
 ];

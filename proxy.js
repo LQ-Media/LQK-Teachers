@@ -3,9 +3,22 @@ import { decrypt } from "@/lib/session";
 
 const PUBLIC_ROUTES = ["/login"];
 
+/* Prefixes anyone may reach WITHOUT a session.
+
+   /i/<token> is a guest's event invitation. Guests are not portal users and
+   have no account to log in with, so the auth gate below must not see these —
+   without this, every invitation link bounces to /login and the guest concludes
+   the invite is broken. The token in the path is the credential, and it is
+   verified in lib/events/queries.js#getGuestByToken.
+
+   Keep this as a PREFIX test: the path carries a token, so it can never match
+   the exact-equality PUBLIC_ROUTES list. */
+const PUBLIC_PREFIXES = ["/i/"];
+
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isPublicRoute =
+    PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 
   const token = request.cookies.get("lqk_session")?.value;
   const session = await decrypt(token);
@@ -14,12 +27,21 @@ export async function proxy(request) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (isPublicRoute && session?.userId) {
+  // Only /login bounces a signed-in user away. An invitation must render the
+  // same for everyone — otherwise Karim, who is always signed in, can never
+  // preview what he is about to send to 200 guests.
+  if (PUBLIC_ROUTES.includes(pathname) && session?.userId) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // Force the first-login password change before anything else.
-  if (session?.userId && session.mustChange && pathname !== "/change-password") {
+  // Force the first-login password change before anything else — but never at
+  // the cost of a guest's invitation, which has nothing to do with passwords.
+  if (
+    session?.userId &&
+    session.mustChange &&
+    pathname !== "/change-password" &&
+    !PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
+  ) {
     return NextResponse.redirect(new URL("/change-password", request.url));
   }
 

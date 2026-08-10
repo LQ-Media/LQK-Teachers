@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Achievements", icon: "trophy" },
   { href: "/hours", label: "Work hours", icon: "clock" },
+  { href: "/events", label: "Events", icon: "calendar", roles: ["admin"] },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
 ];
 
