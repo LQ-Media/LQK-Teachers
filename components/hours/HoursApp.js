@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import EmptyArt from "@/components/EmptyArt";
-import { clockIn, clockOut, addPastSession, editSession, deleteSession } from "@/lib/actions/hours";
+import LocationTag, { LocationLine } from "@/components/hours/LocationTag";
+import { clockIn, clockOut, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
 import {
   OT_REASONS,
   OT_RATE,
@@ -143,13 +144,16 @@ function ClockCard({ running, branchOptions, tierRate, onNotice, onEditRunning }
   const [otReason, setOtReason] = useState(OT_REASONS[0]);
   const [branch, setBranch] = useState(branchOptions[0] || "");
   const [note, setNote] = useState("");
+  const [geo, setGeo] = useState(null);
 
   function doClockIn() {
     startTransition(async () => {
-      const r = await clockIn({ category, otReason, branch, note });
+      // Only OT carries a location — teaching happens at a branch we already know.
+      const r = await clockIn({ category, otReason, branch, note, geo: category === "ot" ? geo : null });
       if (r?.error) onNotice(r.error);
       else {
         setNote("");
+        setGeo(null);
         router.refresh();
       }
     });
@@ -166,7 +170,15 @@ function ClockCard({ running, branchOptions, tierRate, onNotice, onEditRunning }
   }
 
   if (running) {
-    return <RunningCard running={running} pending={pending} onClockOut={doClockOut} onEdit={() => onEditRunning(running)} />;
+    return (
+      <RunningCard
+        running={running}
+        pending={pending}
+        onClockOut={doClockOut}
+        onEdit={() => onEditRunning(running)}
+        onRefresh={() => router.refresh()}
+      />
+    );
   }
 
   const rateHint =
@@ -218,6 +230,13 @@ function ClockCard({ running, branchOptions, tierRate, onNotice, onEditRunning }
         </Labelled>
       </div>
 
+      {category === "ot" && (
+        <div className="mt-3">
+          <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Where are you?</span>
+          <LocationTag value={geo} onChange={setGeo} />
+        </div>
+      )}
+
       <button
         type="button"
         onClick={doClockIn}
@@ -231,7 +250,7 @@ function ClockCard({ running, branchOptions, tierRate, onNotice, onEditRunning }
   );
 }
 
-function RunningCard({ running, pending, onClockOut, onEdit }) {
+function RunningCard({ running, pending, onClockOut, onEdit, onRefresh }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -268,6 +287,23 @@ function RunningCard({ running, pending, onClockOut, onEdit }) {
           {pending ? "Saving…" : "Clock out"}
         </button>
       </div>
+      {/* Tag on the spot: OT often starts before you know where you'll end up,
+          so the stamp can be taken (or re-taken) any time the timer is running. */}
+      {running.category === "ot" && (
+        <div className="mt-3 rounded-control bg-white/70 p-3">
+          <span className="mb-1.5 block text-[11px] font-semibold text-charcoal-soft">Location</span>
+          <LocationTag
+            value={running.geo}
+            compact
+            onChange={async (geo) => {
+              const r = await setSessionLocation(running.id, geo);
+              if (!r?.error) onRefresh();
+              return r;
+            }}
+          />
+        </div>
+      )}
+
       {longRunning && (
         <p className="mt-3 rounded-control bg-white/70 px-3 py-2 text-[12px] text-charcoal">
           This has been running over 12 hours. If you forgot to clock out, clock out now and then{" "}
@@ -326,6 +362,7 @@ function SessionRow({ s, pay, onEdit, onDeleted }) {
           {sgDate(s.startedAt)} · {sgClock(s.startedAt)}–{sgClock(s.endedAt)}
           {s.branch ? ` · ${s.branch}` : ""}
         </div>
+        {s.geo && <LocationLine geo={s.geo} className="mt-1" />}
         {s.status === "rejected" && s.reviewerNote && (
           <div className="mt-1 text-[11px] text-rust">Rejected: {s.reviewerNote}</div>
         )}
@@ -362,6 +399,10 @@ function SessionModal({ modal, branchOptions, tierRate, onClose, onSaved }) {
     branch: s.branch || branchOptions[0] || "",
     note: s.note || "",
   });
+  const [geo, setGeo] = useState(s.geo || null);
+  // An untouched stamp is left exactly as it was saved; only a deliberate
+  // re-take or removal is sent, so opening the modal can't rewrite a location.
+  const [geoTouched, setGeoTouched] = useState(false);
   const [error, setError] = useState(null);
   const [pending, startTransition] = useTransition();
 
@@ -375,6 +416,10 @@ function SessionModal({ modal, branchOptions, tierRate, onClose, onSaved }) {
   function submit() {
     setError(null);
     const payload = { id: s.id, ...form };
+    if (geoTouched) {
+      if (geo) payload.geo = geo;
+      else payload.clearGeo = true;
+    }
     startTransition(async () => {
       const r = editing ? await editSession(payload) : await addPastSession(payload);
       if (r?.error) setError(r.error);
@@ -427,6 +472,26 @@ function SessionModal({ modal, branchOptions, tierRate, onClose, onSaved }) {
         <Labelled label="Note (optional)">
           <input className={field} value={form.note} onChange={(e) => set("note", e.target.value)} />
         </Labelled>
+
+        {/* Shown for OT, and for anything already tagged — so switching the type
+            can never strand a stamp somewhere the teacher can't reach it. */}
+        {(form.category === "ot" || geo) && (
+          <div>
+            <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Location</span>
+            <LocationTag
+              value={geo}
+              onChange={(g) => {
+                setGeo(g);
+                setGeoTouched(true);
+              }}
+            />
+            {!geo && (
+              <p className="mt-1 text-[11px] text-charcoal-soft">
+                Tagging here records where you are <em>now</em>, not where you were during the session.
+              </p>
+            )}
+          </div>
+        )}
 
         {preview && (
           <p className="rounded-control bg-paper-deep px-3 py-2 text-[12px] text-charcoal">

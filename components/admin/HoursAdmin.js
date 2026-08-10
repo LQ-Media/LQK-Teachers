@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
+import { LocationLine } from "@/components/hours/LocationTag";
 import { approveSession, rejectSession, hoursAdminData } from "@/lib/actions/hours";
 import {
   TIER_BY_KEY,
@@ -88,6 +89,9 @@ export default function HoursAdmin({ initial }) {
                       {sgDate(s.startedAt)} · {sgClock(s.startedAt)}–{sgClock(s.endedAt)}
                       {s.branch ? ` · ${s.branch}` : ""}
                     </div>
+                    {/* Where the teacher tagged themselves, if they did — a
+                        sanity check on OT before it's paid. */}
+                    {s.geo && <LocationLine geo={s.geo} className="mt-1" />}
                     {noTier && <div className="mt-1 text-[11px] text-rust">Set this teacher’s pay tier before approving.</div>}
                   </div>
                   <div className="text-right">

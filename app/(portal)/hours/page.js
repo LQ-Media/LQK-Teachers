@@ -28,6 +28,16 @@ function shape(row) {
     status: row.status,
     rateCents: row.rate_cents ?? null,
     reviewerNote: row.reviewer_note || null,
+    geo:
+      row.geo_lat == null || row.geo_lng == null
+        ? null
+        : {
+            lat: row.geo_lat,
+            lng: row.geo_lng,
+            accuracy: row.geo_accuracy ?? null,
+            label: row.geo_label || null,
+            at: row.geo_at || null,
+          },
     minutes: row.ended_at ? minutesBetween(row.started_at, row.ended_at) : null,
     long: isLongSession(row.started_at, row.ended_at),
   };

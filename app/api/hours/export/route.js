@@ -10,6 +10,7 @@ import {
   rateFor,
   monthLabel,
 } from "@/lib/hours/rates";
+import { formatAccuracy, formatCoords, mapsUrl } from "@/lib/hours/geo";
 
 // GET /api/hours/export?month=YYYY-MM
 // Admin-only CSV of every completed, non-rejected session in the month — one
@@ -33,13 +34,32 @@ export async function GET(request) {
     .all()
     .filter((r) => sgMonth(r.started_at) === month);
 
-  const header = ["Teacher", "Date", "Start", "End", "Type", "Detail", "Branch", "Hours", "Rate ($/hr)", "Pay ($)", "Status"];
+  // Location columns are blank for any session the teacher didn't tag, which is
+  // most of them — the stamp is optional and only offered for Ad-hoc / OT.
+  const header = [
+    "Teacher",
+    "Date",
+    "Start",
+    "End",
+    "Type",
+    "Detail",
+    "Branch",
+    "Hours",
+    "Rate ($/hr)",
+    "Pay ($)",
+    "Status",
+    "Tagged location",
+    "Coordinates",
+    "Accuracy",
+    "Map link",
+  ];
   const lines = [header];
 
   for (const r of rows) {
     const minutes = minutesBetween(r.started_at, r.ended_at);
     const rate = r.status === "approved" && r.rate_cents != null ? r.rate_cents / 100 : rateFor(r.category, r.pay_tier);
     const cents = payCents(minutes, rate);
+    const tagged = r.geo_lat != null && r.geo_lng != null;
     lines.push([
       r.teacher_name,
       sgDate(r.started_at),
@@ -52,6 +72,10 @@ export async function GET(request) {
       rate != null ? rate.toFixed(2) : "",
       rate != null ? (cents / 100).toFixed(2) : "",
       r.status === "approved" ? "Approved" : "Pending",
+      tagged ? r.geo_label || "" : "",
+      tagged ? formatCoords(r.geo_lat, r.geo_lng) : "",
+      tagged ? formatAccuracy(r.geo_accuracy) : "",
+      tagged ? mapsUrl(r.geo_lat, r.geo_lng) : "",
     ]);
   }
 
