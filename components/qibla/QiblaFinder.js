@@ -329,10 +329,12 @@ function Dial({ rotation, qibla, live, aligned }) {
             strokeWidth="3"
             strokeLinecap="round"
           />
-          <circle cx={c} cy={30} r="15" fill="var(--color-gold)" />
-          {/* Kaaba glyph */}
-          <rect x={c - 6} y={24} width="12" height="12" rx="1.5" fill="#403548" />
-          <rect x={c - 6} y={27} width="12" height="2.5" fill="var(--color-gold)" />
+          <circle cx={c} cy={30} r="15" fill="var(--color-sand)" />
+          {/* Kaaba glyph — kiswah black with its gold band, the real thing.
+              Deliberately NOT theme tokens: the palette can move underneath
+              this file and the Kaaba still has to come out black and gold. */}
+          <rect x={c - 6} y={24} width="12" height="12" rx="1.5" fill="#141414" />
+          <rect x={c - 6} y={27} width="12" height="2.5" fill="#C9A227" />
         </g>
 
         <circle cx={c} cy={c} r="5" fill="var(--color-ink)" />

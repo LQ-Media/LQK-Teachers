@@ -147,7 +147,7 @@ export default function AzanPlayer() {
 
   return (
     <div className="fixed inset-x-0 bottom-[calc(var(--tabbar-h,0px)+12px)] z-50 flex justify-center px-4 lg:bottom-6">
-      <div className="flex items-center gap-3 rounded-pill border-[0.5px] border-line bg-white/95 py-2 pl-4 pr-2 shadow-[0_8px_30px_rgba(64,53,72,0.18)] backdrop-blur-md">
+      <div className="flex items-center gap-3 rounded-pill border-[0.5px] border-line bg-white/95 py-2 pl-4 pr-2 shadow-[0_8px_30px_rgba(59,55,43,0.18)] backdrop-blur-md">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold text-white">
           <Icon name="volume-2" size={16} />
         </span>

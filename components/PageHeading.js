@@ -6,54 +6,50 @@ import { spotImage } from "@/lib/spot";
  * and its one-line subtitle. Keeps every portal page header identical.
  *
  * Pass `route` (the page's own path) to get the 3D clay render from
- * lib/spot.js — the pastel ground is baked into the image, so the tile needs
- * no fill of its own. Pages with no render fall back to the line icon on one
- * of the three brand pastels (lavender / rose / peach), keyed by icon so the
- * assignment stays stable without touching call sites. Pass `tone` to
- * override that fallback.
+ * lib/spot.js. The render is a transparent cut-out, so the tone tile behind it
+ * is what colours the tile — that used to be baked into the image, which meant
+ * the art could only ever sit on one background. Pages with no render fall
+ * back to the line icon on the same tile. Pass `tone` to override the
+ * automatic assignment.
  */
 const TONES = {
-  lavender: "bg-gold-soft",
-  rose: "bg-sage-soft",
-  peach: "bg-sand",
+  sage: "bg-gold-soft",
+  clay: "bg-sage-soft",
+  honey: "bg-sand",
 };
 
+// Which of the three natural tones a page wears, keyed by its icon so the
+// assignment stays stable without touching call sites.
 const ICON_TONE = {
-  "clipboard-check": "rose", // tracker, packs, review
-  notebook: "lavender", // my reading
-  star: "peach", // kalimah
-  user: "lavender", // profile
-  mic: "rose", // halaqah notebook
-  "moon-star": "lavender", // wirid & doa
-  users: "peach", // ilmu bank
-  trophy: "peach", // achievements
-  settings: "lavender", // admin
-  compass: "rose", // qibla
-  clock: "peach", // work hours
-  bell: "peach", // solat & azan
+  "clipboard-check": "clay", // tracker, packs, review
+  notebook: "sage", // my reading
+  star: "honey", // kalimah
+  user: "sage", // profile
+  mic: "clay", // halaqah notebook
+  "moon-star": "sage", // wirid & doa
+  users: "honey", // ilmu bank
+  trophy: "honey", // achievements
+  settings: "sage", // admin
+  compass: "clay", // qibla
+  clock: "honey", // work hours
+  bell: "honey", // solat & azan
 };
 
 export default function PageHeading({ icon, title, subtitle, tone, route }) {
   const spot = spotImage(route);
-  const tile = TONES[tone] || TONES[ICON_TONE[icon]] || TONES.lavender;
+  const tile = TONES[tone] || TONES[ICON_TONE[icon]] || TONES.sage;
   return (
     <div className="flex items-center gap-3.5">
-      {spot ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={spot}
-          alt=""
-          width={48}
-          height={48}
-          className="h-12 w-12 flex-shrink-0 rounded-control object-cover shadow-[0_4px_12px_rgba(64,53,72,0.10)]"
-        />
-      ) : (
-        <span
-          className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-control ${tile} text-ink`}
-        >
+      <span
+        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-control ${tile} text-ink shadow-[0_4px_12px_rgba(59,55,43,0.10)]`}
+      >
+        {spot ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={spot} alt="" width={40} height={40} className="h-10 w-10 object-contain" />
+        ) : (
           <Icon name={icon} size={22} />
-        </span>
-      )}
+        )}
+      </span>
       <div className="min-w-0">
         <h1 className="font-heading text-2xl font-semibold text-charcoal">{title}</h1>
         {subtitle ? <p className="mt-0.5 text-[13px] text-charcoal-soft">{subtitle}</p> : null}

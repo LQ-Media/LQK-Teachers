@@ -73,7 +73,7 @@ export default function DzikirBrowser({ catalog }) {
                   alt=""
                   width={56}
                   height={56}
-                  className="h-14 w-14 rounded-control bg-white object-contain"
+                  className="h-14 w-14 rounded-control bg-gold-soft/50 object-contain p-1"
                 />
               ) : (
                 <span className="flex h-14 w-14 items-center justify-center rounded-control bg-gold-soft text-ink">
@@ -117,7 +117,7 @@ export default function DzikirBrowser({ catalog }) {
                     alt=""
                     width={40}
                     height={40}
-                    className="h-10 w-10 flex-shrink-0 rounded-control bg-white object-contain"
+                    className="h-10 w-10 flex-shrink-0 rounded-control bg-sand/60 object-contain p-1"
                   />
                 ) : (
                   <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-sand/60 text-ink">

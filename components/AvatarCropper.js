@@ -204,7 +204,7 @@ export default function AvatarCropper({ file, onConfirm, onCancel }) {
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
             style={{
-              background: "rgba(110, 66, 87, 0.55)",
+              background: "rgba(59, 55, 43, 0.55)",
               WebkitMaskImage: `radial-gradient(circle at 50% 50%, transparent 0 ${VIEWPORT / 2 - 1}px, #000 ${VIEWPORT / 2}px)`,
               maskImage: `radial-gradient(circle at 50% 50%, transparent 0 ${VIEWPORT / 2 - 1}px, #000 ${VIEWPORT / 2}px)`,
             }}

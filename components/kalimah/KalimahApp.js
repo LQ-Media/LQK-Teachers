@@ -119,7 +119,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
             <button
               type="button"
               onClick={() => setPhase("quiz")}
-              className="flex items-center gap-2 rounded-control bg-ink px-5 py-2.5 text-[14px] font-bold text-paper shadow-[0_4px_12px_rgba(64,53,72,0.24)] transition-colors hover:bg-ink-deep"
+              className="flex items-center gap-2 rounded-control bg-ink px-5 py-2.5 text-[14px] font-bold text-paper shadow-[0_4px_12px_rgba(59,55,43,0.24)] transition-colors hover:bg-ink-deep"
             >
               <Icon name="check" size={16} />
               Check what I remember
@@ -161,7 +161,7 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
                       reveal && isAnswer
                         ? "bg-[#E4F0E4] font-semibold text-[#2E6B3E] ring-1 ring-[#8FBF9A]"
                         : reveal && chosen
-                          ? "bg-rust-soft text-[#8E3D52] ring-1 ring-[#F2D8E1]"
+                          ? "bg-rust-soft text-[#8E3A24] ring-1 ring-[#EED4C2]"
                           : "bg-paper text-charcoal hover:bg-paper-deep"
                     } ${reveal ? "cursor-default" : ""}`}
                   >
@@ -187,10 +187,15 @@ export default function KalimahApp({ verse, surahName, alreadyDone }) {
       )}
 
       {phase === "done" && (
-        <div className="rounded-card border border-line bg-gradient-to-br from-white to-[#FDF3F7] p-8 text-center">
-          <span className="mx-auto mb-3 block w-fit text-gold">
-            <Icon name="sparkles" size={28} />
-          </span>
+        <div className="rounded-card border border-line bg-gradient-to-br from-white to-[#FDF8EE] p-8 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/spot/kalimah.png"
+            alt=""
+            width={56}
+            height={56}
+            className="mx-auto mb-3 block h-14 w-14"
+          />
           <p className="font-heading text-[22px] font-bold text-charcoal">
             {score} out of {questions.length}
           </p>

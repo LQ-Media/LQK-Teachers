@@ -13,13 +13,14 @@ import {
 } from "@/lib/azan/catalog";
 import { AUTO, CHOICE_KEY, savedChoice, loadTimings, deviceTimezone } from "@/lib/azan/solat-client";
 import { AZAN_SETTINGS_EVENT } from "./AzanPlayer";
+import { prayerArt } from "@/lib/prayerArt";
 
 // The Solat & Azan page: today's timetable with a live countdown, per-prayer
 // azan toggles + sound choice, sound previews/uploads, and push notifications
 // for when the app is closed.
 
-// Same per-prayer pastel assignment as the dashboard SolatWidget — dawn/night
-// lavender, the bright hours peach and rose.
+// Same per-prayer tone assignment as the dashboard SolatWidget — dawn/night
+// sage, the bright hours honey and clay.
 const PRAYER_TONES = {
   Fajr: "bg-gold-soft text-ink",
   Dhuhr: "bg-sand text-ink",
@@ -45,7 +46,7 @@ function Toggle({ checked, onChange, label }) {
       }`}
     >
       <span
-        className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_1px_4px_rgba(64,53,72,0.25)] transition-[left] duration-200 ${
+        className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_1px_4px_rgba(59,55,43,0.25)] transition-[left] duration-200 ${
           checked ? "left-[26px]" : "left-[3px]"
         }`}
       />
@@ -368,7 +369,7 @@ export default function AzanSettingsClient() {
           <div className="h-24 animate-pulse rounded-control bg-paper-deep" />
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-3 text-[14px] font-semibold text-white shadow-[0_4px_12px_rgba(140,122,168,0.3)]">
+            <div className="mb-4 flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-3 text-[14px] font-semibold text-white shadow-[0_4px_12px_rgba(150,104,26,0.3)]">
               <span>Next prayer:</span>
               <span className="text-[17px] font-bold">{next.label}</span>
               <span>
@@ -394,10 +395,11 @@ export default function AzanSettingsClient() {
                 <li key={p.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
                   <span
                     className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full ${
-                      isNext ? "bg-gold text-white" : PRAYER_TONES[p.key] || "bg-gold-soft text-ink"
-                    }`}
+                      PRAYER_TONES[p.key] || "bg-gold-soft text-ink"
+                    } ${isNext ? "ring-2 ring-gold ring-offset-2 ring-offset-white" : ""}`}
                   >
-                    <Icon name={p.icon} size={20} />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={prayerArt(p.key)} alt="" width={32} height={32} className="h-8 w-8" />
                   </span>
                   <div className="min-w-[72px]">
                     <div className="text-[14px] font-bold text-charcoal">{p.label}</div>
@@ -483,7 +485,7 @@ export default function AzanSettingsClient() {
             className={`inline-flex items-center gap-2 rounded-pill px-5 py-2.5 text-[13px] font-bold transition-colors disabled:opacity-60 ${
               pushState === "on"
                 ? "border-[0.5px] border-line bg-white text-charcoal hover:bg-paper-deep"
-                : "bg-gold text-white shadow-[0_4px_12px_rgba(140,122,168,0.35)] hover:bg-gold-hover"
+                : "bg-gold text-white shadow-[0_4px_12px_rgba(150,104,26,0.35)] hover:bg-gold-hover"
             }`}
           >
             <Icon name={pushState === "on" ? "bell-off" : "bell"} size={15} />

@@ -21,7 +21,7 @@ export default function MeTab({ me, season, myCerts, certTypes, myHonours, myNom
   return (
     <div className="space-y-8">
       {/* Level card */}
-      <div className="rounded-card bg-gradient-to-br from-sand to-[#F5E4EC] p-6 shadow-[0_8px_24px_rgba(110,66,87,0.08)]">
+      <div className="rounded-card bg-gradient-to-br from-sand to-[#F7E9D2] p-6 shadow-[0_8px_24px_rgba(59,55,43,0.08)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             <Avatar src={me.avatar} name={me.name} size={52} />

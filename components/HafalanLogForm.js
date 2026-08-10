@@ -11,9 +11,9 @@ const RATINGS = [
 ];
 
 const RATING_STYLES = {
-  lancar: "bg-[#F6D3DD] border-[#6B3E4C] text-[#6B3E4C]",
-  mutqin: "bg-[#DCD3F0] border-[#4A3D63] text-[#4A3D63]",
-  needs_review: "bg-[#FBE3E8] border-[#8E3D52] text-[#8E3D52]",
+  lancar: "bg-[#F3D9C8] border-[#7A4630] text-[#7A4630]",
+  mutqin: "bg-[#DDE5D3] border-[#3E5438] text-[#3E5438]",
+  needs_review: "bg-[#F8E2D8] border-[#8E3A24] text-[#8E3A24]",
 };
 
 export default function HafalanLogForm({ defaultSurah, defaultOpen }) {

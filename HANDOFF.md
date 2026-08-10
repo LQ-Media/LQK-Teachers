@@ -186,6 +186,29 @@ Auth is self-registration against an invited-emails allowlist, with the HQ code 
 
 ---
 
+## 8a. Look and feel — cream & naturals (Aug 2026)
+
+Three rules, all of them things a previous pass got wrong:
+
+**1. The palette lives in one file.** `app/globals.css` holds every colour as a CSS variable. Cream page `#FBF6EC`, white cards floating on it, warm-bark ink `#3B372B`, harvest-amber accent `#96681A`, and three natural surface tones spread evenly across the pages — sage `#DDE5D3`, clay `#F3D9C8`, honey `#F8E3BE`. The token *names* are historical (`gold-soft` is the sage, `sage-soft` the clay, `sand` the honey) and are referenced in hundreds of places: **change the values, never the names.** There is no violet, lavender or pink anywhere; that direction was retired.
+
+**2. Art is coloured by the real world, not by the theme.** Every illustration is a clay render of a real object in its real materials — brass compass, walnut-and-brass trophy, steel microphone, cream paper, leather books. Nothing is tinted to match the palette, because a palette-tinted icon set has to be redrawn every time the palette moves. Two subjects are absolutely fixed: **the Kaaba is black kiswah with its gold band, and the Green Dome of Masjid an-Nabawi is green** — never restyled, at any size, for any reason. The prompts and these rules live in `scripts/art/manifest.mjs`.
+
+**3. Every generated image ships with a real alpha channel.** The Gemini image models cannot emit one (ask for a transparent background and you get a *painted checkerboard*), so art is generated on flat white and keyed out by `scripts/art/matte.mjs` — border flood-fill, feathered mask, un-premultiplied against white so there is no pale halo on dark surfaces. This replaced a `mix-blend-mode: multiply` hack that only worked on near-white backgrounds. Don't reintroduce a blend mode; if a new image looks like it has a plate, it wasn't keyed.
+
+Regenerating art (costs money, overwrites checked-in files, run on a clean tree and eyeball the diff):
+
+```bash
+GEMINI_API_KEY=... node scripts/generate-art.mjs          # all, or pass spot / spot/qibla
+GEMINI_API_KEY=... node scripts/restyle-art.mjs           # the LQK character art, edited in place
+```
+
+`restyle-art.mjs` is image-to-image on purpose: the ustazah and the two children are a consistent cast across the whole brand, and a fresh text-to-image render comes back with different faces. It reads what is on disk, so running it twice compounds.
+
+**The logo.** `brand/lqk-logo.svg` — the LQK monogram in brand orange `#F0A41F` — is the single source for the favicon, the PWA icons, the Apple touch icon (`node scripts/generate-icons.mjs`) and the inline `components/LqkMark.js`. Nothing else may stand in for it, and it is never re-tinted to match a theme: the palette follows the logo, not the other way round. (`scripts/app-icon-source.png`, the old terracotta "LQK Teachers Portal" illustration, is no longer referenced by anything.)
+
+---
+
 ## 9. First hour
 
 ```bash

@@ -1,10 +1,10 @@
 const STYLES = {
-  lancar: "bg-[#F6D3DD] text-[#6B3E4C]",
-  mutqin: "bg-[#DCD3F0] text-[#4A3D63]",
-  approved: "bg-[#DCD3F0] text-[#4A3D63]",
-  needs_review: "bg-[#FBE3E8] text-[#8E3D52]",
-  rejected: "bg-[#FBE3E8] text-[#8E3D52]",
-  pending: "bg-[#FBDCC8] text-[#6E4830]",
+  lancar: "bg-[#F3D9C8] text-[#7A4630]",
+  mutqin: "bg-[#DDE5D3] text-[#3E5438]",
+  approved: "bg-[#DDE5D3] text-[#3E5438]",
+  needs_review: "bg-[#F8E2D8] text-[#8E3A24]",
+  rejected: "bg-[#F8E2D8] text-[#8E3A24]",
+  pending: "bg-[#F8E3BE] text-[#6E5320]",
 };
 
 const LABELS = {

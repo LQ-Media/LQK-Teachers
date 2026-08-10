@@ -14,8 +14,11 @@ export default function manifest() {
     lang: "en",
     dir: "ltr",
     categories: ["education", "productivity"],
-    background_color: "#403548", // plum — the icon mark is now rose on transparent, so a rose splash would hide it
-    theme_color: "#403548", // violet-grey ink — matches the app's UI chrome / status bar
+    // Both are the cream page colour, so the Android splash is a seamless
+    // continuation of the app and the brand-orange mark sits on the same ground
+    // it does in app/apple-icon.png and public/icon-maskable-512.png.
+    background_color: "#FBF6EC",
+    theme_color: "#FBF6EC",
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },

@@ -1,22 +1,21 @@
-// ⚠️ SUPERSEDED 2026-08-07 — DO NOT RUN without reading this first.
-// The checked-in icons were replaced by hand with a transparent-background set
-// (rose mark, no plate) plus an opaque plum apple-touch tile. This script
-// flattens alpha onto a solid ground by design, so re-running it will overwrite
-// those files and bring the old squarish backgrounds back. Update the script (or
-// delete it) before using it again.
+// Regenerates every app icon and favicon from ONE source of truth:
+// brand/lqk-logo.svg — the authentic LQK monogram (L · Q-with-crescent-and-star
+// · K) in the brand orange #F0A41F, exactly as supplied by Karim.
 //
-// Regenerates the home-screen / PWA app icons from the LQK brand artwork.
+// Rule (Aug 2026): nothing else may stand in for the logo. The portal used to
+// ship a *tinted* copy of this mark (rose #DE7E9F) and a separate "LQK Teachers
+// Portal" terracotta illustration; both are retired. If an icon needs
+// regenerating, it comes from this SVG and no other file.
 //
-// Source: scripts/app-icon-source.png (the terracotta "LQK Teachers Portal"
-// illustration). It has transparent side margins, so we flatten it onto the
-// artwork's own terracotta first, giving a seamless full-bleed square. Outputs:
-//   app/apple-icon.png          → iPhone/iPad "Add to Home Screen" (180×180)
-//   public/icon-192.png         → Android manifest icon (purpose "any")
-//   public/icon-512.png         → Android manifest icon (purpose "any")
-//   public/icon-maskable-512.png→ Android adaptive icon (purpose "maskable")
+// Outputs:
+//   app/favicon.ico             → browser tab (16/32/48, transparent)
+//   app/apple-icon.png          → iOS "Add to Home Screen" (180x180, opaque —
+//                                 iOS composites transparency onto black)
+//   public/icon-192.png         → Android manifest icon, purpose "any" (transparent)
+//   public/icon-512.png         → Android manifest icon, purpose "any" (transparent)
+//   public/icon-maskable-512.png→ Android adaptive icon (opaque, inset for the
+//                                 circular safe zone)
 //
-// The maskable variant is inset so Android's circular mask never clips the
-// wordmark or figure. To swap the icon, replace app-icon-source.png and re-run:
 //   node scripts/generate-icons.mjs
 import sharp from "sharp";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -24,28 +23,65 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE = path.join(ROOT, "scripts/app-icon-source.png");
+const LOGO = path.join(ROOT, "brand/lqk-logo.svg");
 
-// The source artwork is white line work on one flat terracotta ground, from the
-// portal's original olive/gold identity. Rather than redraw it for the pastel
-// rose palette, we rotate its hue: the ground moves to rose and the white
-// strokes stay white (a hue rotation cannot tint an unsaturated pixel). Keeps
-// the brand illustration pixel-for-pixel while matching the new theme.
-const SOURCE_GROUND = "#B05828"; // the artwork's own terracotta, pre-shift
-const ROSE_SHIFT = { hue: 320, saturation: 0.85, brightness: 1.32 };
-// What SOURCE_GROUND becomes after the shift. Used for the maskable canvas and
-// mirrored by manifest.background_color so the splash screen matches.
-const GROUND = "#E47687";
+// The cream page colour. Used wherever an icon must be opaque, so the tile
+// looks like a swatch of the portal rather than a foreign plate.
+const GROUND = "#FBF6EC";
 
-/** A fresh pipeline: transparent margins filled, then recoloured to rose. */
-function art() {
-  return sharp(SOURCE).flatten({ background: SOURCE_GROUND }).modulate(ROSE_SHIFT);
+/**
+ * The logo, trimmed to its own ink and re-padded to a square with `margin`
+ * (a fraction of the final size) of clear space on every side.
+ *
+ * The SVG carries generous, *uneven* artboard margins, so rendering it
+ * straight to a square leaves the mark visibly off-centre and small. Trimming
+ * to the alpha bounding box first makes the optical size and centring
+ * identical at every output resolution.
+ */
+async function mark(size, margin) {
+  // Render well above the target so the trim + downscale stays crisp.
+  const trimmed = await sharp(LOGO, { density: 900 })
+    .resize({ width: 1600, height: 1600, fit: "inside" })
+    .trim({ threshold: 1 })
+    .png()
+    .toBuffer();
+
+  const inner = Math.max(1, Math.round(size * (1 - 2 * margin)));
+  const art = await sharp(trimmed)
+    .resize(inner, inner, { fit: "inside", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  const { width, height } = await sharp(art).metadata();
+
+  return sharp({
+    create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([
+      { input: art, top: Math.round((size - height) / 2), left: Math.round((size - width) / 2) },
+    ])
+    .png()
+    .toBuffer();
 }
 
-async function fullBleed(size, outPath) {
+async function write(buf, outPath, label) {
   mkdirSync(path.dirname(outPath), { recursive: true });
-  await art().resize(size, size, { fit: "cover" }).png().toFile(outPath);
-  console.log("wrote", path.relative(ROOT, outPath), `(${size}×${size})`);
+  writeFileSync(outPath, buf);
+  console.log("wrote", path.relative(ROOT, outPath), label);
+}
+
+/** Transparent PNG — the mark alone, no plate. */
+async function transparent(size, margin, outPath) {
+  await write(await mark(size, margin), outPath, `(${size}x${size}, transparent)`);
+}
+
+/** Opaque PNG — the mark on the cream ground. */
+async function onCream(size, margin, outPath) {
+  const art = await mark(size, margin);
+  const buf = await sharp({ create: { width: size, height: size, channels: 4, background: GROUND } })
+    .composite([{ input: art }])
+    .png()
+    .toBuffer();
+  await write(buf, outPath, `(${size}x${size}, on ${GROUND})`);
 }
 
 // Build a real multi-resolution .ico (browser tab / bookmarks). ICO is a small
@@ -54,9 +90,9 @@ async function fullBleed(size, outPath) {
 // modern browser, so we embed the PNGs directly.
 async function writeIco(sizes, outPath) {
   // ensureAlpha() is required: Next's ICO decoder rejects embedded PNGs that
-  // aren't RGBA ("The PNG is not in RGBA format!"), and flatten() drops alpha.
+  // aren't RGBA ("The PNG is not in RGBA format!").
   const pngs = await Promise.all(
-    sizes.map((s) => art().resize(s, s, { fit: "cover" }).ensureAlpha().png().toBuffer())
+    sizes.map(async (s) => sharp(await mark(s, 0.04)).ensureAlpha().png().toBuffer())
   );
 
   const header = Buffer.alloc(6);
@@ -84,22 +120,12 @@ async function writeIco(sizes, outPath) {
   console.log("wrote", path.relative(ROOT, outPath), `(${sizes.join(", ")})`);
 }
 
-// Maskable: shrink the art to `inset` of the canvas, centred on the ground,
-// so the OS safe-zone crop never eats the wordmark/figure.
-async function maskable(size, inset, outPath) {
-  mkdirSync(path.dirname(outPath), { recursive: true });
-  const inner = await art().resize(inset, inset, { fit: "cover" }).png().toBuffer();
-  const off = Math.round((size - inset) / 2);
-  await sharp({ create: { width: size, height: size, channels: 4, background: GROUND } })
-    .composite([{ input: inner, top: off, left: off }])
-    .png()
-    .toFile(outPath);
-  console.log("wrote", path.relative(ROOT, outPath), `(${size}×${size}, inset ${inset})`);
-}
-
-await fullBleed(180, path.join(ROOT, "app/apple-icon.png"));
-await fullBleed(192, path.join(ROOT, "public/icon-192.png"));
-await fullBleed(512, path.join(ROOT, "public/icon-512.png"));
-await maskable(512, 400, path.join(ROOT, "public/icon-maskable-512.png"));
+// Margins: "any" icons carry their own breathing room because Android draws
+// them unmasked; the maskable variant needs a much bigger inset (~20%) so the
+// OS circle crop never bites the K or the crescent.
+await transparent(192, 0.08, path.join(ROOT, "public/icon-192.png"));
+await transparent(512, 0.08, path.join(ROOT, "public/icon-512.png"));
+await onCream(180, 0.1, path.join(ROOT, "app/apple-icon.png"));
+await onCream(512, 0.2, path.join(ROOT, "public/icon-maskable-512.png"));
 await writeIco([16, 32, 48], path.join(ROOT, "app/favicon.ico"));
 console.log("done");

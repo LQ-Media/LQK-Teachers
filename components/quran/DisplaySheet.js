@@ -25,8 +25,8 @@ const COLOR_KEYS = {
 
 // Curated on-brand palette + a few high-contrast extras.
 const SWATCHES = [
-  "#403548", "#7A7080", "#D88A4F", "#C77E96", "#E0A0BC",
-  "#8C7AA8", "#6E58A8", "#C05E72", "#2E8B70", "#111111",
+  "#3B372B", "#776E5D", "#D88A4F", "#8C6239", "#B08442",
+  "#96681A", "#4E6B3E", "#B0533A", "#2E8B70", "#111111",
 ];
 
 export default function DisplaySheet({ state, store, onClose }) {

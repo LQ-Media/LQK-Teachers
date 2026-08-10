@@ -7,7 +7,7 @@ import { formatHM, minutesBetween, sgMonth, sgMonthNow } from "@/lib/hours/rates
 import { titleCase } from "@/components/tracker/util";
 import SolatWidget from "@/components/SolatWidget";
 import HeroClock from "@/components/dashboard/HeroClock";
-import Icon from "@/components/Icon";
+import { spotImage } from "@/lib/spot";
 
 export default async function DashboardPage({ searchParams }) {
   const session = await requireSession();
@@ -56,14 +56,14 @@ export default async function DashboardPage({ searchParams }) {
   return (
     <div className="min-h-screen bg-paper">
       {sp?.denied && (
-        <div className="mx-6 mt-6 rounded-control bg-rust-soft px-4 py-3 text-[13px] font-medium text-[#8E3D52]">
+        <div className="mx-6 mt-6 rounded-control bg-rust-soft px-4 py-3 text-[13px] font-medium text-[#8E3A24]">
           You don’t have access to that page.
         </div>
       )}
 
-      {/* Hero. The welcome party and the corner props are white-ground renders
-          composited with multiply (see components/EmptyArt for why) — this
-          gradient runs white → cream, so their plates vanish into it. */}
+      {/* Hero. The welcome party and the corner props carry real alpha (see
+          scripts/art/matte.mjs), so they sit on this gradient — or on anything
+          else — without a plate to hide. */}
       <div className="relative overflow-hidden bg-gradient-to-br from-white to-paper-deep px-6 pb-12 pt-6 md:px-10">
         {/* eslint-disable @next/next/no-img-element */}
         {/* The lantern hangs off the hero's top edge — the one place in the
@@ -72,26 +72,26 @@ export default async function DashboardPage({ searchParams }) {
           src="/prop/lantern.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute -top-4 left-10 hidden w-20 select-none opacity-70 mix-blend-multiply md:block"
+          className="pointer-events-none absolute -top-4 left-10 hidden w-20 select-none opacity-70 md:block"
         />
         <img
           src="/prop/crescent.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute -left-8 bottom-6 hidden w-24 select-none opacity-70 mix-blend-multiply md:block"
+          className="pointer-events-none absolute -left-8 bottom-6 hidden w-24 select-none opacity-70 md:block"
         />
         <img
           src="/prop/stars.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute right-2 top-1 hidden w-36 select-none opacity-70 mix-blend-multiply md:block"
+          className="pointer-events-none absolute right-2 top-1 hidden w-36 select-none opacity-70 md:block"
         />
         <div className="relative mx-auto max-w-[1100px] text-center">
           <img
             src="/hero-dashboard.png"
             alt=""
             aria-hidden="true"
-            className="mx-auto mb-1 h-[132px] w-auto select-none mix-blend-multiply md:h-[164px]"
+            className="mx-auto mb-1 h-[132px] w-auto select-none md:h-[164px]"
           />
           <h1 className="font-heading text-[32px] font-bold leading-tight text-charcoal md:text-[36px]">
             Assalamualaikum, {firstName}.
@@ -111,8 +111,8 @@ export default async function DashboardPage({ searchParams }) {
         <div className="mb-10 grid gap-6 sm:grid-cols-3">
           <StatCard
             delay={0}
-            tint="sand"
-            icon="clock"
+            tint="honey"
+            art="/hours"
             prop="crescent"
             label="Work hours"
             value={formatHM(workMinutes)}
@@ -120,8 +120,8 @@ export default async function DashboardPage({ searchParams }) {
           />
           <StatCard
             delay={100}
-            tint="rose"
-            icon="clipboard-check"
+            tint="clay"
+            art="/hafalan"
             prop="stars"
             label="Students logged"
             value={classSummary.length ? `${loggedToday} / ${studentTotal}` : "—"}
@@ -129,8 +129,8 @@ export default async function DashboardPage({ searchParams }) {
           />
           <StatCard
             delay={200}
-            tint="lavender"
-            icon="notebook"
+            tint="sage"
+            art="/reading"
             prop="cloud"
             label="Reading entries"
             value={String(readingThisWeek)}
@@ -180,13 +180,13 @@ export default async function DashboardPage({ searchParams }) {
   );
 }
 
-// One brand pastel per tile — peach / rose / lavender, each fading toward a
-// paler self so the row reads airy rather than blocky. Label colours are the
-// pastel's dark partner (never the cream-tuned muted, which fails on pastel).
+// One natural tone per tile — honey / clay / sage, each fading toward a paler
+// self so the row reads airy rather than blocky. Label colours are the tone's
+// dark partner (never the cream-tuned muted, which fails on a tint).
 const STAT_TINTS = {
-  sand: { bg: "bg-gradient-to-br from-sand to-[#FDEEE2]", label: "text-[#6E4830]" },
-  rose: { bg: "bg-gradient-to-br from-sage-soft to-[#FBE9EE]", label: "text-[#6B3E4C]" },
-  lavender: { bg: "bg-gradient-to-br from-gold-soft to-[#EFEAF8]", label: "text-[#4A3D63]" },
+  honey: { bg: "bg-gradient-to-br from-sand to-[#FCEFD6]", label: "text-[#6E5320]" },
+  clay: { bg: "bg-gradient-to-br from-sage-soft to-[#F9E7DC]", label: "text-[#7A4630]" },
+  sage: { bg: "bg-gradient-to-br from-gold-soft to-[#EAF0E3]", label: "text-[#3E5438]" },
   white: { bg: "bg-white", label: "text-charcoal-soft" },
 };
 
@@ -200,31 +200,33 @@ const PROP_PLACE = {
   default: "-bottom-6 -right-5 w-28",
 };
 
-function StatCard({ tint, icon, prop, label, value, note, valueClass, delay }) {
+function StatCard({ tint, art, prop, label, value, note, valueClass, delay }) {
   const t = STAT_TINTS[tint] || STAT_TINTS.white;
   return (
     <div
-      className={`lqk-rise relative overflow-hidden rounded-card ${t.bg} p-6 shadow-[0_8px_24px_rgba(64,53,72,0.08)]`}
+      className={`lqk-rise relative overflow-hidden rounded-card ${t.bg} p-6 shadow-[0_8px_24px_rgba(59,55,43,0.08)]`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      {/* Clay prop bleeding off one edge — multiply drops its white plate onto
-          the pastel, so it tints rather than sitting on top. Each prop leaves
-          by the edge its own gravity implies (see PROP_PLACE). */}
+      {/* Clay prop bleeding off one edge. It is a transparent cut-out held at
+          low opacity, so it reads as part of the tint rather than a sticker on
+          top. Each prop leaves by the edge its own gravity implies (see
+          PROP_PLACE). */}
       {prop ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={`/prop/${prop}.png`}
           alt=""
           aria-hidden="true"
-          className={`pointer-events-none absolute select-none opacity-45 mix-blend-multiply ${
+          className={`pointer-events-none absolute select-none opacity-45 ${
             PROP_PLACE[prop] || PROP_PLACE.default
           }`}
         />
       ) : null}
       <div className="relative mb-3 flex items-center gap-3">
-        <span className="text-ink">
-          <Icon name={icon} size={26} strokeWidth={1.5} />
-        </span>
+        {/* The destination's own clay render, not a line icon: at 34px it reads
+            clearly, and reusing the page's art ties the tile to where it goes. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={spotImage(art)} alt="" width={34} height={34} className="h-[34px] w-[34px] flex-shrink-0" />
         <span className={`text-[12px] font-semibold uppercase tracking-wide ${t.label}`}>{label}</span>
       </div>
       <div className={`relative font-heading text-[22px] font-bold ${valueClass || "text-charcoal"}`}>
@@ -237,7 +239,7 @@ function StatCard({ tint, icon, prop, label, value, note, valueClass, delay }) {
 
 function TrackerCard({ title, href, image, children }) {
   return (
-    <div className="lqk-rise group relative overflow-hidden rounded-card border border-line bg-white p-7 shadow-[0_1px_2px_rgba(64,53,72,0.04)] transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(64,53,72,0.10)] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+    <div className="lqk-rise group relative overflow-hidden rounded-card border border-line bg-white p-7 shadow-[0_1px_2px_rgba(59,55,43,0.04)] transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(59,55,43,0.10)] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={image}

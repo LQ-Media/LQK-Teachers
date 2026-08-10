@@ -41,7 +41,7 @@ export default function ReviewCard({ entry }) {
           <button
             type="button"
             onClick={() => setRejecting(true)}
-            className="bg-rust-soft text-[#8E3D52] rounded-control px-[18px] py-[10px] text-[13px] font-semibold hover:bg-[#efc9bd] transition-colors"
+            className="bg-rust-soft text-[#8E3A24] rounded-control px-[18px] py-[10px] text-[13px] font-semibold hover:bg-[#F0D2C2] transition-colors"
           >
             Reject
           </button>

@@ -100,7 +100,7 @@ function AyahMedallion({ number }) {
   const arabic = String(number).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
   return (
     <span
-      className="mx-1 inline-flex h-[30px] w-[30px] -translate-y-0.5 items-center justify-center rounded-full border-[1.5px] border-gold/70 align-middle font-semibold text-[#8C7AA8]"
+      className="mx-1 inline-flex h-[30px] w-[30px] -translate-y-0.5 items-center justify-center rounded-full border-[1.5px] border-gold/70 align-middle font-semibold text-[#96681A]"
       style={{ fontSize: "13px", lineHeight: 1 }}
       aria-label={`Ayah ${number}`}
     >

@@ -135,15 +135,15 @@ export default function MobileTabBar({ role }) {
                     className="flex flex-col items-center gap-1.5 rounded-card p-2.5 transition-transform duration-150 ease-out active:scale-95"
                   >
                     {spot ? (
-                      // The active ring replaces the fill a line icon would get:
-                      // the pastel ground is already baked into the render.
+                      // The render is a transparent cut-out, so it needs the same
+                      // tinted tile a line icon gets; the ring marks the active one.
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={spot}
                         alt=""
                         width={44}
                         height={44}
-                        className={`h-11 w-11 rounded-control object-cover ${
+                        className={`h-11 w-11 rounded-control bg-sand/50 object-contain p-1 ${
                           active ? "ring-2 ring-gold ring-offset-2 ring-offset-paper" : ""
                         }`}
                       />

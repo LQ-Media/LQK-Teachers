@@ -1,35 +1,42 @@
 @import "tailwindcss";
 
-/* LQK brand system — pastel trio on cream (Karim's direction, Aug 2026).
-   Cream page, white cards floating on it, and THREE equal pastel voices —
-   lavender #DCD3F0, rose #F6D3DD, peach #FBDCC8 — spread across pages to
-   highlight tiles, headers and stats (no single dominant pastel). Pastels are
-   *surfaces only* — never text, never a button fill; text on a pastel uses a
-   dark partner, never white. The lone mid-tone accent (#8C7AA8) is for links,
-   active nav, focus rings and selected states. Primary buttons are ink-filled.
+/* LQK brand system — cream & naturals (Karim's direction, Aug 2026).
+   Cream page, white cards floating on it, and THREE equal natural voices taken
+   from real materials rather than from a pastel chart — sage #DDE5D3 (leaf),
+   clay #F3D9C8 (terracotta), honey #F8E3BE (beeswax) — spread across pages to
+   highlight tiles, headers and stats (no single dominant tone). They are
+   *surfaces only* — never text, never a button fill; text on one uses a dark
+   partner, never white. The lone mid-tone accent (#96681A, harvest amber, a
+   deepened cousin of the brand orange #F0A41F) is for links, active nav, focus
+   rings and selected states. Primary buttons are ink-filled.
 
-   Token NAMES are historical — this evolved from handoff palette 3d, which
-   replaced rose/lavender, which replaced olive/gold; the names are referenced
-   in hundreds of places, so `gold` means the violet accent, `gold-soft` the
-   lavender surface, `sage`/`sage-soft` the rose pair, and `sand` peach.
-   Change the values here, never the names. */
+   NO VIOLET, NO LAVENDER, NO PINK anywhere in this file — that direction was
+   retired. Ink is warm bark brown, not violet-grey; errors are terracotta,
+   not rose-red.
+
+   Token NAMES are historical — this evolved from the pastel trio, which
+   evolved from handoff palette 3d, which replaced rose/lavender, which
+   replaced olive/gold; the names are referenced in hundreds of places, so
+   `gold` means the amber accent, `gold-soft` the sage surface, `sage`/
+   `sage-soft` the clay pair, and `sand` honey. Change the values here, never
+   the names. */
 :root {
-  --color-ink: #403548;         /* violet-grey ink — dark primary (buttons, headings) */
-  --color-ink-soft: #61536D;    /* hairline/soft on dark */
-  --color-ink-deep: #4C4056;    /* hover fill for ink buttons */
-  --color-gold: #8C7AA8;        /* the accent — links, active nav, focus, selection */
-  --color-gold-soft: #DCD3F0;   /* pastel lavender surface */
-  --color-sage: #6B3E4C;        /* on-rose text (labels/numbers on the rose surface) */
-  --color-sage-soft: #F6D3DD;   /* pastel rose surface */
-  --color-sand: #FBDCC8;        /* pastel peach surface */
+  --color-ink: #3B372B;         /* warm bark — dark primary (buttons, headings), 11.0:1 on cream */
+  --color-ink-soft: #5E5847;    /* hairline/soft on dark */
+  --color-ink-deep: #4A4536;    /* hover fill for ink buttons */
+  --color-gold: #96681A;        /* the accent — harvest amber; links, active nav, focus, selection */
+  --color-gold-soft: #DDE5D3;   /* sage surface — soft leaf green */
+  --color-sage: #7A4630;        /* on-clay text (labels/numbers on the clay surface) */
+  --color-sage-soft: #F3D9C8;   /* clay surface — warm terracotta wash */
+  --color-sand: #F8E3BE;        /* honey surface — beeswax */
   --color-paper: #FBF6EC;       /* cream page */
-  --color-paper-deep: #F4ECDB;  /* deeper cream — hover fills, muted chips */
-  --color-rust: #C05E72;        /* error — rose-red, distinct from the accent */
-  --color-rust-soft: #FBE3E8;
-  --color-charcoal: #403548;    /* headings/body dark (10.9:1 on cream) */
-  --color-charcoal-soft: #7E7368; /* muted — warm taupe, sits with the cream */
-  --color-line: #EDE4D2;        /* warm hairline */
-  --color-gold-hover: #7B6996;
+  --color-paper-deep: #F3EBD9;  /* deeper cream — hover fills, muted chips */
+  --color-rust: #B0533A;        /* error — terracotta, distinct from the amber accent */
+  --color-rust-soft: #F8E2D8;
+  --color-charcoal: #3B372B;    /* headings/body dark (11.0:1 on cream) */
+  --color-charcoal-soft: #776E5D; /* muted — warm taupe, sits with the cream */
+  --color-line: #E8DDC5;        /* warm hairline */
+  --color-gold-hover: #7D5614;
 
   /* Mobile bottom tab bar: the tab row plus ground clearance for thumbs.
      The 2.5rem floor lifts the bar clear of the iPhone home-indicator area

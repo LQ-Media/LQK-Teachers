@@ -114,7 +114,7 @@ function PackRow({ pack }) {
           </span>
         </span>
         {pack.status === "draft" && (
-          <span className="flex-shrink-0 rounded-pill bg-rust-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#8E3D52]">
+          <span className="flex-shrink-0 rounded-pill bg-rust-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#8E3A24]">
             Draft
           </span>
         )}

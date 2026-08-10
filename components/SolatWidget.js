@@ -5,9 +5,10 @@ import Link from "next/link";
 import Icon from "@/components/Icon";
 import { COUNTRIES, BY_CODE, countryForTimezone } from "@/lib/countries";
 import { AZAN_SETTINGS_EVENT } from "@/components/solat/AzanPlayer";
+import { prayerArt } from "@/lib/prayerArt";
 
-// Each prayer wears one of the three brand pastels — dawn/night in lavender,
-// the bright hours in peach and rose (no two neighbours share a colour).
+// Each prayer wears one of the three natural tones — dawn/night in sage,
+// the bright hours in honey and clay (no two neighbours share a colour).
 const PRAYERS = [
   { key: "Fajr", label: "Subuh", icon: "sunrise", tone: "bg-gold-soft text-ink" },
   { key: "Dhuhr", label: "Zohor", icon: "sun", tone: "bg-sand text-ink" },
@@ -321,11 +322,14 @@ export default function SolatWidget() {
           return (
             <div key={p.key} className={`text-center ${isPast ? "opacity-45" : ""}`}>
               <div
-                className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-colors ${
-                  isNext ? "bg-gold text-white shadow-[0_4px_12px_rgba(140,122,168,0.35)]" : p.tone
+                className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-[box-shadow] ${p.tone} ${
+                  isNext
+                    ? "ring-2 ring-gold ring-offset-2 ring-offset-white shadow-[0_4px_12px_rgba(150,104,26,0.28)]"
+                    : ""
                 }`}
               >
-                <Icon name={p.icon} size={22} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={prayerArt(p.key)} alt="" width={40} height={40} className="h-10 w-10" />
               </div>
               <div className="text-[13px] font-semibold text-charcoal">{p.label}</div>
               <div className="text-[12px] text-charcoal-soft">{p.time}</div>
@@ -333,7 +337,7 @@ export default function SolatWidget() {
           );
         })}
       </div>
-      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(140,122,168,0.3)]">
+      <div className="flex items-center justify-center gap-2 rounded-control bg-gold px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(150,104,26,0.3)]">
         <span>Next prayer:</span>
         <span className="text-[15px] font-bold">{next.label}</span>
         <span>in {countdown}</span>

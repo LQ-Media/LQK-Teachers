@@ -75,7 +75,7 @@ export default async function KalimahPage() {
 
 function Stat({ icon, label, value, note }) {
   return (
-    <div className="rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#FDF3F7] px-4 py-3.5">
+    <div className="rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#FDF8EE] px-4 py-3.5">
       <div className="mb-1 flex items-center gap-1.5 text-charcoal-soft">
         <Icon name={icon} size={13} />
         <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>

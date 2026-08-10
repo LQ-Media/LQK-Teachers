@@ -14,7 +14,7 @@ export default function NoteSummary({ summary }) {
   return (
     <div className="space-y-6">
       {summary.overview && (
-        <p className="rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#FDF3F7] p-5 text-[14px] leading-relaxed text-charcoal">
+        <p className="rounded-card border-[0.5px] border-line bg-gradient-to-br from-white to-[#FDF8EE] p-5 text-[14px] leading-relaxed text-charcoal">
           {summary.overview}
         </p>
       )}
@@ -100,16 +100,16 @@ export default function NoteSummary({ summary }) {
       )}
 
       {summary.uncertain.length > 0 && (
-        <div className="rounded-card border border-[#F2D8E1] bg-rust-soft p-5">
+        <div className="rounded-card border border-[#EED4C2] bg-rust-soft p-5">
           <div className="mb-2 flex items-center gap-2">
-            <span className="text-[#8E3D52]">
+            <span className="text-[#8E3A24]">
               <Icon name="alert-triangle" size={16} />
             </span>
-            <h2 className="font-heading text-[15px] font-bold text-[#8E3D52]">Check these yourself</h2>
+            <h2 className="font-heading text-[15px] font-bold text-[#8E3A24]">Check these yourself</h2>
           </div>
           <ul className="space-y-1.5">
             {summary.uncertain.map((u, i) => (
-              <li key={i} className="text-[13px] leading-relaxed text-[#8E3D52]">
+              <li key={i} className="text-[13px] leading-relaxed text-[#8E3A24]">
                 · {u}
               </li>
             ))}

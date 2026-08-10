@@ -55,7 +55,7 @@ export function ProgressBar({ value, className = "" }) {
   return (
     <div className={`h-2 w-full overflow-hidden rounded-pill bg-paper-deep ${className}`}>
       <div
-        className="h-full rounded-pill bg-gradient-to-r from-gold to-[#F0C46A] transition-[width] duration-500"
+        className="h-full rounded-pill bg-gradient-to-r from-gold to-[#D9A648] transition-[width] duration-500"
         style={{ width: `${Math.round(Math.min(1, Math.max(0, value)) * 100)}%` }}
       />
     </div>
@@ -65,7 +65,7 @@ export function ProgressBar({ value, className = "" }) {
 export function Pill({ children, tone = "default" }) {
   const tones = {
     default: "bg-paper-deep text-charcoal-soft",
-    gold: "bg-gold-soft text-[#4A3D63]",
+    gold: "bg-gold-soft text-[#3E5438]",
     good: "bg-sage-soft text-sage",
     bad: "bg-rust-soft text-rust",
   };
