@@ -16,6 +16,10 @@ export async function generateMetadata({ params }) {
   return { title: `${event?.title || "Event"} · LQK Teachers Portal` };
 }
 
+function plural(n, one, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 function Stat({ label, value, hint }) {
   return (
     <div className="rounded-card border border-line bg-white p-4">
@@ -49,7 +53,11 @@ export default async function EventPage({ params }) {
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Invited" value={stats.invited} />
         <Stat label="Replied" value={stats.replied} hint={`${stats.pending} still to answer`} />
-        <Stat label="Attending" value={stats.headcount} hint={`${stats.adults} adults · ${stats.children} children`} />
+        <Stat
+          label="Attending"
+          value={stats.headcount}
+          hint={`${plural(stats.adults, "adult")} · ${plural(stats.children, "child", "children")}`}
+        />
         <Stat label="Photos" value={stats.photos} />
       </div>
 
