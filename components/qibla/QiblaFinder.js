@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import { COUNTRIES, BY_CODE, countryForTimezone } from "@/lib/countries";
+import { citiesFor } from "@/lib/qibla-cities";
+import QiblaAR from "@/components/qibla/QiblaAR";
 import {
   qiblaBearing,
   distanceToKaabaKm,
@@ -13,14 +15,21 @@ import {
   headingFromOrientation,
 } from "@/lib/qibla";
 
+// "MY|3" — country code and the index of the chosen city within citiesFor().
+// An index rather than a name so the stored value survives a spelling fix, and
+// a single key so the two selects can never be restored out of step.
 const PLACE_KEY = "lqk_qibla_place";
 const ALIGNED_DEG = 5; // within this many degrees counts as facing the Qibla
 
 export default function QiblaFinder() {
-  // Where we are: GPS if allowed, else a chosen country's reference city.
+  // Where we are: GPS if allowed, else a chosen city's reference point. Every
+  // city is bundled (lib/qibla-cities.js), so picking a place — and the whole
+  // page, which the service worker keeps — works with no connection at all.
   const [coords, setCoords] = useState(null); // {lat,lng,label,precise}
   const [choice, setChoice] = useState("auto");
+  const [cityIdx, setCityIdx] = useState(0);
   const [locating, setLocating] = useState(true);
+  const [arOpen, setArOpen] = useState(false);
 
   // Compass
   const [heading, setHeading] = useState(null);
@@ -28,10 +37,14 @@ export default function QiblaFinder() {
   const listeningRef = useRef(false);
 
   // --- location -------------------------------------------------------
-  const useCountry = useCallback((code) => {
+  const applyPlace = useCallback((code, idx = 0) => {
     const c = BY_CODE[code];
     if (!c) return;
-    setCoords({ lat: c.lat, lng: c.lng, label: `${c.city}, ${c.name}`, precise: false });
+    const cities = citiesFor(c);
+    const i = Math.max(0, Math.min(cities.length - 1, idx));
+    const city = cities[i];
+    setCityIdx(i);
+    setCoords({ lat: city.lat, lng: city.lng, label: `${city.name}, ${c.name}`, precise: false });
     setLocating(false);
   }, []);
 
@@ -42,16 +55,17 @@ export default function QiblaFinder() {
     } catch {
       // ignore
     }
-    if (saved && BY_CODE[saved]) {
+    const [savedCode, savedIdx] = String(saved || "").split("|");
+    if (savedCode && BY_CODE[savedCode]) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setChoice(saved);
-      useCountry(saved);
+      setChoice(savedCode);
+      applyPlace(savedCode, Number(savedIdx) || 0);
       return;
     }
 
     const fallback = countryForTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      useCountry(fallback.code);
+      applyPlace(fallback.code);
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -64,31 +78,42 @@ export default function QiblaFinder() {
         });
         setLocating(false);
       },
-      () => useCountry(fallback.code), // denied/unavailable → country reference point
+      () => applyPlace(fallback.code), // denied/unavailable → city reference point
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 }
     );
-  }, [useCountry]);
+  }, [applyPlace]);
 
-  function pickPlace(value) {
-    setChoice(value);
+  function remember(code, idx) {
     try {
-      localStorage.setItem(PLACE_KEY, value === "auto" ? "" : value);
+      localStorage.setItem(PLACE_KEY, code ? `${code}|${idx}` : "");
     } catch {
       // ignore
     }
+  }
+
+  function pickPlace(value) {
+    setChoice(value);
     if (value === "auto") {
+      remember(null, 0);
       setLocating(true);
       navigator.geolocation?.getCurrentPosition(
         (pos) => {
           setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location", precise: true });
           setLocating(false);
         },
-        () => useCountry(countryForTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone).code),
+        () => applyPlace(countryForTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone).code),
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 }
       );
     } else {
-      useCountry(value);
+      remember(value, 0); // a new country starts at its first city
+      applyPlace(value, 0);
     }
+  }
+
+  function pickCity(idx) {
+    if (choice === "auto") return;
+    remember(choice, idx);
+    applyPlace(choice, idx);
   }
 
   // --- compass --------------------------------------------------------
@@ -151,6 +176,7 @@ export default function QiblaFinder() {
   }, [startCompass, onOrientation]);
 
   // --- derived --------------------------------------------------------
+  const cityOptions = choice === "auto" ? [] : citiesFor(BY_CODE[choice]);
   const qibla = coords ? qiblaBearing(coords.lat, coords.lng) : null;
   const distanceKm = coords ? distanceToKaabaKm(coords.lat, coords.lng) : null;
   const live = compassState === "live" && heading !== null;
@@ -180,21 +206,42 @@ export default function QiblaFinder() {
           {locating ? "Finding your location…" : coords?.label}
           {coords && !coords.precise && <span className="text-[11px] text-charcoal-soft">(approximate)</span>}
         </div>
-        <label className="flex items-center gap-1.5">
-          <span className="sr-only">Location for Qibla</span>
-          <select
-            value={choice}
-            onChange={(e) => pickPlace(e.target.value)}
-            className="max-w-[190px] cursor-pointer rounded-control border-[0.5px] border-line bg-white px-2 py-1 text-[12px] font-semibold text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
-          >
-            <option value="auto">Use my location</option>
-            {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex items-center gap-1.5">
+          <label>
+            <span className="sr-only">Country for Qibla</span>
+            <select
+              value={choice}
+              onChange={(e) => pickPlace(e.target.value)}
+              className="max-w-[190px] cursor-pointer rounded-control border-[0.5px] border-line bg-white px-2 py-1 text-[12px] font-semibold text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
+            >
+              <option value="auto">Use my location</option>
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* Region matters: the Qibla from Kuching is 15° off the Qibla from
+              Kuala Lumpur, so a country on its own is not a location. Hidden on
+              "Use my location", where GPS is already exact. */}
+          {choice !== "auto" && cityOptions.length > 1 && (
+            <label>
+              <span className="sr-only">City or region for Qibla</span>
+              <select
+                value={cityIdx}
+                onChange={(e) => pickCity(Number(e.target.value))}
+                className="max-w-[170px] cursor-pointer rounded-control border-[0.5px] border-line bg-white px-2 py-1 text-[12px] font-semibold text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
+              >
+                {cityOptions.map((c, i) => (
+                  <option key={c.name} value={i}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
       </div>
 
       {/* Compass */}
@@ -231,8 +278,30 @@ export default function QiblaFinder() {
           </div>
 
           <CompassStatus state={compassState} onEnable={startCompass} qibla={qibla} />
+
+          {/* The camera view is opt-in behind a tap, not the default: iOS only
+              grants the camera and the compass from inside a user gesture, and
+              a desktop or a denied camera still has a working dial here. */}
+          {qibla !== null && (
+            <button
+              type="button"
+              onClick={() => setArOpen(true)}
+              className="mt-5 flex items-center gap-2 rounded-control bg-ink px-5 py-2.5 text-[13px] font-semibold text-paper transition-[background-color,transform] duration-150 ease-out hover:bg-ink-deep active:scale-[0.98]"
+            >
+              <Icon name="camera" size={16} /> Find it in the room
+            </button>
+          )}
         </div>
       </div>
+
+      {arOpen && qibla !== null && (
+        <QiblaAR
+          qibla={qibla}
+          placeLabel={coords?.label}
+          distanceKm={distanceKm}
+          onClose={() => setArOpen(false)}
+        />
+      )}
 
       <p className="mt-4 text-[11px] leading-relaxed text-charcoal-soft">
         Direction is the great-circle bearing to the Kaaba (21.4225° N, 39.4832° E), calculated on your device. Phone
@@ -272,19 +341,23 @@ function Dial({ rotation, qibla, live, aligned }) {
         <circle cx={c} cy={c} r={c - 6} fill="var(--color-paper)" stroke="var(--color-line)" strokeWidth="1" />
         <circle cx={c} cy={c} r={c - 30} fill="none" stroke="var(--color-line)" strokeWidth="1" />
 
-        {/* Degree ticks every 15°, longer on the cardinals */}
+        {/* Degree ticks every 15°, longer on the cardinals.
+            Rounded to 3dp on purpose: Math.sin is not required to be correctly
+            rounded, so Node and the browser disagree in the last bit and React
+            reports a hydration mismatch on every tick. */}
         {Array.from({ length: 24 }, (_, i) => {
           const a = (i * 15 * Math.PI) / 180;
           const cardinal = i % 6 === 0;
           const r1 = c - 8;
           const r2 = c - (cardinal ? 20 : 14);
+          const at = (r, fn) => Number(fn(r).toFixed(3));
           return (
             <line
               key={i}
-              x1={c + r1 * Math.sin(a)}
-              y1={c - r1 * Math.cos(a)}
-              x2={c + r2 * Math.sin(a)}
-              y2={c - r2 * Math.cos(a)}
+              x1={at(r1, (r) => c + r * Math.sin(a))}
+              y1={at(r1, (r) => c - r * Math.cos(a))}
+              x2={at(r2, (r) => c + r * Math.sin(a))}
+              y2={at(r2, (r) => c - r * Math.cos(a))}
               stroke={cardinal ? "var(--color-charcoal-soft)" : "var(--color-line)"}
               strokeWidth={cardinal ? 2 : 1}
               strokeLinecap="round"
@@ -301,17 +374,19 @@ function Dial({ rotation, qibla, live, aligned }) {
         ].map(([label, deg]) => {
           const a = (deg * Math.PI) / 180;
           const r = c - 34;
+          const x = Number((c + r * Math.sin(a)).toFixed(3));
+          const y = Number((c - r * Math.cos(a)).toFixed(3));
           return (
             <text
               key={label}
-              x={c + r * Math.sin(a)}
-              y={c - r * Math.cos(a)}
+              x={x}
+              y={y}
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="13"
               fontWeight="700"
               fill={label === "N" ? "var(--color-rust)" : "var(--color-charcoal-soft)"}
-              transform={`rotate(${-rotation} ${c + r * Math.sin(a)} ${c - r * Math.cos(a)})`}
+              transform={`rotate(${-rotation} ${x} ${y})`}
             >
               {label}
             </text>

@@ -4,15 +4,20 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v4"; // bumped 2026-08-10 for the new app icons
+const VERSION = "lqk-v5"; // bumped 2026-08-10 to add /qibla to the offline routes
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
 // Routes whose shell may be kept for offline use. Deliberately narrow: these
-// two hold public religious text only. Everything else — the dashboard, the
-// hafalan tracker, work hours, admin — carries student, pay or roster data and
-// is never written to the cache, so an offline device cannot surface it.
-const OFFLINE_ROUTES = [/^\/quran(\/|$)/, /^\/dzikir(\/|$)/];
+// three hold public religious text and a bearing computed on the device — no
+// personal data. Everything else — the dashboard, the hafalan tracker, work
+// hours, admin — carries student, pay or roster data and is never written to
+// the cache, so an offline device cannot surface it.
+//
+// /qibla is safe because its city reference points are bundled in the JS: once
+// the page and its chunks are cached, picking a place and reading a bearing
+// needs no network at all.
+const OFFLINE_ROUTES = [/^\/quran(\/|$)/, /^\/dzikir(\/|$)/, /^\/qibla(\/|$)/];
 const PRECACHE = [
   "/offline.html",
   "/icon-192.png",

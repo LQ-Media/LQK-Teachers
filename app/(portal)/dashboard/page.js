@@ -7,6 +7,7 @@ import { formatHM, minutesBetween, sgMonth, sgMonthNow } from "@/lib/hours/rates
 import { titleCase } from "@/components/tracker/util";
 import SolatWidget from "@/components/SolatWidget";
 import HeroClock from "@/components/dashboard/HeroClock";
+import DailyBrief from "@/components/dashboard/DailyBrief";
 import { spotImage } from "@/lib/spot";
 
 export default async function DashboardPage({ searchParams }) {
@@ -69,37 +70,22 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="min-h-screen bg-paper">
+      {/* Shown once per Singapore day, and only after the client confirms it is
+          due — see the component for why the scores aren't computed here. */}
+      <DailyBrief />
+
       {sp?.denied && (
         <div className="mx-6 mt-6 rounded-control bg-rust-soft px-4 py-3 text-[13px] font-medium text-[#8E3A24]">
           You don’t have access to that page.
         </div>
       )}
 
-      {/* Hero. The welcome party and the corner props carry real alpha (see
-          scripts/art/matte.mjs), so they sit on this gradient — or on anything
-          else — without a plate to hide. */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-white to-paper-deep px-6 pb-12 pt-6 md:px-10">
+      {/* Hero. Flat cream, same as the body below it — the page reads as one
+          surface with white cards floating on it, so the hero needs no band of
+          its own. (The lantern/crescent/stars props that used to frame the
+          greeting were removed; the faded cut-outs on the stat tiles stay.) */}
+      <div className="relative overflow-hidden bg-paper px-6 pb-12 pt-6 md:px-10">
         {/* eslint-disable @next/next/no-img-element */}
-        {/* The lantern hangs off the hero's top edge — the one place in the
-            portal with a "ceiling" for its cord to disappear into. */}
-        <img
-          src="/prop/lantern.png"
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-4 left-10 hidden w-20 select-none opacity-70 md:block"
-        />
-        <img
-          src="/prop/crescent.png"
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute -left-8 bottom-6 hidden w-24 select-none opacity-70 md:block"
-        />
-        <img
-          src="/prop/stars.png"
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute right-2 top-1 hidden w-36 select-none opacity-70 md:block"
-        />
         <div className="relative mx-auto max-w-[1100px] text-center">
           <img
             src="/hero-dashboard.png"
@@ -122,7 +108,9 @@ export default async function DashboardPage({ searchParams }) {
 
       {/* Content */}
       <div className="mx-auto max-w-[1100px] px-6 py-10 md:px-10">
-        <div className="mb-10 grid gap-6 sm:grid-cols-3">
+        {/* Always three across — on a 360px phone that leaves ~104px a tile, so
+            the tile scales (padding, art, type, prop) rather than wrapping. */}
+        <div className="mb-10 grid grid-cols-3 gap-2.5 sm:gap-6">
           <StatCard
             delay={0}
             tint="honey"
@@ -205,20 +193,22 @@ const STAT_TINTS = {
 };
 
 // Where each clay prop leaves the card. The lantern hangs, so its cord has to
-// run off the TOP edge — crop it at the bottom and it reads as a jar.
+// run off the TOP edge — crop it at the bottom and it reads as a jar. Widths
+// come in pairs: at three-up on a phone the full-size prop would be wider than
+// the tile itself and swallow the number.
 const PROP_PLACE = {
-  lantern: "-top-7 right-6 w-20",
-  cloud: "-bottom-5 -right-4 w-28",
-  stars: "-bottom-4 -right-2 w-32",
-  crescent: "-bottom-6 -right-4 w-24",
-  default: "-bottom-6 -right-5 w-28",
+  lantern: "-top-3 right-2 w-10 sm:-top-7 sm:right-6 sm:w-20",
+  cloud: "-bottom-2 -right-2 w-12 sm:-bottom-5 sm:-right-4 sm:w-28",
+  stars: "-bottom-2 -right-1 w-14 sm:-bottom-4 sm:-right-2 sm:w-32",
+  crescent: "-bottom-2 -right-2 w-11 sm:-bottom-6 sm:-right-4 sm:w-24",
+  default: "-bottom-2 -right-2 w-12 sm:-bottom-6 sm:-right-5 sm:w-28",
 };
 
 function StatCard({ tint, art, prop, label, value, note, valueClass, delay }) {
   const t = STAT_TINTS[tint] || STAT_TINTS.white;
   return (
     <div
-      className={`lqk-rise relative overflow-hidden rounded-card ${t.bg} p-6 shadow-[0_8px_24px_rgba(59,55,43,0.08)]`}
+      className={`lqk-rise relative overflow-hidden rounded-card ${t.bg} p-3 shadow-[0_8px_24px_rgba(59,55,43,0.08)] sm:p-6`}
       style={{ animationDelay: `${delay}ms` }}
     >
       {/* Clay prop bleeding off one edge. It is a transparent cut-out held at
@@ -231,22 +221,38 @@ function StatCard({ tint, art, prop, label, value, note, valueClass, delay }) {
           src={`/prop/${prop}.png`}
           alt=""
           aria-hidden="true"
-          className={`pointer-events-none absolute select-none opacity-45 ${
+          className={`pointer-events-none absolute select-none opacity-25 sm:opacity-45 ${
             PROP_PLACE[prop] || PROP_PLACE.default
           }`}
         />
       ) : null}
-      <div className="relative mb-3 flex items-center gap-3">
+      {/* Art over label on a phone, beside it once there's room: side-by-side at
+          104px wide would leave the label two characters a line. */}
+      <div className="relative mb-1.5 flex flex-col items-start gap-1 sm:mb-3 sm:flex-row sm:items-center sm:gap-3">
         {/* The destination's own clay render, not a line icon: at 34px it reads
             clearly, and reusing the page's art ties the tile to where it goes. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={spotImage(art)} alt="" width={34} height={34} className="h-[34px] w-[34px] flex-shrink-0" />
-        <span className={`text-[12px] font-semibold uppercase tracking-wide ${t.label}`}>{label}</span>
+        <img
+          src={spotImage(art)}
+          alt=""
+          width={34}
+          height={34}
+          className="h-[22px] w-[22px] flex-shrink-0 sm:h-[34px] sm:w-[34px]"
+        />
+        <span
+          className={`text-[9.5px] font-semibold uppercase leading-tight tracking-wide sm:text-[12px] ${t.label}`}
+        >
+          {label}
+        </span>
       </div>
-      <div className={`relative font-heading text-[22px] font-bold ${valueClass || "text-charcoal"}`}>
+      <div
+        className={`relative font-heading text-[15px] font-bold leading-tight sm:text-[22px] ${
+          valueClass || "text-charcoal"
+        }`}
+      >
         {value}
       </div>
-      <div className={`relative text-[13px] ${t.label}`}>{note}</div>
+      <div className={`relative text-[9.5px] leading-tight sm:text-[13px] ${t.label}`}>{note}</div>
     </div>
   );
 }

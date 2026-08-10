@@ -245,6 +245,9 @@ export default function QuranReader({ initialBookmark = null }) {
               </option>
             ))}
           </ToolbarSelect>
+          {/* Type the number instead of hunting the list — 114 options is a long
+              scroll on a phone, and most teachers know the surah by number. */}
+          <SurahNumberJump chapterId={state.chapterId} onGo={(n) => store.goTo(n)} />
           <ToolbarButton label="Text size and colours" onClick={() => setDisplayOpen(true)}>
             <Icon name="type" size={16} />
           </ToolbarButton>
@@ -397,6 +400,53 @@ function ToolbarSelect({ label, value, onChange, className = "", children }) {
         <Icon name="chevron-down" size={14} />
       </span>
     </div>
+  );
+}
+
+// A 1–114 box beside the surah dropdown. It keeps its own draft text so the
+// teacher can clear the field and type "9" without the reader jumping to surah
+// 9 on the first keystroke of "90" — navigation happens on Enter or blur.
+function SurahNumberJump({ chapterId, onGo }) {
+  const [draft, setDraft] = useState(String(chapterId));
+
+  // Follow the reader when it moves for any other reason (dropdown, tab strip,
+  // bookmark resume). Adjusting state during render — React's documented way to
+  // derive from a prop — rather than in an effect, which would paint the stale
+  // number for a frame first.
+  const [prevChapter, setPrevChapter] = useState(chapterId);
+  if (prevChapter !== chapterId) {
+    setPrevChapter(chapterId);
+    setDraft(String(chapterId));
+  }
+
+  function commit() {
+    const n = Number(draft);
+    if (!Number.isInteger(n) || n < 1 || n > 114) {
+      setDraft(String(chapterId)); // out of range — snap back, don't navigate
+      return;
+    }
+    if (n !== Number(chapterId)) onGo(n);
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      aria-label="Go to surah number"
+      title="Surah number (1–114)"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 3))}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.currentTarget.blur();
+          commit();
+        }
+      }}
+      onBlur={commit}
+      onFocus={(e) => e.currentTarget.select()}
+      className="h-9 w-[46px] flex-none rounded-control border-[0.5px] border-line bg-white text-center text-[13px] font-semibold text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
+    />
   );
 }
 

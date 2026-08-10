@@ -50,6 +50,11 @@ export const viewport = {
   // the app rather than a dark bar sitting on top of it. Keep in step with
   // `theme_color` in app/manifest.js and `--color-paper` in globals.css.
   themeColor: "#FBF6EC",
+  // Shrink the LAYOUT viewport when the on-screen keyboard opens, so `dvh` and
+  // fixed-position sheets sit above it instead of behind it. Chrome/Android
+  // honours this; iOS ignores it, which is why BrowseSheet also measures
+  // `window.visualViewport` by hand.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }) {

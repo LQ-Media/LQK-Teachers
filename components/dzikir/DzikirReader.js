@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
-import { subIcon } from "@/lib/dzikir/icons";
 
 // A horizontal drag counts as a page turn when it is decisively sideways:
 // far enough to be deliberate, and clearly more horizontal than vertical so
@@ -41,23 +40,20 @@ const DEFAULT_SPEED = 2;
 const PREF_KEY = "lqk.dzikir.prefs";
 
 /**
- * The devotional reader. Every passage shows the Arabic in one self-hosted
- * naskh face (so it looks the same on every device); transliteration and the
- * meaning are togglable, and the meaning follows an English-first language
- * picker with Bahasa Indonesia as the alternate.
+ * The devotional reader: ONE passage on screen at a time.
  *
- * Reading aids: an A−/A+ size stepper and a hands-free auto-scroll (play/pause
- * plus speed) that drives the window scroll and bows out the moment the reader
- * touches the wheel or the screen.
+ * Paging is horizontal — swipe, ← →, or the buttons under the passage — and
+ * runs inside the current sub-section. At either end the same gesture crosses
+ * into the neighbouring sub-section (`prev`/`next`), which is a real
+ * navigation; everything in between is local state, so a page turn is instant.
+ *
+ * Reading aids carried over from the scrolling reader: an A−/A+ size stepper,
+ * transliteration/meaning toggles, an English⇄Bahasa picker, and a hands-free
+ * auto-scroll for the long passages that still outrun a screen.
  */
-export default function DzikirReader({
-  passages,
-  prev = null,
-  next = null,
-  siblings = [],
-  activeKey = null,
-}) {
+export default function DzikirReader({ pages, title, prev = null, next = null, upHref = null }) {
   const router = useRouter();
+  const [i, setI] = useState(0);
   const [lang, setLang] = useState("en");
   const [showTranslit, setShowTranslit] = useState(true);
   const [showMeaning, setShowMeaning] = useState(true);
@@ -135,121 +131,48 @@ export default function DzikirReader({
     };
   }, [scrolling, speed]);
 
-  // Group passages under their sub-section headings, preserving order.
-  const groups = useMemo(() => {
-    const out = [];
-    for (const p of passages) {
-      const sub = p.sub || "";
-      if (!out.length || out[out.length - 1].sub !== sub) out.push({ sub, items: [] });
-      out[out.length - 1].items.push(p);
-    }
-    return out;
-  }, [passages]);
+  const total = pages.length;
 
-  // Jump to a passage group within this collection. Mirrors the index card on
-  // /dzikir one level up, so the same tap-an-icon-to-jump gesture works at
-  // every level of the library.
-  function jumpToSub(index) {
-    const el = document.getElementById(`sub-${index}`);
-    if (!el) return;
-    setScrolling(false); // an explicit jump ends hands-free scrolling
-    // These collections run to tens of thousands of pixels — Ratib's last group
-    // starts past 80,000px. Animating that far is unusable (and Chrome gives up
-    // partway), so only short hops animate; long ones land immediately.
-    const distance = Math.abs(el.getBoundingClientRect().top);
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const smooth = !reduce && distance < 2000;
-    el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
-  }
-
-  const meaningOf = (p) => (lang === "en" ? p.en : p.id_);
-  const sz = SIZES[size];
-
-  const decSize = useCallback(() => setSize((s) => Math.max(0, s - 1)), []);
-  const incSize = useCallback(() => setSize((s) => Math.min(SIZES.length - 1, s + 1)), []);
-
-  // ── Paging between collections ────────────────────────────────────────────
-  const hrefOf = (t) => (t ? `/dzikir/${t.group}/${t.slug}` : null);
-
-  const goTo = useCallback(
-    (target) => {
-      if (!target) return;
+  // ── Paging ────────────────────────────────────────────────────────────────
+  // Within the sub-section this is local state; past either end it hands over
+  // to the neighbouring sub-section's route.
+  // The index is mirrored in a ref and moved eagerly, so a burst of arrow-key
+  // presses advances by one each — reading `i` from the closure would make them
+  // all compute the same target — and so the scroll reset stays out of the
+  // state updater, which has to be pure.
+  const iRef = useRef(0);
+  const step = useCallback(
+    (delta) => {
       setScrolling(false); // never carry auto-scroll across a page turn
-      router.push(`/dzikir/${target.group}/${target.slug}`);
+      const target = iRef.current + delta;
+      if (target >= 0 && target < total) {
+        iRef.current = target;
+        setI(target);
+        // Back to the top: the passage just left may have been long, and the
+        // next one starts at its own beginning.
+        window.scrollTo({ top: 0, behavior: "auto" });
+        return;
+      }
+      const cross = delta > 0 ? next : prev;
+      if (cross) router.push(cross.href);
     },
-    [router]
+    [total, prev, next, router]
   );
 
-  // Arrow keys page between collections on desktop. Ignored while the reader is
-  // typing in a field, and never when a modifier is held (that is a browser
-  // shortcut, e.g. ⌘← for Back).
+  // Arrow keys page on desktop. Ignored while typing in a field, and never when
+  // a modifier is held (that is a browser shortcut, e.g. ⌘← for Back).
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       const el = document.activeElement;
       const tag = el?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
-      if (e.key === "ArrowRight") goTo(next);
-      else if (e.key === "ArrowLeft") goTo(prev);
+      if (e.key === "ArrowRight") step(1);
+      else if (e.key === "ArrowLeft") step(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goTo, prev, next]);
-
-  // Centre the open collection in the sibling strip on arrival, so the ones
-  // either side are visible without hunting. offsetLeft is relative to the
-  // offsetParent, not the strip, so measure the two rects instead.
-  //
-  // Re-run once the webfonts land: the first measurement happens in the
-  // fallback face, whose wider glyphs put every tab at the wrong offset, and
-  // the strip ends up scrolled well past the active tab. The maths is
-  // idempotent (an already-centred strip computes a zero delta), so repeating
-  // it is free.
-  const tabsRef = useRef(null);
-  useEffect(() => {
-    const centre = () => {
-      const strip = tabsRef.current;
-      if (!strip) return;
-      const tab = strip.querySelector('[data-active="true"]');
-      if (!tab) return;
-      const delta = tab.getBoundingClientRect().left - strip.getBoundingClientRect().left;
-      strip.scrollLeft += delta - (strip.clientWidth - tab.offsetWidth) / 2;
-    };
-    centre();
-    document.fonts?.ready.then(centre).catch(() => {});
-    window.addEventListener("resize", centre);
-    return () => window.removeEventListener("resize", centre);
-  }, [activeKey]);
-
-  // Drag the strip sideways with a mouse — touch already has native momentum
-  // scrolling, so this is pointer-type gated. A drag must not also open the
-  // collection it started on, hence the capture-phase click swallow.
-  const drag = useRef(null);
-
-  const onStripPointerDown = useCallback((e) => {
-    if (e.pointerType !== "mouse") return;
-    drag.current = { x: e.clientX, scroll: e.currentTarget.scrollLeft, moved: false };
-  }, []);
-
-  const onStripPointerMove = useCallback((e) => {
-    const d = drag.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    if (Math.abs(dx) > 4) d.moved = true;
-    e.currentTarget.scrollLeft = d.scroll - dx;
-  }, []);
-
-  const onStripPointerUp = useCallback(() => {
-    if (drag.current) drag.current.up = true;
-  }, []);
-
-  const onStripClickCapture = useCallback((e) => {
-    if (drag.current?.moved) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    drag.current = null;
-  }, []);
+  }, [step]);
 
   // Touch paging. Recorded on the container rather than the window so a swipe
   // that starts on the sticky control bar doesn't turn the page.
@@ -277,51 +200,38 @@ export default function DzikirReader({
       if (Math.abs(dx) < SWIPE_MIN_PX) return;
       if (Math.abs(dx) < Math.abs(dy) * SWIPE_RATIO) return;
 
-      goTo(dx < 0 ? next : prev); // drag left → next, drag right → previous
+      step(dx < 0 ? 1 : -1); // drag left → next, drag right → previous
     },
-    [goTo, prev, next]
+    [step]
   );
+
+  const meaningOf = (p) => (p ? (lang === "en" ? p.en : p.id_) : "");
+  const sz = SIZES[size];
+  const decSize = useCallback(() => setSize((s) => Math.max(0, s - 1)), []);
+  const incSize = useCallback(() => setSize((s) => Math.min(SIZES.length - 1, s + 1)), []);
+
+  if (!total) {
+    return (
+      <p className="rounded-card border border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+        This section has no passages.
+      </p>
+    );
+  }
+
+  const page = pages[Math.min(i, total - 1)];
+  const p = page.p;
+  const heading = page.hdr ? meaningOf(page.hdr) || page.hdr.id_ : null;
+  const meaning = meaningOf(p);
+
+  const atStart = i === 0;
+  const atEnd = i === total - 1;
 
   return (
     <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* Sibling strip + controls, pinned so both stay reachable mid-litany.
-          The negative margins bleed the bar to the page edges and must track
-          the page's own padding (px-4 on phones, p-8 from sm up). */}
+      {/* Controls, pinned so they stay reachable inside a long passage. The
+          negative margins bleed the bar to the page edges and must track the
+          page's own padding (px-4 on phones, p-8 from sm up). */}
       <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-line bg-paper/95 px-4 py-2.5 backdrop-blur sm:-mx-8 sm:px-8">
-        {siblings.length > 1 && (
-          <div
-            ref={tabsRef}
-            aria-label="Collections in this section"
-            onPointerDown={onStripPointerDown}
-            onPointerMove={onStripPointerMove}
-            onPointerUp={onStripPointerUp}
-            onPointerLeave={onStripPointerUp}
-            onClickCapture={onStripClickCapture}
-            className="-mx-4 mb-1.5 flex gap-2 overflow-x-auto px-4 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-8 sm:px-8 [&::-webkit-scrollbar]:hidden"
-            style={{ touchAction: "pan-x pan-y", cursor: "grab" }}
-          >
-            {siblings.map((s) => {
-              const active = s.key === activeKey;
-              return (
-                <Link
-                  key={s.key}
-                  href={`/dzikir/${s.group}/${s.slug}`}
-                  data-active={active ? "true" : undefined}
-                  aria-current={active ? "page" : undefined}
-                  draggable={false}
-                  className={`flex-none whitespace-nowrap rounded-control border px-4 py-2.5 text-[13px] transition-colors ${
-                    active
-                      ? "border-gold bg-gold-soft font-bold text-charcoal"
-                      : "border-line bg-white font-medium text-charcoal-soft hover:border-gold/50 hover:text-charcoal"
-                  }`}
-                >
-                  {s.title}
-                </Link>
-              );
-            })}
-          </div>
-        )}
-
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Segmented value={lang} onChange={setLang} options={LANGS} />
           <Toggle label="Transliteration" on={showTranslit} onClick={() => setShowTranslit((v) => !v)} />
@@ -368,6 +278,12 @@ export default function DzikirReader({
               <span className="text-[13px] font-bold leading-none">+</span>
             </StepBtn>
           </div>
+
+          {/* Where you are in the sub-section — the one thing a single-passage
+              screen cannot show implicitly the way a scrolling list did. */}
+          <span className="ml-auto text-[12px] font-semibold tabular-nums text-charcoal-soft">
+            {i + 1} / {total}
+          </span>
         </div>
       </div>
 
@@ -377,183 +293,141 @@ export default function DzikirReader({
         </p>
       ) : null}
 
-      {/* Passage index — one tile per group inside this collection. */}
-      {groups.length > 1 && groups.some((g) => g.sub) && (
-        <nav
-          aria-label="Passages in this collection"
-          className="mb-6 rounded-card border-[0.5px] border-line bg-white p-3"
-        >
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {groups.map((g, gi) => (
-              <button
-                key={gi}
-                type="button"
-                onClick={() => jumpToSub(gi)}
-                className="flex items-center gap-2.5 rounded-control border-[0.5px] border-line bg-paper px-2.5 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 ease-out hover:border-gold hover:bg-gold-soft/30 active:scale-[0.97]"
-              >
-                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-control bg-gold-soft text-ink">
-                  <Icon name={subIcon(gi)} size={17} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-bold leading-tight text-charcoal">
-                    {g.sub || "Opening"}
-                  </span>
-                  <span className="block text-[10.5px] leading-tight text-charcoal-soft">
-                    {g.items.length} passage{g.items.length === 1 ? "" : "s"}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </nav>
-      )}
+      {heading ? (
+        <h2 className="mb-3 flex items-center gap-2 font-heading text-[13px] font-bold uppercase tracking-wide text-charcoal-soft">
+          <span className="h-px w-4 flex-shrink-0 bg-gold" aria-hidden="true" />
+          {heading}
+        </h2>
+      ) : null}
 
-      <div className="space-y-6">
-        {groups.map((g, gi) => (
-          <section key={gi} id={`sub-${gi}`} className="scroll-mt-4">
-            {g.sub ? (
-              <h2 className="mb-3 flex items-center gap-2 font-heading text-[15px] font-semibold text-ink">
-                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-control bg-gold-soft text-ink">
-                  <Icon name={subIcon(gi)} size={15} />
-                </span>
-                {g.sub}
-              </h2>
-            ) : null}
-            <div className="space-y-3">
-              {g.items.map((p) => {
-                const meaning = meaningOf(p);
-
-                // Header rows label the passage that follows them ("Option I",
-                // "Intention for Hajj"). NU ships them as ordinary records with
-                // the heading sitting in the Arabic field, so before the data
-                // migration they rendered as right-to-left Latin text in the
-                // Amiri face, followed by a spurious "no translation" notice.
-                if (p.hdr) {
-                  const heading = meaningOf(p) || p.id_;
-                  if (!heading) return null;
-                  return (
-                    <h3
-                      key={p.id}
-                      className="flex items-center gap-2 pt-2 pb-0.5 font-heading text-[13px] font-bold uppercase tracking-wide text-charcoal-soft"
-                    >
-                      <span className="h-px w-4 flex-shrink-0 bg-gold" aria-hidden="true" />
-                      {heading}
-                    </h3>
-                  );
-                }
-
-                return (
-                  <article
-                    key={p.id}
-                    className="rounded-card border border-line bg-white px-4 py-4 sm:px-5"
-                  >
-                    {p.ar ? (
-                      <p
-                        lang="ar"
-                        dir="rtl"
-                        className="text-ink"
-                        style={{
-                          fontFamily: ARABIC_STACK,
-                          fontSize: `${sz.ar}px`,
-                          lineHeight: sz.lh,
-                          whiteSpace: "pre-line",
-                        }}
-                      >
-                        {p.ar}
-                      </p>
-                    ) : null}
-
-                    {showTranslit && p.tr ? (
-                      <p
-                        className="mt-3 italic leading-relaxed text-charcoal-soft"
-                        style={{ fontSize: `${sz.tr}px`, whiteSpace: "pre-line" }}
-                      >
-                        {p.tr}
-                      </p>
-                    ) : null}
-
-                    {showMeaning ? (
-                      meaning ? (
-                        <p
-                          className="mt-3 border-t border-line pt-3 leading-relaxed text-charcoal"
-                          style={{ fontSize: `${sz.mn}px`, whiteSpace: "pre-line" }}
-                        >
-                          {meaning}
-                        </p>
-                      ) : (
-                        <p className="mt-3 border-t border-line pt-3 text-[12.5px] italic text-charcoal-soft/70">
-                          {lang === "en"
-                            ? "No English translation for this passage."
-                            : "Tiada terjemahan untuk bagian ini."}
-                        </p>
-                      )
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-
-      {/* Paging between collections — the swipe made visible, and the only way
-          to move on for anyone using a mouse or a keyboard. */}
-      {(prev || next) && (
-        <nav className="mt-8 border-t border-line pt-5" aria-label="Other collections">
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            <PageLink target={prev} href={hrefOf(prev)} side="prev" />
-            <PageLink target={next} href={hrefOf(next)} side="next" />
-          </div>
-          <p className="mt-3 text-center text-[11.5px] text-charcoal-soft/70">
-            Swipe left or right to move between collections, or use the ← → keys.
+      <article
+        key={p.id}
+        className="lqk-rise rounded-card border border-line bg-white px-4 py-5 sm:px-6 sm:py-6"
+      >
+        {p.ar ? (
+          <p
+            lang="ar"
+            dir="rtl"
+            className="text-ink"
+            style={{
+              fontFamily: ARABIC_STACK,
+              fontSize: `${sz.ar}px`,
+              lineHeight: sz.lh,
+              whiteSpace: "pre-line",
+            }}
+          >
+            {p.ar}
           </p>
-        </nav>
-      )}
+        ) : null}
+
+        {showTranslit && p.tr ? (
+          <p
+            className="mt-3 italic leading-relaxed text-charcoal-soft"
+            style={{ fontSize: `${sz.tr}px`, whiteSpace: "pre-line" }}
+          >
+            {p.tr}
+          </p>
+        ) : null}
+
+        {showMeaning ? (
+          meaning ? (
+            <p
+              className="mt-3 border-t border-line pt-3 leading-relaxed text-charcoal"
+              style={{ fontSize: `${sz.mn}px`, whiteSpace: "pre-line" }}
+            >
+              {meaning}
+            </p>
+          ) : (
+            <p className="mt-3 border-t border-line pt-3 text-[12.5px] italic text-charcoal-soft/70">
+              {lang === "en"
+                ? "No English translation for this passage."
+                : "Tiada terjemahan untuk bagian ini."}
+            </p>
+          )
+        ) : null}
+      </article>
+
+      {/* The swipe made visible, and the only way to page for anyone on a mouse
+          or a keyboard. At either end the button crosses into the neighbouring
+          sub-section rather than going dead. */}
+      <nav className="mt-6 grid grid-cols-2 gap-2.5" aria-label="Passages">
+        <PageButton
+          side="prev"
+          label={atStart ? prev?.title : "Previous"}
+          sublabel={atStart ? "Previous section" : `Passage ${i}`}
+          href={atStart ? prev?.href : null}
+          onClick={atStart ? null : () => step(-1)}
+          disabled={atStart && !prev}
+        />
+        <PageButton
+          side="next"
+          label={atEnd ? next?.title : "Next"}
+          sublabel={atEnd ? "Next section" : `Passage ${i + 2}`}
+          href={atEnd ? next?.href : null}
+          onClick={atEnd ? null : () => step(1)}
+          disabled={atEnd && !next}
+        />
+      </nav>
+
+      {upHref ? (
+        <p className="mt-4 text-center text-[11.5px] text-charcoal-soft/70">
+          Swipe or use the ← → keys to move through {title}.{" "}
+          <Link href={upHref} className="font-semibold text-gold hover:text-gold-hover">
+            Back to all sections
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }
 
 /**
- * One side of the pager. Renders a disabled placeholder rather than collapsing
- * when there is nothing that way, so the two sides stay in a stable grid and
- * the reader can see they are at the beginning or the end of the library.
+ * One side of the pager. Renders as a link when the tap leaves this page and a
+ * button when it does not, and as a disabled placeholder at the very ends —
+ * collapsing it would shift the other side across mid-read.
  */
-function PageLink({ target, href, side }) {
+function PageButton({ side, label, sublabel, href, onClick, disabled }) {
   const isNext = side === "next";
-  const label = isNext ? "Next" : "Previous";
-
-  if (!target) {
-    return (
-      <span
-        className={`flex items-center gap-2 rounded-card border border-dashed border-line px-4 py-3 text-[12.5px] text-charcoal-soft/50 ${
-          isNext ? "sm:justify-end sm:text-right" : ""
-        }`}
-      >
-        {isNext ? `End of the library` : `Start of the library`}
-      </span>
-    );
-  }
-
-  return (
-    <Link
-      href={href}
-      className={`flex items-center gap-3 rounded-card border border-line bg-white px-4 py-3 transition-colors hover:border-gold hover:bg-paper ${
-        isNext ? "sm:flex-row-reverse sm:text-right" : ""
-      }`}
-    >
-      <span className="flex-shrink-0 text-charcoal-soft">
+  const inner = (
+    <>
+      <span className="flex-none text-charcoal-soft">
         <Icon name={isNext ? "chevron-right" : "arrow-left"} size={16} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] font-bold uppercase tracking-wide text-charcoal-soft/70">
+          {sublabel}
+        </span>
+        <span className="block break-words font-heading text-[13.5px] font-bold leading-snug text-charcoal">
           {label}
         </span>
-        <span className="block truncate font-heading text-[14px] font-bold text-charcoal">
-          {target.title}
-        </span>
-        <span className="block truncate text-[11.5px] text-charcoal-soft">{target.groupLabel}</span>
       </span>
-    </Link>
+    </>
+  );
+
+  const shape = `flex items-center gap-3 rounded-card border px-4 py-3 text-left ${
+    isNext ? "flex-row-reverse text-right" : ""
+  }`;
+
+  if (disabled) {
+    return (
+      <span className={`${shape} border-dashed border-line text-[12.5px] text-charcoal-soft/50`}>
+        <span className="flex-1">{isNext ? "End of the collection" : "Start of the collection"}</span>
+      </span>
+    );
+  }
+
+  if (href) {
+    return (
+      <Link href={href} className={`${shape} border-line bg-white transition-colors hover:border-gold hover:bg-paper`}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={`${shape} w-full border-line bg-white transition-colors hover:border-gold hover:bg-paper`}>
+      {inner}
+    </button>
   );
 }
 

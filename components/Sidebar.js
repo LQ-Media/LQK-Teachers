@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions/auth";
@@ -24,11 +25,17 @@ const NAV_ITEMS = [
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
 ];
 
-// Reveals its label only when the rail is hovered (group-hover).
-function Label({ children, className = "" }) {
+const COLLAPSE_KEY = "lqk_sidebar_collapsed";
+
+// The rail is expanded by default, so labels render on the server and stay put.
+// Collapsed, the same span animates to zero width rather than unmounting —
+// unmounting would make the text pop rather than slide.
+function Label({ collapsed, children, className = "" }) {
   return (
     <span
-      className={`w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:w-auto group-hover:opacity-100 ${className}`}
+      className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${
+        collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+      } ${className}`}
     >
       {children}
     </span>
@@ -39,17 +46,60 @@ export default function Sidebar({ role, fullName, avatar }) {
   const pathname = usePathname();
   const initial = (fullName || "?").trim().charAt(0).toUpperCase();
 
+  // Expanded is the SSR default; the stored preference is applied after mount
+  // so the markup the server sent always matches the first client render.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
+    } catch {
+      // private mode / storage disabled — stay expanded
+    }
+  }, []);
+
+  function toggle() {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
   return (
-    <aside className="group sticky top-0 z-30 hidden h-screen w-[76px] flex-shrink-0 flex-col gap-1 overflow-hidden border-r border-line bg-paper px-3 py-4 transition-[width] duration-300 ease-out hover:w-[224px] lg:flex">
+    <aside
+      className={`sticky top-0 z-30 hidden h-screen flex-shrink-0 flex-col gap-1 overflow-hidden border-r border-line bg-paper px-3 py-4 transition-[width] duration-300 ease-out lg:flex ${
+        collapsed ? "w-[76px]" : "w-[224px]"
+      }`}
+    >
       {/* Logo */}
-      <div className="mb-3 flex items-center gap-2.5 px-1">
+      <div className="mb-1 flex items-center gap-2.5 px-1">
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-gold-soft">
           <LqkMark className="w-6 h-6" />
         </div>
-        <Label>
+        <Label collapsed={collapsed}>
           <span className="font-heading text-[15px] font-bold text-charcoal">Little Quran Kids</span>
         </Label>
       </div>
+
+      {/* Collapse toggle. Its own row rather than sharing the logo's: at 76px
+          the mark already fills the rail, leaving nowhere for it to sit. */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className={`mb-2 flex h-7 items-center rounded-control text-charcoal-soft transition-colors hover:bg-paper-deep hover:text-charcoal ${
+          collapsed ? "w-full justify-center" : "ml-auto w-7 justify-center"
+        }`}
+      >
+        <Icon name={collapsed ? "chevron-right" : "chevron-left"} size={16} />
+      </button>
 
       <nav className="flex flex-1 flex-col gap-1">
         {NAV_ITEMS.map((item) => {
@@ -66,8 +116,8 @@ export default function Sidebar({ role, fullName, avatar }) {
                 <span className="flex-shrink-0">
                   <Icon name={item.icon} size={18} />
                 </span>
-                <Label>{item.label}</Label>
-                <Label className="ml-auto">
+                <Label collapsed={collapsed}>{item.label}</Label>
+                <Label collapsed={collapsed} className="ml-auto">
                   <span className="rounded-pill bg-paper-deep px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
                     Soon
                   </span>
@@ -80,6 +130,7 @@ export default function Sidebar({ role, fullName, avatar }) {
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={`flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px] transition-colors ${
                 isActive
                   ? "bg-gold-soft font-semibold text-ink"
@@ -89,7 +140,7 @@ export default function Sidebar({ role, fullName, avatar }) {
               <span className="flex-shrink-0">
                 <Icon name={item.icon} size={18} />
               </span>
-              <Label>{item.label}</Label>
+              <Label collapsed={collapsed}>{item.label}</Label>
             </Link>
           );
         })}
@@ -114,7 +165,9 @@ export default function Sidebar({ role, fullName, avatar }) {
               initial
             )}
           </span>
-          <Label className="flex-1 text-left font-semibold">{fullName}</Label>
+          <Label collapsed={collapsed} className="flex-1 text-left font-semibold">
+            {fullName}
+          </Label>
         </Link>
         <form action={logout}>
           <button
@@ -125,7 +178,7 @@ export default function Sidebar({ role, fullName, avatar }) {
             <span className="flex-shrink-0">
               <Icon name="log-out" size={18} />
             </span>
-            <Label>Log out</Label>
+            <Label collapsed={collapsed}>Log out</Label>
           </button>
         </form>
       </div>

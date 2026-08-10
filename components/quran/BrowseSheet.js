@@ -12,17 +12,23 @@ export default function BrowseSheet({ state, store, onClose, autoFocusSearch = f
   const [ayahSurah, setAyahSurah] = useState(String(state.chapterId));
   const [ayahNum, setAyahNum] = useState("1");
 
-  // Keep the sheet above the on-screen keyboard. Without this the sheet stays
-  // pinned to the layout viewport, the keyboard covers the results, and the
-  // teacher has to dismiss it before they can tap a surah.
-  const [kbInset, setKbInset] = useState(0);
-  const [availH, setAvailH] = useState(null);
+  // Keep the sheet above the on-screen keyboard. A fixed element is positioned
+  // against the LAYOUT viewport, which iOS does not shrink when the keyboard
+  // opens — so `bottom: 0` puts the surah list behind the keys.
+  //
+  // Anchoring by `bottom` and a measured keyboard inset is the usual fix, but it
+  // ignores `visualViewport.offsetTop`: iOS also scrolls the visual viewport up
+  // to reveal the focused field, and the sheet drifts with it. Measuring the
+  // visual viewport RECT instead — top and height together — pins the sheet to
+  // what's actually on screen in both engines.
+  const [rect, setRect] = useState(null); // {top, height} in layout-viewport px
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
     const sync = () => {
-      setKbInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
-      setAvailH(vv.height);
+      // 92% of the visible area, sitting at its bottom edge.
+      const height = Math.round(vv.height * 0.92);
+      setRect({ top: Math.round(vv.offsetTop + vv.height - height), height });
     };
     sync();
     vv.addEventListener("resize", sync);
@@ -113,10 +119,11 @@ export default function BrowseSheet({ state, store, onClose, autoFocusSearch = f
       <div
         role="dialog"
         aria-label="Browse the Quran"
-        style={{
-          bottom: kbInset || undefined,
-          maxHeight: availH ? `${Math.round(availH * 0.92)}px` : undefined,
-        }}
+        style={
+          rect
+            ? { top: `${rect.top}px`, height: `${rect.height}px`, bottom: "auto", maxHeight: "none" }
+            : undefined
+        }
         className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[86dvh] w-full max-w-[560px] flex-col rounded-t-[24px] bg-white shadow-[0_-8px_24px_rgba(74,51,64,0.18)]"
       >
         {/* Everything above the list is flex-none, so it never scrolls away */}
