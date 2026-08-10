@@ -4,7 +4,7 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v3";
+const VERSION = "lqk-v4"; // bumped 2026-08-10 for the new app icons
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
