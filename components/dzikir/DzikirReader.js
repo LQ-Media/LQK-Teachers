@@ -456,6 +456,7 @@ export default function DzikirReader({
                           fontFamily: ARABIC_STACK,
                           fontSize: `${sz.ar}px`,
                           lineHeight: sz.lh,
+                          whiteSpace: "pre-line",
                         }}
                       >
                         {p.ar}
@@ -465,7 +466,7 @@ export default function DzikirReader({
                     {showTranslit && p.tr ? (
                       <p
                         className="mt-3 italic leading-relaxed text-charcoal-soft"
-                        style={{ fontSize: `${sz.tr}px` }}
+                        style={{ fontSize: `${sz.tr}px`, whiteSpace: "pre-line" }}
                       >
                         {p.tr}
                       </p>
@@ -475,7 +476,7 @@ export default function DzikirReader({
                       meaning ? (
                         <p
                           className="mt-3 border-t border-line pt-3 leading-relaxed text-charcoal"
-                          style={{ fontSize: `${sz.mn}px` }}
+                          style={{ fontSize: `${sz.mn}px`, whiteSpace: "pre-line" }}
                         >
                           {meaning}
                         </p>
