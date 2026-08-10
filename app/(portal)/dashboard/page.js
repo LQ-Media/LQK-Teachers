@@ -42,16 +42,30 @@ export default async function DashboardPage({ searchParams }) {
   // Work hours logged this month (excludes rejected), plus whether they're
   // clocked in right now.
   const thisMonth = sgMonthNow();
+  const nowIso = new Date().toISOString();
+  // `ended_at <= now`, not just "not null": a rostered session carries a FUTURE
+  // ended_at for the whole shift, so the old test would count hours nobody has
+  // worked yet.
   const workMinutes = db
     .prepare(
-      "SELECT started_at, ended_at FROM work_sessions WHERE teacher_id = ? AND ended_at IS NOT NULL AND status != 'rejected'"
+      "SELECT started_at, ended_at FROM work_sessions WHERE teacher_id = ? AND ended_at IS NOT NULL AND ended_at <= ? AND status != 'rejected'"
     )
-    .all(session.userId)
+    .all(session.userId, nowIso)
     .filter((r) => sgMonth(r.started_at) === thisMonth)
     .reduce((a, r) => a + minutesBetween(r.started_at, r.ended_at), 0);
+  // Clocked in = an open unscheduled session, OR mid-way through a rostered
+  // shift they've tapped into. A rostered session is created already closed, so
+  // `ended_at IS NULL` alone would read false forever.
   const clockedIn = !!db
-    .prepare("SELECT 1 FROM work_sessions WHERE teacher_id = ? AND ended_at IS NULL")
-    .get(session.userId);
+    .prepare(
+      `SELECT 1 FROM work_sessions
+       WHERE teacher_id = ?
+         AND (ended_at IS NULL
+              OR (shift_id IS NOT NULL AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+                  AND started_at <= ? AND ended_at > ?))
+       LIMIT 1`
+    )
+    .get(session.userId, nowIso, nowIso);
 
   return (
     <div className="min-h-screen bg-paper">

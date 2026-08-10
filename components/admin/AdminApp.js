@@ -19,6 +19,7 @@ import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import HoursAdmin from "@/components/admin/HoursAdmin";
+import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -95,7 +96,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours }) {
+export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts }) {
   const [tab, setTab] = useState("users");
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [staffModal, setStaffModal] = useState(null); // {mode, student?}
@@ -103,6 +104,11 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
   const [creds, setCreds] = useState(null); // {email, tempPassword} banner
 
   const pendingHours = initialHours?.pending?.length || 0;
+  const missedCount = initialShifts?.missed?.length || 0;
+  // Anyone who can hold a shift. Sorted by name so the pickers are scannable.
+  const teacherOptions = [...users]
+    .map((u) => ({ id: u.id, fullName: u.full_name }))
+    .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
 
   const ADD_LABEL = { users: "Add user", staff: "Add staff", invites: "Invite email" };
   const ADD_ICON = { users: "user-plus", staff: "plus", invites: "mail-plus" };
@@ -146,6 +152,9 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
         <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
           Invited emails ({invites.length})
         </Tab>
+        <Tab active={tab === "shifts"} onClick={() => setTab("shifts")} icon="calendar">
+          Roster{missedCount ? ` (${missedCount})` : ""}
+        </Tab>
         <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
           Work hours{pendingHours ? ` (${pendingHours})` : ""}
         </Tab>
@@ -156,6 +165,9 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
       )}
       {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
       {tab === "invites" && <InvitesTable invites={invites} />}
+      {tab === "shifts" && (
+        <ShiftsAdmin teachers={teacherOptions} locations={locations} initial={initialShifts} />
+      )}
       {tab === "hours" && <HoursAdmin initial={initialHours} />}
 
       {userModal && (

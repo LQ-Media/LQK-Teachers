@@ -73,11 +73,40 @@ This is the payroll path. It replaced Skooly for logging teacher time, so **bugs
 
 All rates live in `lib/hours/rates.js` — edit there, nowhere else.
 
+- **Pay is the ROSTERED SHIFT**, not the clocked time. See §4a.
 - Teaching pays the teacher's tier on their profile: `asst_probation` $10 / `asst` $15 / `lead` $20 / `lead_ars` $25
 - Ad-hoc / OT is a flat **$10/hr** for everyone
-- Approved sessions **snapshot `rate_cents`**, so a later tier change never rewrites past payroll. Pending pay is only an estimate.
+- Work on a Singapore public holiday pays **`PH_MULTIPLIER` (currently 2) on the hourly rate**. Read the comment above the constant before changing it: MOM publishes no multiplier, the statutory rule is additive, and 2x is a deliberate approximation agreed with Karim.
+- Approved sessions **snapshot `rate_cents` and `ph_multiplier`**, so a later tier or multiplier change never rewrites past payroll. Pending pay is only an estimate.
 - All times are Singapore (UTC+8) via the Intl helpers in `rates.js`
 - Teaching hours **cannot be approved until the teacher's pay tier is set** — this is a deliberate guard, not a bug
+
+### 4a. Rostered shifts (shipped 2026-08-10)
+
+Built from staff feedback: teachers were never meant to clock out or enter their own OT.
+
+**How it works now.** Admins roster shifts ahead of time (Admin → Roster). A teacher opens the app and taps **clock in** — that is the whole teacher-facing action. There is no clock out, because teachers forget and an open session leaves nobody knowing when they finished.
+
+**These are decisions, not accidents. Check with Karim before changing any of them:**
+
+- **Pay = the rostered shift.** A session copies the shift's window into `started_at`/`ended_at` when it is created. `clock_in_at` records when they actually tapped; **lateness is deliberately never flagged**.
+- **One tap covers a whole back-to-back BLOCK** of shifts (gap ≤ 30 min). Without this, a teacher who taps once before three consecutive classes would be chased for missing two of them, and the weekly report would stop being believed.
+- **Unscheduled clock-in is allowed**, left genuinely open, and flagged for an admin to close. A gap in the roster must never stop someone being paid, and **the system never invents an end time** — hence no background job anywhere in this feature.
+- **Shifts are cancelled, never deleted.** `work_sessions.shift_id` is a real FK with no `ON DELETE`, so deleting a worked shift throws. Bulk delete reports what it kept.
+- **A missed shift asks the teacher for a reason**; an admin then pays it or rejects it. A rejected one is remembered so the report stops asking.
+- **OT is inserted by an admin** as an OT *shift* after MH approves it. Teachers can no longer self-enter sessions or edit a rostered one — that would be editing their own pay.
+
+**The rule that keeps the money right:** a rostered session carries a **future `ended_at`** for the whole shift, so `ended_at IS NOT NULL` no longer means "this happened". Every payroll reader tests **`ended_at <= now`** — `lib/actions/hours.js` (queue, totals, and a hard guard in `approveSession`), both portal pages, and the CSV route. Miss it in a new reader and you will pay for classes that haven't been taught.
+
+**Public holidays** come from MOM's official dataset on data.gov.sg, imported by `scripts/sync-public-holidays.mjs` (re-runnable, dry-run by default). Run it when MOM publishes a new year. Shifts on those dates are stamped and pay the multiplier; the bulk generator can skip them.
+
+| Concern | File |
+|---|---|
+| Matching, blocks, generation | `lib/hours/shifts.js` |
+| Holiday feed + parsing | `lib/hours/holidays.js` |
+| Monthly totals (pure, tested) | `lib/hours/payroll.js` |
+| Roster server actions | `lib/actions/shifts.js` |
+| Admin roster + missed queue | `components/admin/ShiftsAdmin.js` |
 
 ### Location stamp (shipped 2026-08-10)
 
@@ -127,14 +156,20 @@ The ad-hoc logic tests are now permanent — see §5a.
 npm test
 ```
 
-Node's built-in runner, no dependencies added, files in `test/*.test.mjs`. 51 tests over the two pure modules: `rates.js` (tiers, the flat OT rate, tier-from-position matching order, SG time boundaries, duration and rounding, money formatting) and `geo.js` (fix validation, null-island and accuracy-ceiling rejection, display helpers, label building).
+Node's built-in runner, no dependencies added, files in `test/*.test.mjs`. 121 tests: `rates.js` (tiers, the flat OT rate, tier-from-position matching order, SG time boundaries, duration and rounding, money formatting), `geo.js` (fix validation, null-island and accuracy-ceiling rejection, display helpers), `shifts.js` (matching, back-to-back blocks, roster generation, midnight-spanning, holiday pay), `holidays.js` (feed parsing), and `payroll.js` (monthly totals and the snapshot rules).
 
-Two things to know:
+`test/payroll.test.mjs` also runs against a **real database** built by `ensureSchema` in a temp directory, because the double-pay guard is a partial unique index — testing a hand-written copy of it would prove nothing. It pins: one shift can never be paid twice, a worked shift can't be deleted, cancelling frees the slot, and deleting an account still works despite the FK.
+
+Three things to know:
+
+- **Run it under `TZ=UTC` as well as locally.** Production sets no `TZ` so the container runs UTC, while a dev laptop runs UTC+8. Several date rules would pass in one and fail in the other. `lib/date.js` is server-local and genuinely wrong in production — never use it for anything payroll-shaped.
 
 - **The live Nominatim round-trip is opt-in**, so the default run is offline and deterministic: `LQK_TEST_NETWORK=1 npm test`.
 - Tests are `.mjs` deliberately. The repo has no `"type": "module"`, and setting one to tidy the `MODULE_TYPELESS_PACKAGE_JSON` warning would change module resolution for every plain `.js` file in the project — not worth it for a cosmetic warning.
 
 The tests assert *rules*, not current output, and each says which rule it protects. If one goes red, the fix is almost never to update the expectation.
+
+**Verified locally for rostered shifts (2026-08-10)**: one tap creating two sessions for a back-to-back block, each carrying the rostered window and the real arrival time; the payable guard keeping an in-progress shift out of the CSV, the queue and the totals; a public holiday paying $80 where an identical ordinary shift paid $40, with the multiplier snapshotted at approval; the bulk generator creating 3 shifts and skipping Deepavali; the full missed-clock-in loop (teacher explains → admin pays it → session created); and bulk approve taking only the clean rostered shift while leaving the holiday and missed-accepted ones for a human.
 
 **Verified in production**: deploy succeeded, container healthy, `/login` 200, `/hours` redirects to login, the CSV route returns 401 rather than 500 for an unauthenticated caller.
 
@@ -172,7 +207,7 @@ One thing to watch for specifically: **geolocation requires a secure context.** 
 
 **`node:sqlite` rows have a null prototype.** Shape them into plain objects before handing them to a Client Component, or React will reject them. Every existing query does this — follow the `toSession` pattern in `lib/actions/hours.js`.
 
-**The build emits one warning** about unexpected files in the NFT trace, pointing at `next.config.mjs`. It is pre-existing, caused by the dynamic imports in the dzikir loaders, and unrelated to anything recent. Don't chase it.
+**The build emits warnings** about unexpected files in the NFT trace, pointing at `next.config.mjs`. Pre-existing, caused by the dynamic imports in the dzikir loaders. It is now reported twice rather than once simply because another module reaches the same graph — same issue, not a new one. Don't chase it.
 
 ---
 

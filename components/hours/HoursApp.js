@@ -7,11 +7,13 @@ import PageHeading from "@/components/PageHeading";
 import EmptyArt from "@/components/EmptyArt";
 import LocationTag, { LocationLine } from "@/components/hours/LocationTag";
 import { clockIn, clockOut, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
+import { explainMissed } from "@/lib/actions/shifts";
 import {
   OT_REASONS,
   OT_RATE,
+  PH_MULTIPLIER,
   rateFor,
-  payCents,
+  sessionPayCents,
   formatHM,
   formatMoney,
   sgClock,
@@ -19,23 +21,41 @@ import {
   sgTime24,
   sgToday,
 } from "@/lib/hours/rates";
+import { MISSED_REASONS } from "@/lib/hours/shifts";
 
 const field =
   "w-full bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
 
-export default function HoursApp({ firstName, payTier, tierRate, monthName, branchOptions, running, sessions, totals }) {
+export default function HoursApp({
+  firstName,
+  payTier,
+  tierRate,
+  monthName,
+  branchOptions,
+  running,
+  onShift,
+  nextShift,
+  upcoming,
+  missed,
+  awaiting,
+  sessions,
+  totals,
+}) {
   const router = useRouter();
   const [modal, setModal] = useState(null); // {mode, session?}
   const [notice, setNotice] = useState(null);
 
-  // Approved uses the snapshotted rate; pending is estimated at the current rate.
+  // Approved uses the snapshotted rate and holiday multiplier; pending is
+  // estimated at today's.
   function rateOf(s) {
     if (s.status === "approved" && s.rateCents != null) return s.rateCents / 100;
     return rateFor(s.category, payTier);
   }
   function payOf(s) {
     const r = rateOf(s);
-    return r == null ? null : payCents(s.minutes, r);
+    if (r == null) return null;
+    const mult = s.status === "approved" ? s.phMultiplier : s.phName ? PH_MULTIPLIER : null;
+    return sessionPayCents(s.minutes, r, mult);
   }
 
   const estCents = totals.approvedCents + totals.pendingCents;
@@ -47,7 +67,7 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
           route="/hours"
           icon="clock"
           title="Work hours"
-          subtitle={`Clock in when you start, clock out when you’re done. ${monthName}.`}
+          subtitle={`Clock in when you arrive — your shifts are already set. ${monthName}.`}
         />
       </div>
 
@@ -80,25 +100,54 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
         />
       </div>
 
-      <ClockCard
+      <ShiftCard
         running={running}
+        onShift={onShift}
+        nextShift={nextShift}
         branchOptions={branchOptions}
         tierRate={tierRate}
         onNotice={setNotice}
-        onEditRunning={(s) => setModal({ mode: "edit", session: s })}
       />
 
+      {/* Shifts nobody clocked in for. Answering here is what replaces the
+          weekly chase from the IT Heads. */}
+      {missed.length > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-3 font-heading text-[15px] font-semibold text-charcoal">
+            You didn’t clock in {missed.length > 1 ? `(${missed.length})` : ""}
+          </h2>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-rust bg-white">
+            {missed.map((s) => (
+              <MissedRow key={s.id} shift={s} onNotice={setNotice} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {awaiting.length > 0 && (
+        <div className="mt-6 rounded-card border-[0.5px] border-line bg-white px-4 py-3">
+          <p className="text-[13px] text-charcoal-soft">
+            {awaiting.length === 1 ? "1 explanation is" : `${awaiting.length} explanations are`} with an admin to
+            review.
+          </p>
+        </div>
+      )}
+
+      {/* The roster ahead — the main thing a teacher wants from this page. */}
+      {upcoming.length > 0 && (
+        <div className="mt-7">
+          <h2 className="mb-3 font-heading text-[15px] font-semibold text-charcoal">Your next shifts</h2>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+            {upcoming.map((s) => (
+              <UpcomingRow key={s.id} shift={s} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* This month's sessions */}
-      <div className="mt-7 mb-3 flex items-center justify-between">
+      <div className="mt-7 mb-3">
         <h2 className="font-heading text-[15px] font-semibold text-charcoal">This month</h2>
-        <button
-          type="button"
-          onClick={() => setModal({ mode: "add" })}
-          className="flex items-center gap-1.5 rounded-control border-[0.5px] border-line bg-white px-3 py-2 text-[12px] font-semibold text-charcoal transition-colors hover:bg-paper-deep"
-        >
-          <Icon name="plus" size={15} />
-          Add past session
-        </button>
       </div>
 
       {sessions.length === 0 ? (
@@ -135,130 +184,133 @@ export default function HoursApp({ firstName, payTier, tierRate, monthName, bran
   );
 }
 
-// ---- Clock in / out card ----------------------------------------------
+// ---- Shift card --------------------------------------------------------
 
-function ClockCard({ running, branchOptions, tierRate, onNotice, onEditRunning }) {
+// One tap is the whole teacher-facing action. There is no clock out: teachers
+// forget, and an open session leaves nobody knowing when they finished. Pay is
+// the rostered shift, so the end time is already known the moment they arrive.
+
+function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNotice }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [category, setCategory] = useState("teaching");
-  const [otReason, setOtReason] = useState(OT_REASONS[0]);
   const [branch, setBranch] = useState(branchOptions[0] || "");
   const [note, setNote] = useState("");
   const [geo, setGeo] = useState(null);
 
   function doClockIn() {
     startTransition(async () => {
-      // Only OT carries a location — teaching happens at a branch we already know.
-      const r = await clockIn({ category, otReason, branch, note, geo: category === "ot" ? geo : null });
+      const r = await clockIn({ branch, note, geo });
       if (r?.error) onNotice(r.error);
       else {
         setNote("");
         setGeo(null);
-        router.refresh();
-      }
-    });
-  }
-  function doClockOut() {
-    startTransition(async () => {
-      const r = await clockOut();
-      if (r?.error) onNotice(r.error);
-      else {
-        if (r?.long) onNotice("Clocked out. That session ran long — open it below to fix the end time if you forgot to clock out.");
+        if (r?.unscheduled) {
+          onNotice(
+            "Clocked in, but you have no shift rostered right now. An admin will see this and set your end time."
+          );
+        } else if (r?.shifts > 1) {
+          onNotice(`Clocked in for all ${r.shifts} of your back-to-back shifts.`);
+        }
         router.refresh();
       }
     });
   }
 
-  if (running) {
-    return (
-      <RunningCard
-        running={running}
-        pending={pending}
-        onClockOut={doClockOut}
-        onEdit={() => onEditRunning(running)}
-        onRefresh={() => router.refresh()}
-      />
-    );
-  }
+  // An unscheduled session is the only thing left genuinely running — nobody
+  // knows when it ends, so the teacher can close it themselves.
+  if (running) return <OpenCard running={running} pending={pending} onNotice={onNotice} />;
 
-  const rateHint =
-    category === "ot"
-      ? `Paid at $${OT_RATE}/hr`
-      : tierRate != null
-        ? `Paid at your rate: $${tierRate}/hr`
-        : "Ask an admin to set your pay tier";
+  if (onShift) return <OnShiftCard session={onShift} />;
+
+  const start = nextShift && sgClock(nextShift.startsAt);
+  const end = nextShift && sgClock(nextShift.endsAt);
+  const isToday = nextShift && nextShift.date === sgToday();
 
   return (
     <div className="rounded-card border-[0.5px] border-line bg-white p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-charcoal-soft">Start a session</span>
-        <span className="text-[11px] text-charcoal-soft">{rateHint}</span>
-      </div>
-
-      <Segmented
-        value={category}
-        onChange={setCategory}
-        options={[
-          { value: "teaching", label: "Class teaching" },
-          { value: "ot", label: "Ad-hoc / OT" },
-        ]}
-      />
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {category === "ot" && (
-          <Labelled label="What for?">
-            <select className={field} value={otReason} onChange={(e) => setOtReason(e.target.value)}>
-              {OT_REASONS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </Labelled>
-        )}
-        <Labelled label="Branch">
-          <select className={field} value={branch} onChange={(e) => setBranch(e.target.value)}>
-            {branchOptions.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </Labelled>
-        <Labelled label="Note (optional)" full={category !== "ot"}>
-          <input className={field} value={note} placeholder="e.g. covering for Ustazah Nur" onChange={(e) => setNote(e.target.value)} />
-        </Labelled>
-      </div>
-
-      {category === "ot" && (
-        <div className="mt-3">
-          <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Where are you?</span>
-          <LocationTag value={geo} onChange={setGeo} />
+      {nextShift ? (
+        <div className="mb-4">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-soft">
+            {isToday ? "Your next shift today" : "Your next shift"}
+          </span>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="font-heading text-[22px] font-bold text-charcoal">
+              {start} – {end}
+            </span>
+            {nextShift.phName && (
+              <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
+                {nextShift.phName}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 text-[12px] text-charcoal-soft">
+            {!isToday && `${sgDate(nextShift.startsAt)} · `}
+            {nextShift.category === "ot" ? nextShift.otReason || "Ad-hoc / OT" : "Class teaching"}
+            {nextShift.branch ? ` · ${nextShift.branch}` : ""} · {formatHM(nextShift.minutes)}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-soft">No shift rostered</span>
+          <p className="mt-1 text-[13px] text-charcoal-soft">
+            You can still clock in — an admin will set the end time.
+          </p>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={doClockIn}
-        disabled={pending}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60 sm:w-auto"
-      >
-        <Icon name="play" size={16} filled />
-        {pending ? "Starting…" : "Clock in"}
-      </button>
+      {/* Only an unrostered tap needs to say where it is; a shift knows already. */}
+      {!nextShift && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <Labelled label="Branch">
+            <select className={field} value={branch} onChange={(e) => setBranch(e.target.value)}>
+              {branchOptions.map((b) => (
+                <option key={b}>{b}</option>
+              ))}
+            </select>
+          </Labelled>
+          <Labelled label="Note (optional)">
+            <input className={field} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What are you doing?" />
+          </Labelled>
+          <div className="sm:col-span-2">
+            <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Where are you?</span>
+            <LocationTag value={geo} onChange={setGeo} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-[12px] text-charcoal-soft">
+          {nextShift?.category === "ot"
+            ? `Paid at $${OT_RATE}/hr`
+            : tierRate != null
+              ? `Paid at your rate: $${tierRate}/hr`
+              : "Ask an admin to set your pay tier"}
+          {nextShift?.phName ? ` · public holiday, ×${PH_MULTIPLIER}` : ""}
+        </span>
+        <button
+          type="button"
+          onClick={doClockIn}
+          disabled={pending}
+          className="flex items-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
+        >
+          <Icon name="play" size={15} filled />
+          {pending ? "Saving…" : "Clock in"}
+        </button>
+      </div>
     </div>
   );
 }
 
-function RunningCard({ running, pending, onClockOut, onEdit, onRefresh }) {
+// Mid-shift. Counts DOWN to the rostered end, because that end is already
+// decided — there is nothing to stop, and no clock-out to forget.
+function OnShiftCard({ session }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  const elapsedMs = Math.max(0, now - Date.parse(running.startedAt));
-  const catLabel = running.category === "ot" ? running.otReason || "Ad-hoc / OT" : "Class teaching";
-  const longRunning = elapsedMs > 12 * 60 * 60 * 1000;
+  const leftMs = Math.max(0, Date.parse(session.endedAt) - now);
+  const catLabel = session.category === "ot" ? session.otReason || "Ad-hoc / OT" : "Class teaching";
 
   return (
     <div className="rounded-card border-[0.5px] border-gold bg-gold-soft/30 p-5">
@@ -271,47 +323,187 @@ function RunningCard({ running, pending, onClockOut, onEdit, onRefresh }) {
             </span>
             Clocked in
           </div>
-          <div className="mt-1.5 font-heading text-4xl font-bold tabular-nums text-charcoal">{formatElapsed(elapsedMs)}</div>
+          <div className="mt-1.5 font-heading text-4xl font-bold tabular-nums text-charcoal">
+            {formatElapsed(leftMs)}
+          </div>
           <div className="mt-1 text-[12px] text-charcoal-soft">
-            {catLabel}
-            {running.branch ? ` · ${running.branch}` : ""} · since {sgClock(running.startedAt)}
+            left of {catLabel}
+            {session.branch ? ` · ${session.branch}` : ""} · ends {sgClock(session.endedAt)}
+          </div>
+          {session.phName && (
+            <div className="mt-2 inline-block rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
+              {session.phName} · ×{PH_MULTIPLIER}
+            </div>
+          )}
+        </div>
+        <div className="text-right text-[12px] text-charcoal-soft">
+          <div>Clocked in {sgClock(session.clockInAt)}</div>
+          <div className="mt-1">Nothing else to do — you’re all set.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// An unscheduled tap: no roster to say when it ends, so the system never
+// guesses. The teacher can close it, or an admin sets the end time.
+function OpenCard({ running, pending, onNotice }) {
+  const router = useRouter();
+  const [busy, startTransition] = useTransition();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  function doClose() {
+    startTransition(async () => {
+      const r = await clockOut();
+      if (r?.error) onNotice(r.error);
+      else router.refresh();
+    });
+  }
+
+  return (
+    <div className="rounded-card border-[0.5px] border-gold bg-gold-soft/30 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="text-[12px] font-semibold text-sage">Clocked in · no shift rostered</div>
+          <div className="mt-1.5 font-heading text-4xl font-bold tabular-nums text-charcoal">
+            {formatElapsed(Math.max(0, now - Date.parse(running.startedAt)))}
+          </div>
+          <div className="mt-1 text-[12px] text-charcoal-soft">
+            {running.branch ? `${running.branch} · ` : ""}since {sgClock(running.startedAt)}
           </div>
         </div>
         <button
           type="button"
-          onClick={onClockOut}
-          disabled={pending}
+          onClick={doClose}
+          disabled={pending || busy}
           className="flex items-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
         >
           <Icon name="square" size={15} filled />
-          {pending ? "Saving…" : "Clock out"}
+          {busy ? "Saving…" : "Clock out"}
         </button>
       </div>
-      {/* Tag on the spot: OT often starts before you know where you'll end up,
-          so the stamp can be taken (or re-taken) any time the timer is running. */}
-      {running.category === "ot" && (
-        <div className="mt-3 rounded-control bg-white/70 p-3">
-          <span className="mb-1.5 block text-[11px] font-semibold text-charcoal-soft">Location</span>
-          <LocationTag
-            value={running.geo}
-            compact
-            onChange={async (geo) => {
-              const r = await setSessionLocation(running.id, geo);
-              if (!r?.error) onRefresh();
-              return r;
-            }}
-          />
-        </div>
-      )}
+      <div className="mt-3 rounded-control bg-white/70 p-3">
+        <span className="mb-1.5 block text-[11px] font-semibold text-charcoal-soft">Location</span>
+        <LocationTag
+          value={running.geo}
+          compact
+          onChange={async (geo) => {
+            const r = await setSessionLocation(running.id, geo);
+            if (!r?.error) router.refresh();
+            return r;
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
-      {longRunning && (
-        <p className="mt-3 rounded-control bg-white/70 px-3 py-2 text-[12px] text-charcoal">
-          This has been running over 12 hours. If you forgot to clock out, clock out now and then{" "}
-          <button type="button" onClick={onEdit} className="font-semibold text-sage underline">
-            fix the end time
+// ---- Roster rows -------------------------------------------------------
+
+function UpcomingRow({ shift }) {
+  const today = shift.date === sgToday();
+  return (
+    <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-3 last:border-0">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-semibold text-charcoal">
+            {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
+          </span>
+          {shift.phName && (
+            <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
+              {shift.phName}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 text-[12px] text-charcoal-soft">
+          {today ? "Today" : sgDate(shift.startsAt)}
+          {shift.branch ? ` · ${shift.branch}` : ""}
+          {shift.category === "ot" ? ` · ${shift.otReason || "Ad-hoc / OT"}` : ""}
+        </div>
+      </div>
+      <span className="shrink-0 text-[12px] text-charcoal-soft">{formatHM(shift.minutes)}</span>
+    </div>
+  );
+}
+
+// A past shift with no clock-in. Answering here is what the IT Heads used to
+// have to ask for by hand every week.
+function MissedRow({ shift, onNotice }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState(MISSED_REASONS[0]);
+  const [detail, setDetail] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const r = await explainMissed(shift.id, reason, detail);
+      if (r?.error) onNotice(r.error);
+      else {
+        setOpen(false);
+        onNotice("Thanks — that’s been sent to your IT Head.");
+        router.refresh();
+      }
+    });
+  }
+
+  return (
+    <div className="border-b-[0.5px] border-line px-4 py-3 last:border-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[13px] font-semibold text-charcoal">
+            {sgDate(shift.startsAt)} · {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
+          </div>
+          <div className="mt-0.5 text-[12px] text-charcoal-soft">
+            {shift.branch ? `${shift.branch} · ` : ""}
+            {formatHM(shift.minutes)} · no clock-in recorded
+          </div>
+        </div>
+        {!open && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="rounded-control border-[0.5px] border-line bg-white px-3 py-2 text-[12px] font-semibold text-charcoal transition-colors hover:bg-paper-deep"
+          >
+            Give a reason
           </button>
-          .
-        </p>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Labelled label="What happened?">
+            <select className={field} value={reason} onChange={(e) => setReason(e.target.value)}>
+              {MISSED_REASONS.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </select>
+          </Labelled>
+          <Labelled label={reason === "Other" ? "Tell us more" : "Anything to add? (optional)"}>
+            <input className={field} value={detail} onChange={(e) => setDetail(e.target.value)} />
+          </Labelled>
+          <div className="flex gap-2 sm:col-span-2">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={pending}
+              className="rounded-control bg-ink px-4 py-2.5 text-[13px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
+            >
+              {pending ? "Sending…" : "Send to IT Head"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-control border-[0.5px] border-line bg-white px-4 py-2.5 text-[13px] font-semibold text-charcoal transition-colors hover:bg-paper-deep"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -327,7 +519,9 @@ const STATUS_TONE = {
 
 function SessionRow({ s, pay, onEdit, onDeleted }) {
   const [pending, startTransition] = useTransition();
-  const editable = s.status === "pending";
+  // A rostered shift isn't the teacher's to change — its times are the roster's,
+  // and editing category or hours here would be editing their own pay.
+  const editable = s.status === "pending" && !s.shiftId;
 
   function remove() {
     if (!confirm("Delete this session?")) return;
@@ -352,6 +546,16 @@ function SessionRow({ s, pay, onEdit, onDeleted }) {
           >
             {catLabel}
           </span>
+          {s.phName && (
+            <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage" title={`Public holiday — paid at ×${PH_MULTIPLIER}`}>
+              {s.phName}
+            </span>
+          )}
+          {s.source === "unscheduled" && (
+            <span className="rounded-pill bg-paper-deep px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-soft" title="No shift was rostered for this">
+              Unscheduled
+            </span>
+          )}
           {s.long && (
             <span className="rounded-pill bg-rust-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rust" title="Over 12h or crosses midnight — check the times">
               Check times
@@ -361,6 +565,9 @@ function SessionRow({ s, pay, onEdit, onDeleted }) {
         <div className="mt-1 text-[12px] text-charcoal-soft">
           {sgDate(s.startedAt)} · {sgClock(s.startedAt)}–{sgClock(s.endedAt)}
           {s.branch ? ` · ${s.branch}` : ""}
+          {/* The rostered window is what pays; this is when they actually
+              arrived. The two differing is normal. */}
+          {s.clockInAt && s.shiftId ? ` · clocked in ${sgClock(s.clockInAt)}` : ""}
         </div>
         {s.geo && <LocationLine geo={s.geo} className="mt-1" />}
         {s.status === "rejected" && s.reviewerNote && (

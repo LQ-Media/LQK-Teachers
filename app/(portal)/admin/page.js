@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/dal";
 import { getDb, LOCATIONS, TRACKER_CLASSES } from "@/lib/db";
 import { avatarSrc } from "@/lib/avatar";
 import { hoursAdminData } from "@/lib/actions/hours";
+import { shiftsForRange, missedShifts } from "@/lib/actions/shifts";
 import { sgMonthNow } from "@/lib/hours/rates";
 import AdminApp from "@/components/admin/AdminApp";
 
@@ -61,6 +62,10 @@ export default async function AdminPage() {
   }));
 
   const initialHours = await hoursAdminData(sgMonthNow());
+  // The roster tab opens on the fortnight ahead, plus whatever is outstanding
+  // from the past week — the two things an admin actually acts on.
+  const [range, missedList] = await Promise.all([shiftsForRange(), missedShifts()]);
+  const initialShifts = { ...range, missed: missedList.missed };
 
   return (
     <AdminApp
@@ -70,6 +75,7 @@ export default async function AdminPage() {
       locations={LOCATIONS}
       classes={TRACKER_CLASSES}
       initialHours={initialHours}
+      initialShifts={initialShifts}
     />
   );
 }

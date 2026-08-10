@@ -7,8 +7,9 @@ import { LocationLine } from "@/components/hours/LocationTag";
 import { approveSession, rejectSession, hoursAdminData } from "@/lib/actions/hours";
 import {
   TIER_BY_KEY,
+  PH_MULTIPLIER,
   rateFor,
-  payCents,
+  sessionPayCents,
   formatHM,
   formatMoney,
   monthLabel,
@@ -41,6 +42,38 @@ export default function HoursAdmin({ initial }) {
       reload();
     });
   }
+  /**
+   * Approve everything straightforward in one go.
+   *
+   * Under the roster this queue fills with a clock-in per shift — roughly 385 a
+   * week across the staff — and approving them one at a time is not a job
+   * anybody will keep doing. "Clean" means rostered, on a normal day, with a
+   * pay tier set; anything an admin should actually look at (unscheduled taps,
+   * OT, accepted missed shifts, public holidays, odd-looking times) is left in
+   * the queue.
+   */
+  function approveClean() {
+    const clean = pending.filter(
+      (s) =>
+        s.shiftId &&
+        s.source === "clock_in" &&
+        !s.phName &&
+        !s.long &&
+        rateFor(s.category, s.payTier) != null
+    );
+    if (!clean.length) return;
+    if (!confirm(`Approve ${clean.length} rostered shift${clean.length === 1 ? "" : "s"}? Anything needing a look stays in the queue.`)) return;
+    startTransition(async () => {
+      const errors = [];
+      for (const s of clean) {
+        const r = await approveSession(s.id);
+        if (r?.error) errors.push(`${s.teacherName}: ${r.error}`);
+      }
+      if (errors.length) alert(`${errors.length} couldn't be approved:\n\n${errors.slice(0, 5).join("\n")}`);
+      reload();
+    });
+  }
+
   function reject(s) {
     const note = prompt(`Reject ${s.teacherName}'s ${formatHM(s.minutes)} session? Add a reason (optional):`, "");
     if (note === null) return; // cancelled
@@ -51,6 +84,11 @@ export default function HoursAdmin({ initial }) {
     });
   }
 
+  // How many the bulk button would take, so it can name the number.
+  const cleanCount = pending.filter(
+    (s) => s.shiftId && s.source === "clock_in" && !s.phName && !s.long && rateFor(s.category, s.payTier) != null
+  ).length;
+
   const totalApproved = summary.reduce((a, t) => a + t.approvedCents, 0);
   const totalPending = summary.reduce((a, t) => a + t.pendingCents, 0);
 
@@ -58,9 +96,22 @@ export default function HoursAdmin({ initial }) {
     <div className="space-y-7">
       {/* Pending approvals */}
       <section>
-        <h2 className="mb-2 font-heading text-[15px] font-semibold text-charcoal">
-          Pending approval {pending.length ? `(${pending.length})` : ""}
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-heading text-[15px] font-semibold text-charcoal">
+            Pending approval {pending.length ? `(${pending.length})` : ""}
+          </h2>
+          {cleanCount > 0 && (
+            <button
+              type="button"
+              onClick={approveClean}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-control border-[0.5px] border-line bg-white px-3 py-2 text-[12px] font-semibold text-charcoal transition-colors hover:bg-paper-deep disabled:opacity-40"
+            >
+              <Icon name="check" size={15} />
+              Approve {cleanCount} rostered
+            </button>
+          )}
+        </div>
         {pending.length === 0 ? (
           <div className="rounded-card border-[0.5px] border-line bg-white p-6 text-center text-[13px] text-charcoal-soft">
             Nothing waiting — all caught up.
@@ -69,7 +120,9 @@ export default function HoursAdmin({ initial }) {
           <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
             {pending.map((s) => {
               const rate = rateFor(s.category, s.payTier);
-              const est = rate == null ? null : payCents(s.minutes, rate);
+              // Nothing is snapshotted until approval, so a public-holiday row
+              // is estimated at today's multiplier.
+              const est = rate == null ? null : sessionPayCents(s.minutes, rate, s.phName ? PH_MULTIPLIER : null);
               const noTier = s.category === "teaching" && rate == null;
               return (
                 <div key={s.id} className="flex flex-wrap items-center gap-3 border-b-[0.5px] border-line px-4 py-3 last:border-0">
@@ -79,6 +132,21 @@ export default function HoursAdmin({ initial }) {
                       <span className={`rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${s.category === "ot" ? "bg-paper-deep text-charcoal-soft" : "bg-sand/60 text-ink"}`}>
                         {s.category === "ot" ? s.otReason || "Ad-hoc / OT" : "Class teaching"}
                       </span>
+                      {s.phName && (
+                        <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage" title={`Public holiday — pays x${PH_MULTIPLIER}`}>
+                          {s.phName} ×{PH_MULTIPLIER}
+                        </span>
+                      )}
+                      {s.source === "unscheduled" && (
+                        <span className="rounded-pill bg-rust-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rust" title="No shift was rostered — check the end time before approving">
+                          Unscheduled
+                        </span>
+                      )}
+                      {s.source === "missed_accepted" && (
+                        <span className="rounded-pill bg-paper-deep px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-soft">
+                          Missed — accepted
+                        </span>
+                      )}
                       {s.long && (
                         <span className="rounded-pill bg-rust-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rust" title="Over 12h or crosses midnight">
                           Check times
@@ -88,6 +156,9 @@ export default function HoursAdmin({ initial }) {
                     <div className="mt-1 text-[12px] text-charcoal-soft">
                       {sgDate(s.startedAt)} · {sgClock(s.startedAt)}–{sgClock(s.endedAt)}
                       {s.branch ? ` · ${s.branch}` : ""}
+                      {/* The times above are the ROSTERED window, which is what
+                          pays. This is when they actually arrived. */}
+                      {s.clockInAt && s.shiftId ? ` · clocked in ${sgClock(s.clockInAt)}` : ""}
                     </div>
                     {/* Where the teacher tagged themselves, if they did — a
                         sanity check on OT before it's paid. */}
