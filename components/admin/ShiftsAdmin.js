@@ -442,7 +442,6 @@ function OneOffModal({ teachers, locations, onClose, onSaved }) {
 
 function BulkModal({ teachers, locations, onClose, onSaved }) {
   const [form, setForm] = useState({
-    teacherId: teachers[0]?.id || "",
     branch: locations[0] || "",
     fromDate: sgToday(),
     toDate: addSgDays(sgToday(), 90),
@@ -451,23 +450,44 @@ function BulkModal({ teachers, locations, onClose, onSaved }) {
     skipHolidays: true,
     unpaid: false,
   });
+  const [picked, setPicked] = useState([]);
+  const [query, setQuery] = useState("");
   const [weekdays, setWeekdays] = useState([1, 3]);
   const [error, setError] = useState(null);
   const [pending, startTransition] = useTransition();
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  function toggle(n) {
+  const shown = teachers.filter((t) => (t.fullName || "").toLowerCase().includes(query.trim().toLowerCase()));
+  const allShownPicked = shown.length > 0 && shown.every((t) => picked.includes(t.id));
+
+  function togglePicked(id) {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }
+  function toggleAllShown() {
+    const ids = shown.map((t) => t.id);
+    setPicked((p) => (allShownPicked ? p.filter((x) => !ids.includes(x)) : [...new Set([...p, ...ids])]));
+  }
+  function toggleDay(n) {
     setWeekdays((w) => (w.includes(n) ? w.filter((x) => x !== n) : [...w, n]));
   }
 
   function save() {
     startTransition(async () => {
-      const r = await generateShifts({ ...form, weekdays });
+      const r = await generateShifts({ ...form, teacherIds: picked, weekdays });
       if (r?.error) setError(r.error);
       else {
-        const bits = [`${r.created} shift${r.created === 1 ? "" : "s"} created`];
-        if (r.skipped?.length) bits.push(`${r.skipped.length} skipped (public holiday)`);
+        const bits = [
+          `${r.created} shift${r.created === 1 ? "" : "s"} created for ${r.done.length} teacher${r.done.length === 1 ? "" : "s"}`,
+        ];
+        if (r.skipped?.length) bits.push(`${r.skipped.length} date${r.skipped.length === 1 ? "" : "s"} skipped (public holiday)`);
         if (r.duplicates) bits.push(`${r.duplicates} already existed`);
+        // Name the ones that were left out — a silent partial result is exactly
+        // what makes a bulk tool untrustworthy.
+        if (r.clashed?.length) {
+          bits.push(
+            `${r.clashed.length} skipped for clashes (${r.clashed.map((c) => c.name).slice(0, 3).join(", ")}${r.clashed.length > 3 ? "…" : ""})`
+          );
+        }
         onSaved(bits.join(" · ") + ".");
       }
     });
@@ -476,19 +496,49 @@ function BulkModal({ teachers, locations, onClose, onSaved }) {
   return (
     <Modal title="Generate a roster" onClose={onClose}>
       <p className="mb-3 text-[12px] text-charcoal-soft">
-        Creates one shift per occurrence. Generate a term at a time rather than a whole year — a roster is easiest to
-        fix before anyone has worked against it.
+        Creates one shift per occurrence, for everyone you pick. Generate a term at a time rather than a whole year — a
+        roster is easiest to fix before anyone has worked against it.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <L label="Teacher" full>
-          <select className={field} value={form.teacherId} onChange={set("teacherId")}>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
+
+      <div className="mb-3">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-charcoal-soft">
+            Teachers{picked.length ? ` · ${picked.length} selected` : ""}
+          </span>
+          {shown.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllShown}
+              className="text-[11px] font-semibold text-gold hover:underline"
+            >
+              {allShownPicked ? "Clear these" : `Select all ${shown.length}`}
+            </button>
+          )}
+        </div>
+        <input
+          className={field}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name…"
+        />
+        <div className="mt-1.5 max-h-44 overflow-y-auto rounded-control border-[0.5px] border-line bg-paper">
+          {shown.length === 0 ? (
+            <p className="px-3 py-3 text-[12px] text-charcoal-soft">No one matches that.</p>
+          ) : (
+            shown.map((t) => (
+              <label
+                key={t.id}
+                className="flex cursor-pointer items-center gap-2 border-b-[0.5px] border-line px-3 py-2 text-[13px] text-charcoal last:border-0 hover:bg-paper-deep"
+              >
+                <input type="checkbox" checked={picked.includes(t.id)} onChange={() => togglePicked(t.id)} />
                 {t.fullName}
-              </option>
-            ))}
-          </select>
-        </L>
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
         <L label="Branch">
           <select className={field} value={form.branch} onChange={set("branch")}>
             {locations.map((b) => (
@@ -515,7 +565,7 @@ function BulkModal({ teachers, locations, onClose, onSaved }) {
               <button
                 key={d.n}
                 type="button"
-                onClick={() => toggle(d.n)}
+                onClick={() => toggleDay(d.n)}
                 className={`rounded-control px-3 py-2 text-[12px] font-semibold transition-colors ${
                   weekdays.includes(d.n)
                     ? "bg-ink text-paper"
@@ -536,8 +586,14 @@ function BulkModal({ teachers, locations, onClose, onSaved }) {
           Skip Singapore public holidays
         </label>
       </div>
+
+      <p className="mt-3 text-[11px] text-charcoal-soft">
+        Each teacher is all-or-nothing: anyone whose existing shifts clash is skipped entirely and named, so nobody ends
+        up with half a term.
+      </p>
+
       {error && <div className="mt-3 rounded-control bg-rust-soft px-3 py-2 text-[12px] text-rust">{error}</div>}
-      <Actions pending={pending} onClose={onClose} onSave={save} label="Generate" />
+      <Actions pending={pending} onClose={onClose} onSave={save} label={picked.length > 1 ? `Generate for ${picked.length}` : "Generate"} />
     </Modal>
   );
 }
