@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/session";
-import { getEvent, cateringCsv } from "@/lib/events/queries";
+import { getEvent, guestListCsv } from "@/lib/events/queries";
 
-/* Catering export.
+/* Guest-list export.
 
    Uses getSession + a 403 rather than requireRole, which redirects — a redirect
    to /login from a download link gives the browser an HTML page named
@@ -17,12 +17,12 @@ export async function GET(_request, { params }) {
 
   // Leading BOM: without it Excel on Windows reads the file as latin-1 and
   // mangles every accented or Jawi name in the guest list.
-  const csv = `﻿${cateringCsv(id)}`;
+  const csv = `﻿${guestListCsv(id)}`;
 
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${event.slug}-catering.csv"`,
+      "Content-Disposition": `attachment; filename="${event.slug}-guest-list.csv"`,
       "Cache-Control": "no-store",
     },
   });

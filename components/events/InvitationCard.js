@@ -72,15 +72,20 @@ export default function InvitationCard({ event, guest, theme, lang = "en", child
           without it, a Latin address beginning with a digit ("12 Woodlands
           Square") renders on an Arabic page as "Woodlands Square 12", which is
           simply the wrong address. */}
-      <p className="inv-eyebrow">{t("youreInvited")}</p>
+      <p className="inv-salam">
+        {t("salam")}
+        {guest?.name ? (
+          <>
+            {", "}
+            <bdi>{String(guest.name).trim().split(/\s+/)[0]}</bdi>
+          </>
+        ) : null}
+      </p>
+      {/* A sentence, not a label: sentence case, serif, never letter-spaced. */}
+      <p className="inv-invite-line">{t("inviteLine")}</p>
       <h1 className="inv-title">
         <bdi>{event.title}</bdi>
       </h1>
-      {guest?.name ? (
-        <p className="inv-guest">
-          <bdi>{guest.name}</bdi>
-        </p>
-      ) : null}
       {event.host_name ? (
         <p className="inv-host">
           {t("hostedBy")} <bdi>{event.host_name}</bdi>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { declineReasonLabel } from "@/lib/events/i18n";
 import { updateEventAction, importGuestsAction, sendInvitesAction } from "../actions";
 
 const TABS = [
@@ -19,6 +20,8 @@ const btn =
   "rounded-pill bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-[transform,opacity] duration-150 ease-out active:scale-[0.97] disabled:opacity-60";
 const btnQuiet =
   "rounded-pill border border-line px-5 py-2.5 text-sm font-semibold text-ink transition-transform duration-150 ease-out active:scale-[0.97] disabled:opacity-60";
+const btnHoney =
+  "rounded-pill bg-sand px-5 py-2.5 text-sm font-semibold text-gold-hover transition-transform duration-150 ease-out active:scale-[0.97] disabled:opacity-60";
 
 /* Warns before a send rather than after. The two things that silently ruin a
    send are an unconfigured channel and a draft event, and both are invisible
@@ -32,11 +35,54 @@ function Notice({ tone = "warn", children }) {
   return <p className={`rounded-control px-3 py-2 text-sm ${tones[tone]}`}>{children}</p>;
 }
 
-export default function EventDetail({ event, guests, stats, baseUrl, capabilities }) {
+/* The reply column is a tinted pill, never raw lowercase DB text. "Hamper
+   unpaid" only exists as a state when the event carries a contribution. */
+function ReplyPill({ guest, hasContribution }) {
+  if (guest.attending === "yes") {
+    if (hasContribution && guest.contribution_status !== "paid") {
+      return (
+        <span className="rounded-pill bg-sand px-2.5 py-0.5 text-xs font-semibold text-gold-hover">
+          Hamper unpaid
+        </span>
+      );
+    }
+    return (
+      <span className="rounded-pill bg-gold-soft px-2.5 py-0.5 text-xs font-semibold text-[#4E6B3F]">
+        Coming
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-pill bg-rust-soft px-2.5 py-0.5 text-xs font-semibold text-rust">
+      Can&rsquo;t come
+    </span>
+  );
+}
+
+export default function EventDetail({
+  event,
+  guests,
+  stats,
+  reminderCount,
+  baseUrl,
+  initialTab,
+  capabilities,
+}) {
   const router = useRouter();
-  const [tab, setTab] = useState("details");
+  const validTab = TABS.some(([key]) => key === initialTab) ? initialTab : "details";
+  const [tab, setTabState] = useState(validTab);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(null);
+
+  /* Tabs are deep-linkable: ?tab=replies survives a refresh and can be pasted
+     into WhatsApp. replaceState rather than router.replace — switching tabs is
+     UI state, and a server round-trip per click would refetch the whole page. */
+  function setTab(key) {
+    setTabState(key);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", key);
+    window.history.replaceState(null, "", url);
+  }
 
   const [form, setForm] = useState({
     title: event.title || "",
@@ -49,7 +95,6 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
     support_url: event.support_url || "",
     max_party_size: event.max_party_size || 10,
     ask_photo: !!event.ask_photo,
-    ask_dietary: !!event.ask_dietary,
     status: event.status,
   });
 
@@ -67,8 +112,19 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
   async function save() {
     setBusy(true);
     setFlash(null);
-    await updateEventAction(event.id, form);
+    let res;
+    try {
+      res = await updateEventAction(event.id, form);
+    } catch {
+      res = null;
+    }
     setBusy(false);
+    // "Saved." only when it actually saved — a green toast over a failed write
+    // is how an event quietly keeps its old deadline.
+    if (!res?.ok) {
+      setFlash({ tone: "bad", text: res?.error || "That didn't save — please try again." });
+      return;
+    }
     setFlash({ tone: "good", text: "Saved." });
     router.refresh();
   }
@@ -76,10 +132,15 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
   async function doImport() {
     setBusy(true);
     setFlash(null);
-    const res = await importGuestsAction(event.id, importText);
+    let res;
+    try {
+      res = await importGuestsAction(event.id, importText);
+    } catch {
+      res = null;
+    }
     setBusy(false);
-    if (!res.ok) {
-      setFlash({ tone: "bad", text: res.error });
+    if (!res?.ok) {
+      setFlash({ tone: "bad", text: res?.error || "The import failed — please try again." });
       return;
     }
     setImportText("");
@@ -94,10 +155,15 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
   async function doSend(mode) {
     setBusy(true);
     setFlash(null);
-    const res = await sendInvitesAction(event.id, { mode, channels });
+    let res;
+    try {
+      res = await sendInvitesAction(event.id, { mode, channels });
+    } catch {
+      res = null;
+    }
     setBusy(false);
-    if (!res.ok) {
-      setFlash({ tone: "bad", text: res.error });
+    if (!res?.ok) {
+      setFlash({ tone: "bad", text: res?.error || "The send failed — please try again." });
       return;
     }
     const failures = (res.results || [])
@@ -111,8 +177,9 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
     router.refresh();
   }
 
-  const pending = guests.filter((g) => !g.attending);
   const unsent = guests.filter((g) => !g.sent_email_at && !g.sent_wa_at);
+  const replied = guests.filter((g) => g.attending === "yes" || g.attending === "no");
+  const hasContribution = !!event.support_url;
 
   return (
     <>
@@ -124,7 +191,7 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
             onClick={() => setTab(key)}
             aria-current={tab === key}
             className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-              tab === key ? "border-gold text-ink" : "border-transparent text-charcoal-soft hover:text-ink"
+              tab === key ? "border-gold text-gold" : "border-transparent text-charcoal-soft hover:text-ink"
             }`}
           >
             {labelText}
@@ -166,7 +233,7 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
               <input id="f-venue" className={field} value={form.venue_name} onChange={set("venue_name")} />
             </div>
             <div>
-              <label className={label} htmlFor="f-deadline">RSVP deadline</label>
+              <label className={label} htmlFor="f-deadline">Reply deadline</label>
               <input id="f-deadline" type="date" className={field} value={form.rsvp_deadline} onChange={set("rsvp_deadline")} />
             </div>
             <div className="sm:col-span-2">
@@ -182,8 +249,21 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
               <input id="f-party" type="number" min="1" max="20" className={field} value={form.max_party_size} onChange={set("max_party_size")} />
             </div>
             <div className="sm:col-span-2">
-              <label className={label} htmlFor="f-support">Support link (Shopify)</label>
-              <input id="f-support" className={field} value={form.support_url} onChange={set("support_url")} />
+              <label className={label} htmlFor="f-support">Contribution product</label>
+              <input
+                id="f-support"
+                className={field}
+                value={form.support_url}
+                onChange={set("support_url")}
+                placeholder="https://lqkstore.littlequrankids.sg/products/…"
+              />
+              <p className="mt-1.5 text-xs text-charcoal-soft">
+                Paste any product link from the LQK store (add ?variant=… to pin a variant).
+                When set, every attending family must buy it through checkout before their
+                reply counts as complete; leave empty for a free event. Payment confirmation
+                needs the store&rsquo;s &ldquo;Order payment&rdquo; webhook pointed at this
+                portal — see app/api/events/shopify/route.js.
+              </p>
             </div>
             <div>
               <label className={label} htmlFor="f-status">Status</label>
@@ -202,10 +282,6 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
               {!capabilities.drive ? (
                 <span className="text-xs text-rust">(Drive not configured — uploads will fail)</span>
               ) : null}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={form.ask_dietary} onChange={set("ask_dietary")} className="size-4 accent-gold" />
-              Ask for dietary requirements
             </label>
           </div>
 
@@ -242,7 +318,7 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="font-heading text-lg text-ink">{guests.length} guests</h2>
               <a href={`/api/events/${event.id}/csv`} className="text-sm text-gold hover:underline">
-                Download catering CSV
+                Download guest list (CSV)
               </a>
             </div>
             {guests.length ? (
@@ -340,24 +416,29 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
             <button
               type="button"
               onClick={() => doSend("invite")}
-              disabled={busy || !channels.length || event.status === "draft"}
+              disabled={busy || !channels.length || event.status === "draft" || !unsent.length}
               className={btn}
             >
-              {busy ? "Sending…" : `Send to ${unsent.length} new guest${unsent.length === 1 ? "" : "s"}`}
+              {busy
+                ? "Sending…"
+                : unsent.length
+                  ? `Send to ${unsent.length} new guest${unsent.length === 1 ? "" : "s"}`
+                  : "Everyone has been sent an invite"}
             </button>
             <button
               type="button"
               onClick={() => doSend("remind")}
-              disabled={busy || !channels.length || event.status === "draft"}
+              disabled={busy || !channels.length || event.status === "draft" || !reminderCount}
               className={btnQuiet}
             >
-              Remind non-responders
+              {reminderCount
+                ? `Remind the ${reminderCount} who haven't replied`
+                : "Nobody is due a reminder"}
             </button>
           </div>
           <p className="mt-3 text-xs text-charcoal-soft">
             Reminders only go to guests who were sent an invite, haven&rsquo;t replied, and
-            haven&rsquo;t been nudged in the last 72 hours. {pending.length} guest
-            {pending.length === 1 ? " has" : "s have"} not replied.
+            haven&rsquo;t been nudged in the last 72 hours.
           </p>
         </section>
       ) : null}
@@ -365,59 +446,88 @@ export default function EventDetail({ event, guests, stats, baseUrl, capabilitie
       {/* ---- replies ---- */}
       {tab === "replies" ? (
         <section className={card}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-heading text-lg text-ink">
-              {stats.yes} yes · {stats.maybe} maybe · {stats.no} no
-            </h2>
-            <a href={`/api/events/${event.id}/csv`} className="text-sm text-gold hover:underline">
-              Download catering CSV
-            </a>
+          {/* Totals strip: the numbers a caterer or treasurer actually asks for. */}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {[
+              [stats.adults, "adults attending"],
+              [stats.children, "children attending"],
+              [stats.pending, "families not replied"],
+            ].map(([value, text]) => (
+              <div key={text} className="rounded-control bg-paper px-4 py-3.5">
+                <p className="text-2xl font-extrabold tabular-nums text-ink">{value}</p>
+                <p className="text-[13px] text-charcoal-soft">{text}</p>
+              </div>
+            ))}
+            {hasContribution ? (
+              <div className={`rounded-control px-4 py-3.5 ${stats.hampersUnpaid ? "bg-rust-soft" : "bg-paper"}`}>
+                <p className={`text-2xl font-extrabold tabular-nums ${stats.hampersUnpaid ? "text-rust" : "text-ink"}`}>
+                  {stats.hampersUnpaid}
+                </p>
+                <p className={`text-[13px] ${stats.hampersUnpaid ? "text-[#7A4630]" : "text-charcoal-soft"}`}>
+                  hampers unpaid
+                </p>
+              </div>
+            ) : null}
           </div>
 
-          {stats.replied === 0 ? (
-            <p className="mt-3 text-sm text-charcoal-soft">No replies yet.</p>
+          {replied.length === 0 ? (
+            <p className="mt-5 text-sm text-charcoal-soft">No replies yet.</p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[600px] text-left text-sm">
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-line text-xs uppercase tracking-wide text-charcoal-soft">
-                    <th className="pb-2 pe-3 font-semibold">Guest</th>
-                    <th className="pb-2 pe-3 font-semibold">Reply</th>
-                    <th className="pb-2 pe-3 font-semibold">Party</th>
-                    <th className="pb-2 pe-3 font-semibold">Dietary</th>
-                    <th className="pb-2 font-semibold">Photo</th>
+                  <tr className="border-b border-line text-[11px] uppercase tracking-wide text-charcoal-soft">
+                    <th className="w-[28%] pb-2 pe-3 font-bold">Family</th>
+                    <th className="w-[20%] pb-2 pe-3 font-bold">Reply</th>
+                    <th className="w-[16%] pb-2 pe-3 font-bold">Party</th>
+                    <th className="pb-2 font-bold">Reason / message</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {guests
-                    .filter((g) => g.attending)
-                    .map((g) => (
-                      <tr key={g.id} className="border-b border-line/60">
+                  {replied.map((g) => {
+                    const reasonBits = [
+                      g.attending === "no" && g.decline_reason
+                        ? g.decline_reason === "other" && g.decline_reason_note
+                          ? g.decline_reason_note
+                          : declineReasonLabel("en", g.decline_reason)
+                        : null,
+                      g.message ? `‘${g.message}’` : null,
+                    ].filter(Boolean);
+                    return (
+                      <tr key={g.id} className="border-b border-line/40">
                         <td className="py-2.5 pe-3 text-ink">{g.name}</td>
                         <td className="py-2.5 pe-3">
-                          <span
-                            className={
-                              g.attending === "yes"
-                                ? "text-ink"
-                                : g.attending === "no"
-                                  ? "text-charcoal-soft"
-                                  : "text-sage"
-                            }
-                          >
-                            {g.attending}
-                          </span>
+                          <ReplyPill guest={g} hasContribution={hasContribution} />
                         </td>
                         <td className="py-2.5 pe-3 tabular-nums text-charcoal-soft">
                           {g.attending === "yes" ? g.adults + g.children : "—"}
                         </td>
-                        <td className="py-2.5 pe-3 text-charcoal-soft">{g.dietary || "—"}</td>
-                        <td className="py-2.5 text-charcoal-soft">{g.photo_drive_id ? "✓" : "—"}</td>
+                        <td className="py-2.5 text-charcoal-soft">
+                          {reasonBits.length ? reasonBits.join(" · ") : "—"}
+                        </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a href={`/api/events/${event.id}/csv`} className={btnHoney}>
+              Download guest list (CSV)
+            </a>
+            <button
+              type="button"
+              onClick={() => doSend("remind")}
+              disabled={busy || event.status === "draft" || !reminderCount}
+              className={btnQuiet}
+            >
+              {reminderCount
+                ? `Remind the ${reminderCount} who haven't replied`
+                : "Nobody is due a reminder"}
+            </button>
+          </div>
         </section>
       ) : null}
     </>

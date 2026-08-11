@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { getGuestByToken, markOpened } from "@/lib/events/queries";
+import { getGuestByToken, markOpened, isEventClosed } from "@/lib/events/queries";
+import { getContributionProduct } from "@/lib/events/shopify";
 import { themeVars } from "@/lib/events/theme";
 import {
   t as translate,
   isLang,
   LANGS,
   DEFAULT_LANG,
+  fmt,
   formatDeadline,
 } from "@/lib/events/i18n";
 import InvitationCard, { InvitationShell } from "@/components/events/InvitationCard";
@@ -22,7 +24,7 @@ export async function generateMetadata({ params }) {
   const found = getGuestByToken(token);
   if (!found) return { title: "Invitation" };
   return {
-    title: `${found.event.title} — you're invited`,
+    title: `${found.event.title} — an invitation for your family`,
     description: found.event.venue_name || undefined,
     robots: { index: false, follow: false },
   };
@@ -32,11 +34,11 @@ function googleCalendarUrl(event) {
   if (!event.starts_at) return null;
   const start = new Date(event.starts_at);
   const end = event.ends_at ? new Date(event.ends_at) : new Date(start.getTime() + 3 * 3600 * 1000);
-  const fmt = (d) => d.toISOString().replace(/[-:]|\.\d{3}/g, "");
+  const fmtDate = (d) => d.toISOString().replace(/[-:]|\.\d{3}/g, "");
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: event.title,
-    dates: `${fmt(start)}/${fmt(end)}`,
+    dates: `${fmtDate(start)}/${fmtDate(end)}`,
     details: event.host_name ? `Hosted by ${event.host_name}` : "",
     location: [event.venue_name, event.venue_address].filter(Boolean).join(", "),
   });
@@ -50,12 +52,14 @@ export default async function InvitePage({ params, searchParams }) {
 
   /* A bad token gets a calm, branded dead end — not a 404 and not a stack
      trace. Guests mistype and chat apps truncate links; this page has to
-     explain itself to someone who did nothing wrong. It also says nothing
-     about whether the token merely expired or never existed. */
+     explain itself to someone who did nothing wrong, in the language they were
+     sent (?lang= survives even when the token doesn't resolve). It also says
+     nothing about whether the token merely expired or never existed. */
   if (!found || found.event.status === "draft") {
-    const t = translate(DEFAULT_LANG);
+    const lang = isLang(query?.lang) ? query.lang : DEFAULT_LANG;
+    const t = translate(lang);
     return (
-      <div className="inv-root" style={themeVars(null)}>
+      <div className="inv-root" style={themeVars(null)} lang={lang} dir={lang === "ar" ? "rtl" : "ltr"}>
         <div className="inv-card inv-rise" style={{ textAlign: "center" }}>
           <h1 className="inv-title" style={{ fontSize: 24 }}>
             {t("notFound")}
@@ -80,12 +84,23 @@ export default async function InvitePage({ params, searchParams }) {
   const t = translate(lang);
 
   const theme = event.theme;
-  const calUrl = googleCalendarUrl(event);
+  const closed = isEventClosed(event);
+
+  /* .ics first (this audience is iPhone-heavy and Apple Calendar opens a
+     downloaded file with no sign-in); the Google URL only when there is no
+     date to build a file from — it degrades to a template chooser. */
+  const calUrl = event.starts_at ? `/api/i/${token}/ics` : googleCalendarUrl(event);
   const mapUrl =
     event.venue_map_url ||
     (event.venue_address
       ? `https://maps.google.com/?q=${encodeURIComponent(event.venue_address)}`
       : null);
+
+  // Live details for the compulsory contribution, from the store's public
+  // storefront JSON. null when the event has no product configured (or the
+  // store is unreachable and nothing is cached) — the form degrades to a
+  // plain reply rather than blocking families on a fetch.
+  const contribution = event.support_url ? await getContributionProduct(event.support_url) : null;
 
   return (
     /* InvitationShell owns the root element — dir, the --inv-* variables, the
@@ -111,12 +126,7 @@ export default async function InvitePage({ params, searchParams }) {
         {calUrl || mapUrl ? (
           <div className="inv-actions">
             {calUrl ? (
-              <a
-                className="inv-btn inv-btn-quiet"
-                href={calUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a className="inv-btn inv-btn-quiet" href={calUrl}>
                 {t("addToCalendar")}
               </a>
             ) : null}
@@ -134,31 +144,33 @@ export default async function InvitePage({ params, searchParams }) {
         ) : null}
       </InvitationCard>
 
-      <RsvpForm token={token} lang={lang} event={event} guest={guest} rsvp={rsvp} />
-
-      {event.support_url ? (
-        <aside className="inv-card inv-rise">
-          <h2 className="inv-section-title">{t("supportTitle")}</h2>
-          <p className="inv-note">{t("supportBody")}</p>
-          <div className="inv-actions">
-            {/* Cart attribute carries the guest token so a contribution can be
-                attributed back to the invitation it came from. Link-out rather
-                than an embedded checkout: Shopify's checkout refuses to frame,
-                and guests trust their own store's domain more than ours. */}
-            <a
-              className="inv-btn"
-              href={`${event.support_url}${event.support_url.includes("?") ? "&" : "?"}attributes[guest]=${encodeURIComponent(guest.token.slice(0, 8))}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("supportCta")}
-            </a>
-          </div>
-        </aside>
-      ) : null}
+      {closed ? (
+        /* The gate lives HERE, on the server — never as a post-submit surprise.
+           The invitation card above stays: a closed majlis is still worth
+           finding on a calendar or a map. */
+        <div className="inv-card inv-rise inv-rsvp-block" style={{ textAlign: "center" }}>
+          <p className="inv-status">{t("closed")}</p>
+          <p className="inv-note" style={{ marginBottom: 0 }}>
+            {t("closedBody")}
+          </p>
+        </div>
+      ) : (
+        <RsvpForm
+          token={token}
+          lang={lang}
+          event={event}
+          guest={guest}
+          rsvp={rsvp}
+          contribution={contribution}
+          calUrl={calUrl}
+          mapUrl={mapUrl}
+        />
+      )}
 
       <p className="inv-footer">
-        {event.rsvp_deadline ? `${t("rsvpBy")} ${formatDeadline(event.rsvp_deadline, lang)} · ` : ""}
+        {event.rsvp_deadline
+          ? `${fmt(t("replyBy"), { date: formatDeadline(event.rsvp_deadline, lang) })} · `
+          : ""}
         Little Quran Kids
       </p>
     </InvitationShell>

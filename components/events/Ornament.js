@@ -12,6 +12,23 @@
 export default function Ornament({ kind = "geometric", className = "" }) {
   if (kind === "none") return null;
 
+  /* The 1A "Majlis" props: real art in FIXED slots (the sizes never depend on
+     the artwork, so Gemini-generated replacements drop straight in). They
+     deliberately overhang the card edge; the card's overflow:hidden crops the
+     spill. Rendered once, at the top — a mirrored bottom copy would collide
+     with the submit button, so the bottom instance renders nothing. */
+  if (kind === "majlis-props") {
+    if (className.includes("inv-ornament-bottom")) return null;
+    return (
+      <div className="inv-props" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/prop/lantern.png" alt="" className="inv-prop-lantern" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/prop/stars.png" alt="" className="inv-prop-stars" />
+      </div>
+    );
+  }
+
   const common = {
     className: `inv-ornament ${className}`,
     viewBox: "0 0 400 74",

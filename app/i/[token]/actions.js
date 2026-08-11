@@ -5,7 +5,12 @@ import {
   getGuestByToken,
   saveRsvp,
   attachPhoto,
+  isEventClosed,
+  markContributionPending,
 } from "@/lib/events/queries";
+import { isDeclineReason } from "@/lib/events/i18n";
+import { getContributionProduct } from "@/lib/events/shopify";
+import { contributionCheckoutUrl } from "@/lib/events/shopify-core";
 import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive";
 
 /* Server actions for the public invite page.
@@ -21,46 +26,109 @@ import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive"
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
-function closed(event) {
-  if (event.status === "closed") return true;
-  if (!event.rsvp_deadline) return false;
-  // End of the deadline day in Singapore, not the stroke of midnight UTC.
-  return Date.now() > new Date(`${event.rsvp_deadline}T23:59:59+08:00`).getTime();
-}
+/* Shared validation for both save paths. Returns {error} or the clean row. */
+function validateReply(event, payload) {
+  if (!["yes", "no"].includes(payload?.attending)) return { error: "required" };
 
-export async function submitRsvp(token, payload) {
-  const found = getGuestByToken(token);
-  if (!found) return { ok: false, error: "notFound" };
-
-  const { guest, event } = found;
-  if (event.status === "draft") return { ok: false, error: "notFound" };
-  if (closed(event)) return { ok: false, error: "closed" };
-
-  if (!["yes", "no", "maybe"].includes(payload?.attending)) {
-    return { ok: false, error: "required" };
+  if (payload.attending === "no") {
+    const reason = payload.declineReason;
+    if (!isDeclineReason(reason)) return { error: "reasonRequired" };
+    // "Another reason" IS the free-text line — an empty line answers nothing.
+    if (reason === "other" && !String(payload.declineReasonNote || "").trim()) {
+      return { error: "reasonRequired" };
+    }
+    return {
+      attending: "no",
+      declineReason: reason,
+      declineReasonNote: reason === "other" ? payload.declineReasonNote : null,
+      message: payload.message,
+      photoConsent: payload.photoConsent,
+    };
   }
 
   const adults = Math.max(0, Math.min(20, Number(payload.adults) || 0));
   const children = Math.max(0, Math.min(20, Number(payload.children) || 0));
-
   // Cap enforced server-side. The client stepper also caps, but the client is
   // not a security boundary and headcount drives catering spend.
-  if (payload.attending === "yes" && adults + children > (event.max_party_size || 10)) {
-    return { ok: false, error: "partyTooBig" };
-  }
+  if (adults + children > (event.max_party_size || 10)) return { error: "partyTooBig" };
+  if (adults + children < 1) return { error: "required" };
 
-  saveRsvp(guest.id, event.id, {
-    attending: payload.attending,
-    adults: payload.attending === "yes" ? adults : 0,
-    children: payload.attending === "yes" ? children : 0,
+  return {
+    attending: "yes",
+    adults,
+    children,
     extraNames: payload.extraNames,
-    dietary: payload.dietary,
     message: payload.message,
     photoConsent: payload.photoConsent,
-  });
+  };
+}
 
+/* The final "Send my reply". When the event carries a contribution product,
+   an attending reply is only complete once the store confirmed payment — the
+   row itself was already saved by startContribution, so nothing is lost while
+   the guest is away at checkout. */
+export async function submitRsvp(token, payload) {
+  const found = getGuestByToken(token);
+  if (!found) return { ok: false, error: "notFound" };
+
+  const { guest, event, rsvp } = found;
+  if (event.status === "draft") return { ok: false, error: "notFound" };
+  if (isEventClosed(event)) return { ok: false, error: "closed" };
+
+  const clean = validateReply(event, payload);
+  if (clean.error) return { ok: false, error: clean.error };
+
+  if (
+    clean.attending === "yes" &&
+    event.support_url &&
+    rsvp?.contribution_status !== "paid"
+  ) {
+    return { ok: false, error: "contribIncomplete", contributionStatus: rsvp?.contribution_status || "none" };
+  }
+
+  saveRsvp(guest.id, event.id, clean);
   revalidatePath(`/i/${token}`);
-  return { ok: true, attending: payload.attending };
+  return { ok: true, attending: clean.attending };
+}
+
+/* "Contribute & continue": SAVE the reply first (contribution pending), then
+   hand back the store checkout URL tagged with the invitation. Saving first is
+   deliberate — a checkout tab that never comes back must not cost us the
+   family's headcount, and the webhook needs a row to land the payment on. */
+export async function startContribution(token, payload) {
+  const found = getGuestByToken(token);
+  if (!found) return { ok: false, error: "notFound" };
+
+  const { guest, event, rsvp } = found;
+  if (event.status === "draft") return { ok: false, error: "notFound" };
+  if (isEventClosed(event)) return { ok: false, error: "closed" };
+  if (!event.support_url) return { ok: false, error: "error" };
+
+  const clean = validateReply(event, { ...payload, attending: "yes" });
+  if (clean.error) return { ok: false, error: clean.error };
+
+  const product = await getContributionProduct(event.support_url);
+  if (!product) return { ok: false, error: "error" };
+
+  saveRsvp(guest.id, event.id, clean);
+
+  // Already paid (e.g. a second click after the webhook landed): no second
+  // checkout — report the truth instead.
+  if (rsvp?.contribution_status === "paid") {
+    revalidatePath(`/i/${token}`);
+    return { ok: true, alreadyPaid: true };
+  }
+
+  markContributionPending(guest.id, product.title);
+  revalidatePath(`/i/${token}`);
+  return {
+    ok: true,
+    checkoutUrl: contributionCheckoutUrl({
+      variantId: product.variantId,
+      token: guest.token,
+      eventId: event.id,
+    }),
+  };
 }
 
 /* Photo upload is a SEPARATE action from the RSVP on purpose. Drive is a third
@@ -71,7 +139,7 @@ export async function uploadFamilyPhoto(token, { dataUrl, familyName }) {
   const found = getGuestByToken(token);
   if (!found) return { ok: false, error: "notFound" };
   const { guest, event } = found;
-  if (closed(event)) return { ok: false, error: "closed" };
+  if (isEventClosed(event)) return { ok: false, error: "closed" };
   if (!driveConfigured()) return { ok: false, error: "driveNotConfigured" };
 
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");

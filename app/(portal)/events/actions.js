@@ -13,9 +13,15 @@ import {
   markReminded,
   normalizePhone,
 } from "@/lib/events/queries";
-import { sendMail, inviteEmailHtml, inviteEmailText, mailConfigured } from "@/lib/events/mail";
+import {
+  sendMail,
+  inviteEmailHtml,
+  inviteEmailText,
+  inviteEmailSubject,
+  mailConfigured,
+} from "@/lib/events/mail";
 import { sendInviteWhatsApp, watiConfigured } from "@/lib/events/wati";
-import { formatEventDate } from "@/lib/events/i18n";
+import { formatEventDate, formatDeadline } from "@/lib/events/i18n";
 
 /* Admin actions. EVERY export re-checks the role — a server action is a public
    HTTP endpoint, and the fact that the only link to it sits behind an
@@ -161,12 +167,14 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
     const url = `${baseUrl()}/i/${guest.token}${guest.lang !== "en" ? `?lang=${guest.lang}` : ""}`;
     const whenText = event.starts_at ? formatEventDate(event.starts_at, guest.lang) : "";
     const venueText = [event.venue_name, event.venue_address].filter(Boolean).join(", ");
+    const deadlineText = event.rsvp_deadline ? formatDeadline(event.rsvp_deadline, guest.lang) : "";
     const row = { guest: guest.name, email: null, whatsapp: null };
 
     if (wantEmail && guest.email) {
       const res = await sendMail({
         to: guest.email,
-        subject: `${guest.name}, you're invited to ${event.title}`,
+        // Localised, and the event leads — never the guest's name.
+        subject: inviteEmailSubject({ lang: guest.lang, eventTitle: event.title }),
         html: inviteEmailHtml({
           guestName: guest.name,
           eventTitle: event.title,
@@ -175,8 +183,23 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
           url,
           accent: event.theme.palette.accent,
           lang: guest.lang,
+          deadlineText,
+          // The hidden inbox digest line: when · where — reply by.
+          preheaderText: [whenText, event.venue_name].filter(Boolean).join(" · ") +
+            (deadlineText ? ` — ${deadlineText}` : ""),
+          crescentUrl: `${baseUrl()}/prop/crescent.png`,
+          contactNumber: process.env.LQK_CONTACT_WHATSAPP || "",
         }),
-        text: inviteEmailText({ guestName: guest.name, eventTitle: event.title, whenText, venueText, url }),
+        text: inviteEmailText({
+          guestName: guest.name,
+          eventTitle: event.title,
+          whenText,
+          venueText,
+          url,
+          lang: guest.lang,
+          deadlineText,
+        }),
+        replyTo: process.env.MAIL_REPLY_TO || undefined,
       });
       row.email = res.ok ? "sent" : res.error;
       if (res.ok) markSent(guest.id, "email");
@@ -192,6 +215,8 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
         guestName: guest.name,
         eventTitle: event.title,
         url,
+        deadlineText,
+        lang: guest.lang,
       });
       row.whatsapp = res.ok ? "sent" : res.error;
       if (res.ok) markSent(guest.id, "wa");

@@ -1,14 +1,30 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { t as translate, formatDeadline } from "@/lib/events/i18n";
-import { submitRsvp, uploadFamilyPhoto } from "./actions";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  t as translate,
+  fmt,
+  formatDeadline,
+  DECLINE_REASONS,
+  partyLine,
+} from "@/lib/events/i18n";
+import { submitRsvp, startContribution, uploadFamilyPhoto } from "./actions";
 
-/* The RSVP block.
+/* The reply block.
 
    One client component rather than several so the "attending" choice can drive
    what the rest of the form shows without prop-drilling or a store — declining
-   guests should never be asked how many children they're bringing.
+   guests should never be asked how many children they're bringing, and only
+   attending guests ever see the contribution.
+
+   THE CONTRIBUTION FLOW (when the event carries a store product):
+   "Contribute & continue" saves the whole reply server-side FIRST (status
+   'pending'), then opens the store checkout in a new tab. The reply is never
+   held hostage by a checkout tab that might not come back. While pending, this
+   component polls its own status endpoint; the orders/paid webhook flips the
+   row and the poll paints the green strip without a reload. "Send my reply"
+   only completes once the server has seen the payment.
 
    Photos are downscaled IN THE BROWSER before upload. Not an optimisation: a
    Next.js Server Action body defaults to a 1MB cap, phone photos are 2–8MB, and
@@ -35,7 +51,7 @@ async function downscale(file) {
   return canvas.toDataURL("image/jpeg", QUALITY);
 }
 
-function Stepper({ label, value, onChange, min = 0, max = 20 }) {
+function Stepper({ label, value, onChange, min = 0, max = 20, minusLabel, plusLabel }) {
   return (
     <div className="inv-stepper">
       <span className="inv-stepper-label">{label}</span>
@@ -45,7 +61,7 @@ function Stepper({ label, value, onChange, min = 0, max = 20 }) {
           className="inv-step-btn"
           onClick={() => onChange(Math.max(min, value - 1))}
           disabled={value <= min}
-          aria-label={`${label} −`}
+          aria-label={minusLabel}
         >
           −
         </button>
@@ -59,7 +75,7 @@ function Stepper({ label, value, onChange, min = 0, max = 20 }) {
           className="inv-step-btn"
           onClick={() => onChange(Math.min(max, value + 1))}
           disabled={value >= max}
-          aria-label={`${label} +`}
+          aria-label={plusLabel}
         >
           +
         </button>
@@ -68,27 +84,174 @@ function Stepper({ label, value, onChange, min = 0, max = 20 }) {
   );
 }
 
-export default function RsvpForm({ token, lang, event, guest, rsvp }) {
+/* The product card + CTA / pending note / paid strip. Mutually exclusive
+   states — the reference stacks them only so both are visible at once. */
+function ContributionBlock({ t, product, status, paidLine, busy, onContribute }) {
+  return (
+    <div className="inv-contrib">
+      <div className="inv-contrib-head">
+        <span className="inv-contrib-title">{t("contribTitle")}</span>
+        <span className="inv-contrib-req">{t("contribRequired")}</span>
+      </div>
+      <p className="inv-contrib-body">{t("contribBody")}</p>
+
+      {product ? (
+        <div className="inv-product">
+          {product.image ? (
+            /* Plain <img>: a 52px thumbnail from the store CDN doesn't earn a
+               remotePatterns entry in next.config. eslint knows better: */
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={product.image} alt="" className="inv-product-img" />
+          ) : (
+            <span className="inv-product-img" aria-hidden />
+          )}
+          <div className="inv-product-info">
+            <span className="inv-product-title">
+              <bdi>{product.title}</bdi>
+              {product.variantTitle ? <bdi> — {product.variantTitle}</bdi> : null}
+            </span>
+            <span className="inv-product-price">
+              {product.priceText} · Little Quran Kids store
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {status === "paid" ? (
+        <div className="inv-paid">
+          <span className="inv-paid-check" aria-hidden>
+            ✓
+          </span>
+          <span>{paidLine}</span>
+        </div>
+      ) : (
+        <>
+          {status === "pending" ? (
+            <p className="inv-contrib-pending">{t("contribPendingNote")}</p>
+          ) : null}
+          <button type="button" className="inv-btn inv-btn-contrib" disabled={busy} onClick={onContribute}>
+            {busy ? t("saving") : `${t("contribCta")} ↗`}
+          </button>
+          <p className="inv-contrib-small">{t("contribSmall")}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function RsvpForm({
+  token,
+  lang,
+  event,
+  guest,
+  rsvp,
+  contribution, // product from the store, or null when the event has none
+  calUrl,
+  mapUrl,
+}) {
   const t = translate(lang);
+  const router = useRouter();
   const fileRef = useRef(null);
 
-  const [attending, setAttending] = useState(rsvp?.attending || "");
-  const [adults, setAdults] = useState(rsvp?.adults ?? 1);
+  // Legacy 'maybe' replies read as "not answered yet" — the option no longer
+  // exists, and pre-filling either remaining choice would put words in the
+  // family's mouth.
+  const savedAttending = rsvp?.attending === "yes" || rsvp?.attending === "no" ? rsvp.attending : "";
+
+  const [attending, setAttending] = useState(savedAttending);
+  const [adults, setAdults] = useState(rsvp?.adults || 1);
   const [children, setChildren] = useState(rsvp?.children ?? 0);
   const [extraNames, setExtraNames] = useState(rsvp?.extra_names || "");
-  const [dietary, setDietary] = useState(rsvp?.dietary || "");
+  const [declineReason, setDeclineReason] = useState(rsvp?.decline_reason || "");
+  const [declineReasonNote, setDeclineReasonNote] = useState(rsvp?.decline_reason_note || "");
   const [message, setMessage] = useState(rsvp?.message || "");
   const [familyName, setFamilyName] = useState(guest.family_name || "");
   const [photoConsent, setPhotoConsent] = useState(!!rsvp?.photo_consent);
   const [preview, setPreview] = useState(null);
   const [photoState, setPhotoState] = useState(rsvp?.photo_drive_id ? "done" : "idle");
 
+  const [contributionStatus, setContributionStatus] = useState(rsvp?.contribution_status || "none");
+  const [contributionTitle, setContributionTitle] = useState(rsvp?.contribution_title || "");
+  const [contributionQty, setContributionQty] = useState(rsvp?.contribution_qty || 1);
+  const [contributionPaidAt, setContributionPaidAt] = useState(rsvp?.contribution_paid_at || null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState(!!rsvp);
-  const [editing, setEditing] = useState(!rsvp);
+  const [done, setDone] = useState(!!savedAttending);
+  const [editing, setEditing] = useState(!savedAttending);
 
   const cap = event.max_party_size || 10;
+  const needsContribution = !!event.support_url && !!contribution;
+
+  /* While a checkout is out there, poll our own row. The webhook does the real
+     work; this only repaints. Also refreshes when the tab regains focus —
+     which is exactly the moment the guest comes back from the store. */
+  useEffect(() => {
+    if (contributionStatus !== "pending") return undefined;
+    let stopped = false;
+
+    async function check() {
+      try {
+        const res = await fetch(`/api/i/${token}/contribution`, { cache: "no-store" });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (stopped) return;
+        if (body.status === "paid") {
+          setContributionStatus("paid");
+          setContributionTitle(body.title || "");
+          setContributionQty(body.qty || 1);
+          setContributionPaidAt(body.paidAt || null);
+          router.refresh();
+        }
+      } catch {
+        /* transient network — the next tick tries again */
+      }
+    }
+
+    const interval = setInterval(check, 5000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [contributionStatus, token, router]);
+
+  function choose(value) {
+    setAttending(value);
+    setError("");
+    // Exactly one branch may hold values — switching away clears the other's.
+    if (value === "yes") {
+      setDeclineReason("");
+      setDeclineReasonNote("");
+    } else {
+      setPreview(null);
+    }
+  }
+
+  function replyPayload() {
+    return {
+      attending,
+      adults,
+      children,
+      extraNames,
+      declineReason,
+      declineReasonNote,
+      message,
+      photoConsent,
+    };
+  }
+
+  function validateLocally() {
+    if (!attending) return "required";
+    if (attending === "no" && !declineReason) return "reasonRequired";
+    if (attending === "no" && declineReason === "other" && !declineReasonNote.trim())
+      return "reasonRequired";
+    return null;
+  }
 
   async function onPickPhoto(e) {
     const file = e.target.files?.[0];
@@ -109,24 +272,52 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
     }
   }
 
-  async function onSubmit(e) {
-    e.preventDefault();
-    if (!attending) {
-      setError(t("required"));
+  async function onContribute() {
+    const invalid = validateLocally();
+    if (invalid && attending !== "yes") {
+      setError(t(invalid));
       return;
     }
     setSaving(true);
     setError("");
 
-    const result = await submitRsvp(token, {
-      attending,
-      adults,
-      children,
-      extraNames,
-      dietary,
-      message,
-      photoConsent,
-    });
+    // Safari blocks window.open after an await — claim the tab first, then
+    // point it at the checkout once the server hands the URL back.
+    const checkoutTab = typeof window !== "undefined" ? window.open("", "_blank") : null;
+
+    const result = await startContribution(token, replyPayload());
+    setSaving(false);
+
+    if (!result.ok) {
+      checkoutTab?.close();
+      setError(t(result.error) || t("error"));
+      return;
+    }
+    if (result.alreadyPaid) {
+      checkoutTab?.close();
+      setContributionStatus("paid");
+      return;
+    }
+    setContributionStatus("pending");
+    if (checkoutTab) checkoutTab.location.replace(result.checkoutUrl);
+    else window.location.assign(result.checkoutUrl);
+  }
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    const invalid = validateLocally();
+    if (invalid) {
+      setError(t(invalid));
+      return;
+    }
+    if (attending === "yes" && needsContribution && contributionStatus !== "paid") {
+      setError(t("contribIncomplete"));
+      return;
+    }
+    setSaving(true);
+    setError("");
+
+    const result = await submitRsvp(token, replyPayload());
 
     if (!result.ok) {
       setSaving(false);
@@ -146,18 +337,64 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
     setEditing(false);
   }
 
+  /* ---- confirmation ------------------------------------------------------ */
+
   if (done && !editing) {
-    const thanks =
-      attending === "yes" ? t("thanksYes") : attending === "no" ? t("thanksNo") : t("thanksMaybe");
+    const isYes = attending === "yes";
+    const unpaid = isYes && needsContribution && contributionStatus !== "paid";
     return (
-      <div className="inv-card inv-rise inv-rsvp-block">
-        <p className="inv-status">{thanks}</p>
-        <p className="inv-note" style={{ marginBottom: 10 }}>
-          {t("youReplied")}:{" "}
-          <strong>{attending === "yes" ? t("yes") : attending === "no" ? t("no") : t("maybe")}</strong>
-          {attending === "yes" ? ` · ${adults + children} ${t("guestsCount")}` : ""}
+      <div className="inv-card inv-rise inv-rsvp-block inv-confirm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/dzikir/maulid.png" alt="" className="inv-confirm-art" />
+        <h2 className="inv-confirm-title">{isYes ? t("thanksYes") : t("thanksNo")}</h2>
+
+        <p className="inv-summary">
+          {t("youReplied")} <strong>{isYes ? t("yes") : t("no")}</strong>
+          {isYes && adults + children > 0 ? <> · {partyLine(lang, adults, children)}</> : null}
         </p>
-        {photoState === "failed" ? <p className="inv-error">{t("error")}</p> : null}
+
+        {isYes && contributionStatus === "paid" ? (
+          <p className="inv-summary">
+            {t("contribution")}:{" "}
+            <strong>
+              {contributionQty || 1} × <bdi>{contributionTitle || contribution?.title || ""}</bdi>
+            </strong>
+            {contributionPaidAt ? <>, {fmt(t("paidOn"), { date: formatDeadline(contributionPaidAt, lang) })}</> : null}
+          </p>
+        ) : null}
+
+        {unpaid ? (
+          <>
+            <p className="inv-error">{t("contribIncomplete")}</p>
+            <ContributionBlock
+              t={t}
+              product={contribution}
+              status={contributionStatus}
+              busy={saving}
+              onContribute={onContribute}
+            />
+          </>
+        ) : null}
+
+        {photoState === "failed" ? <p className="inv-error">{t("photoFailed")}</p> : null}
+
+        {/* The calendar and directions pills again — a family that just said
+            yes shouldn't have to scroll back up to find them. */}
+        {isYes && (calUrl || mapUrl) ? (
+          <div className="inv-actions">
+            {calUrl ? (
+              <a className="inv-btn inv-btn-quiet" href={calUrl}>
+                {t("addToCalendar")}
+              </a>
+            ) : null}
+            {mapUrl ? (
+              <a className="inv-btn inv-btn-quiet" href={mapUrl} target="_blank" rel="noopener noreferrer">
+                {t("getDirections")}
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="inv-actions">
           <button type="button" className="inv-btn-link" onClick={() => setEditing(true)}>
             {t("changeReply")}
@@ -167,22 +404,27 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
     );
   }
 
+  /* ---- the form ---------------------------------------------------------- */
+
+  const paidLine = fmt(t("contribPaidLine"), {
+    qty: contributionQty || 1,
+    title: contributionTitle || contribution?.title || "",
+  });
+
   return (
     <form className="inv-card inv-rise inv-rsvp-block" onSubmit={onSubmit} noValidate>
       <h2 className="inv-section-title">{t("rsvpTitle")}</h2>
-      {event.rsvp_deadline ? (
-        <p className="inv-note">
-          {t("rsvpBy")} {formatDeadline(event.rsvp_deadline, lang)}
-        </p>
-      ) : (
-        <div style={{ height: 14 }} />
-      )}
+      <p className="inv-note">
+        {event.rsvp_deadline
+          ? `${fmt(t("replyBy"), { date: formatDeadline(event.rsvp_deadline, lang) })} `
+          : ""}
+        {fmt(t("partyCap"), { n: cap })}
+      </p>
 
-      <fieldset className="inv-choices" style={{ border: 0, padding: 0, margin: "0 0 22px" }}>
+      <fieldset className="inv-choices" style={{ border: 0, padding: 0, margin: "0 0 20px" }}>
         <legend className="sr-only">{t("rsvpTitle")}</legend>
         {[
           ["yes", t("yes")],
-          ["maybe", t("maybe")],
           ["no", t("no")],
         ].map(([value, label]) => (
           <label key={value} className="inv-choice">
@@ -191,22 +433,85 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
               name="attending"
               value={value}
               checked={attending === value}
-              onChange={() => {
-                setAttending(value);
-                setError("");
-              }}
+              onChange={() => choose(value)}
             />
-            <span>{label}</span>
+            <span>
+              {/* The mark, not colour alone, is what says "chosen". */}
+              <span className="inv-choice-dot" aria-hidden>
+                {attending === value ? "✓" : ""}
+              </span>
+              {label}
+            </span>
           </label>
         ))}
       </fieldset>
 
+      {attending === "no" ? (
+        <div className="inv-why">
+          <p className="inv-why-title">{t("whyTitle")}</p>
+          <p className="inv-why-hint">{t("whyHint")}</p>
+          <select
+            className="inv-select"
+            value={declineReason}
+            onChange={(e) => {
+              setDeclineReason(e.target.value);
+              setError("");
+            }}
+            aria-label={t("whyTitle")}
+          >
+            <option value="" disabled>
+              {t("chooseReason")}
+            </option>
+            {DECLINE_REASONS.map((key) => (
+              <option key={key} value={key}>
+                {t(`reason_${key}`)}
+              </option>
+            ))}
+          </select>
+          {declineReason === "other" ? (
+            <input
+              className="inv-input"
+              style={{ marginTop: 10 }}
+              value={declineReasonNote}
+              onChange={(e) => setDeclineReasonNote(e.target.value)}
+              placeholder={t("reasonOtherLabel")}
+              aria-label={t("reasonOtherLabel")}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
       {attending === "yes" ? (
         <>
           <div className="inv-steppers">
-            <Stepper label={t("adults")} value={adults} onChange={setAdults} max={cap} />
-            <Stepper label={t("children")} value={children} onChange={setChildren} max={cap} />
+            <Stepper
+              label={t("adults")}
+              value={adults}
+              onChange={setAdults}
+              max={Math.max(0, cap - children)}
+              minusLabel={t("fewerAdult")}
+              plusLabel={t("moreAdult")}
+            />
+            <Stepper
+              label={t("children")}
+              value={children}
+              onChange={setChildren}
+              max={Math.max(0, cap - adults)}
+              minusLabel={t("fewerChild")}
+              plusLabel={t("moreChild")}
+            />
           </div>
+
+          {needsContribution ? (
+            <ContributionBlock
+              t={t}
+              product={contribution}
+              status={contributionStatus}
+              paidLine={paidLine}
+              busy={saving}
+              onContribute={onContribute}
+            />
+          ) : null}
 
           <div className="inv-field">
             <label className="inv-label" htmlFor="extraNames">
@@ -221,21 +526,6 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
             />
           </div>
 
-          {event.ask_dietary ? (
-            <div className="inv-field">
-              <label className="inv-label" htmlFor="dietary">
-                {t("dietary")}
-                <span className="inv-hint">{t("dietaryHint")}</span>
-              </label>
-              <input
-                id="dietary"
-                className="inv-input"
-                value={dietary}
-                onChange={(e) => setDietary(e.target.value)}
-              />
-            </div>
-          ) : null}
-
           {event.ask_photo ? (
             <div className="inv-field">
               <h3 className="inv-label" style={{ fontSize: 15 }}>
@@ -244,6 +534,7 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
               </h3>
 
               {preview ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={preview} alt="" className="inv-photo-preview" />
               ) : null}
 
@@ -302,22 +593,24 @@ export default function RsvpForm({ token, lang, event, guest, rsvp }) {
         </>
       ) : null}
 
-      <div className="inv-field">
-        <label className="inv-label" htmlFor="message">
-          {t("message")}
-        </label>
-        <textarea
-          id="message"
-          className="inv-textarea"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-        />
-      </div>
+      {attending ? (
+        <div className="inv-field">
+          <label className="inv-label" htmlFor="message">
+            {t("message")}
+          </label>
+          <textarea
+            id="message"
+            className="inv-textarea"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+        </div>
+      ) : null}
 
       {error ? <p className="inv-error">{error}</p> : null}
 
       <button type="submit" className="inv-btn" disabled={saving}>
-        {saving ? t("saving") : rsvp ? t("update") : t("submit")}
+        {saving ? t("saving") : savedAttending ? t("update") : t("submit")}
       </button>
     </form>
   );

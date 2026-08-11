@@ -11,7 +11,7 @@ import {
   sanitizeTheme,
   contrastRatio,
 } from "@/lib/events/theme";
-import { LANGS } from "@/lib/events/i18n";
+import { LANGS, t as translate } from "@/lib/events/i18n";
 import InvitationCard, { InvitationShell } from "@/components/events/InvitationCard";
 import {
   generateThemeAction,
@@ -188,8 +188,19 @@ export default function ThemeStudio({ event, sampleGuest, hasGemini }) {
 
   async function saveDraft() {
     setBusy("save");
-    const res = await saveThemeDraftAction(event.id, safe);
+    let res;
+    try {
+      res = await saveThemeDraftAction(event.id, safe);
+    } catch {
+      res = null;
+    }
     setBusy(null);
+    // Green only when it saved — a false "Draft saved." here means a design
+    // Karim thinks is waiting for approval simply doesn't exist.
+    if (!res?.ok) {
+      setFlash({ tone: "bad", text: res?.error || "That didn't save — please try again." });
+      return;
+    }
     setDirty(false);
     setFlash({ tone: "good", text: "Draft saved. Guests still see the approved design." });
     if (res.theme) setTheme(res.theme);
@@ -210,9 +221,23 @@ export default function ThemeStudio({ event, sampleGuest, hasGemini }) {
   }
 
   async function discard() {
+    // A draft can be a generation Karim spent minutes steering; it deserves a
+    // deliberate confirm, and the dialog says exactly what survives.
+    if (!window.confirm("Discard this draft? The approved design stays live; the draft can't be recovered.")) {
+      return;
+    }
     setBusy("discard");
-    await discardThemeDraftAction(event.id);
+    let res;
+    try {
+      res = await discardThemeDraftAction(event.id);
+    } catch {
+      res = null;
+    }
     setBusy(null);
+    if (!res?.ok) {
+      setFlash({ tone: "bad", text: "That didn't discard — please try again." });
+      return;
+    }
     setTheme(event.theme || DEFAULT_THEME);
     setRationale(null);
     setDirty(false);
@@ -241,12 +266,15 @@ export default function ThemeStudio({ event, sampleGuest, hasGemini }) {
 
         <section className={card}>
           <h2 className="text-base font-semibold text-ink">Generate a design</h2>
-          <p className="mt-1 text-sm text-charcoal-soft">
-            Upload an invitation you like the look of. Gemini reads its character and returns an
-            original design — it never copies the reference, and it never writes markup: it picks
-            from the layouts and ornaments below, so a bad result can only ever be ugly, never
-            broken.
-          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-sm text-gold">How this works ▸</summary>
+            <p className="mt-1 text-sm text-charcoal-soft">
+              Upload an invitation you like the look of. Gemini reads its character and returns an
+              original design — it never copies the reference, and it never writes markup: it picks
+              from the layouts and ornaments below, so a bad result can only ever be ugly, never
+              broken.
+            </p>
+          </details>
 
           {!hasGemini ? (
             <div className="mt-4">
@@ -395,7 +423,7 @@ export default function ThemeStudio({ event, sampleGuest, hasGemini }) {
 
             <div>
               <label className={label} htmlFor="motion">
-                Entrance
+                Entrance animation
               </label>
               <select
                 id="motion"
@@ -585,8 +613,8 @@ export default function ThemeStudio({ event, sampleGuest, hasGemini }) {
         </div>
 
         <p className="mt-2 text-xs text-charcoal-soft">
-          This is the guest page&apos;s own renderer, not a mock. Arabic flips the whole layout —
-          check it before you approve.
+          Guest page renderer — real copy, real keys. Arabic flips the whole layout — check it
+          before you approve.
         </p>
 
         <div
@@ -602,40 +630,44 @@ export default function ThemeStudio({ event, sampleGuest, hasGemini }) {
             lang={lang}
             preview
           >
-            <InvitationCard event={event} guest={sampleGuest} theme={safe} lang={lang}>
-              <div className="inv-actions">
-                <span className="inv-btn inv-btn-quiet">
-                  {lang === "ar" ? "أضف إلى التقويم" : lang === "ms" ? "Tambah ke kalendar" : "Add to calendar"}
-                </span>
-              </div>
-            </InvitationCard>
+            {/* Copy comes from lib/events/i18n through the same t() the guest
+                page uses — never hand-written stand-ins, or the preview shows
+                Karim words no guest will ever see. The controls are inert
+                spans; only the WORDS and the paint are being proven here. */}
+            {(() => {
+              const tp = translate(lang);
+              return (
+                <>
+                  <InvitationCard event={event} guest={sampleGuest} theme={safe} lang={lang}>
+                    <div className="inv-actions">
+                      <span className="inv-btn inv-btn-quiet">{tp("addToCalendar")}</span>
+                      <span className="inv-btn inv-btn-quiet">{tp("getDirections")}</span>
+                    </div>
+                  </InvitationCard>
 
-            <div className="inv-card inv-rise">
-              <h2 className="inv-section-title">
-                {lang === "ar" ? "هل ستحضر؟" : lang === "ms" ? "Boleh hadir?" : "Will you join us?"}
-              </h2>
-              <p className="inv-note">
-                {lang === "ar"
-                  ? "نموذج الرد يظهر هنا."
-                  : lang === "ms"
-                    ? "Borang RSVP dipaparkan di sini."
-                    : "The RSVP form appears here."}
-              </p>
-              <div className="inv-choices">
-                <span className="inv-choice">
-                  <span>{lang === "ar" ? "نعم" : "Yes"}</span>
-                </span>
-                <span className="inv-choice">
-                  <span>{lang === "ar" ? "ربما" : "Maybe"}</span>
-                </span>
-                <span className="inv-choice">
-                  <span>{lang === "ar" ? "لا" : "No"}</span>
-                </span>
-              </div>
-              <span className="inv-btn">{lang === "ar" ? "إرسال" : "Send reply"}</span>
-            </div>
+                  <div className="inv-card inv-rise">
+                    <h2 className="inv-section-title">{tp("rsvpTitle")}</h2>
+                    <div className="inv-choices">
+                      <span className="inv-choice">
+                        <span>
+                          <span className="inv-choice-dot" aria-hidden />
+                          {tp("yes")}
+                        </span>
+                      </span>
+                      <span className="inv-choice">
+                        <span>
+                          <span className="inv-choice-dot" aria-hidden />
+                          {tp("no")}
+                        </span>
+                      </span>
+                    </div>
+                    <span className="inv-btn">{tp("submit")}</span>
+                  </div>
 
-            <p className="inv-footer">Little Quran Kids</p>
+                  <p className="inv-footer">Little Quran Kids</p>
+                </>
+              );
+            })()}
           </InvitationShell>
         </div>
       </div>

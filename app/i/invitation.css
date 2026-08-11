@@ -262,6 +262,32 @@
   margin: 0 0 14px;
 }
 
+/* The salam — a greeting to a named person, so it takes the accent, not the
+   muted label colour. */
+.inv-salam {
+  font-size: clamp(11px, 2.4vw, 12px);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--inv-accent);
+  text-align: center;
+  margin: 0 0 12px;
+}
+
+/* "We would like to invite you and your family to" — a SENTENCE in the serif,
+   sentence case, never tracked or uppercased. max-width keeps it wrapping as a
+   phrase (~24ch) instead of one long line above the title. */
+.inv-invite-line {
+  font-family: var(--inv-font-heading);
+  font-size: clamp(15px, 3.8vw, 17px);
+  line-height: 1.45;
+  color: var(--inv-muted);
+  text-align: center;
+  max-width: 24ch;
+  margin: 0 auto 10px;
+  text-wrap: balance;
+}
+
 .inv-title {
   font-family: var(--inv-font-heading);
   font-size: calc(clamp(28px, 7vw, 44px) * var(--inv-scale, 1));
@@ -337,16 +363,12 @@
 
 /* ---- controls ----------------------------------------------------------- */
 
+/* Two stacked rows — the reply is a binary now, and stacking keeps both labels
+   full-width and readable at 375px in all three languages. */
 .inv-choices {
   display: grid;
-  gap: 10px;
-  margin: 0 0 22px;
-}
-
-@media (min-width: 480px) {
-  .inv-choices {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  gap: 8px;
+  margin: 0 0 20px;
 }
 
 /* The radio itself is visually hidden but still focusable and still the thing
@@ -361,20 +383,44 @@
 .inv-choice > span {
   display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
+  justify-content: flex-start;
+  gap: 12px;
+  text-align: start;
   min-height: 52px;
-  padding: 12px 14px;
+  padding: 15px 16px;
   border: 1px solid var(--inv-line);
-  border-radius: calc(var(--inv-radius) * 0.55);
+  border-radius: calc(var(--inv-radius) * 0.6);
   font-size: 15px;
   cursor: pointer;
-  background: transparent;
+  background: color-mix(in srgb, var(--inv-surface) 55%, var(--inv-bg));
   transition:
     transform 160ms ease-out,
     border-color 200ms ease,
     background-color 200ms ease,
     color 200ms ease;
+}
+
+/* The leading circle. A ✓ lands inside it when chosen — the mark, never colour
+   alone, is what says "selected". */
+.inv-choice-dot {
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--inv-line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  color: transparent;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+.inv-choice input:checked + span .inv-choice-dot {
+  background: var(--inv-surface);
+  border-color: var(--inv-surface);
+  color: var(--inv-accent);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -418,12 +464,16 @@
 }
 
 .inv-input,
-.inv-textarea {
+.inv-textarea,
+.inv-select {
   width: 100%;
   font: inherit;
   font-size: 16px; /* 16px minimum or iOS Safari zooms the page on focus */
   color: var(--inv-ink);
-  background: var(--inv-bg);
+  /* The CARD colour, never the page colour: --inv-ink is only contrast-
+     enforced against --inv-surface, so a generated dark page would turn
+     bg-painted inputs into dark slabs with unreadable text. */
+  background: var(--inv-surface);
   border: 1px solid var(--inv-line);
   border-radius: calc(var(--inv-radius) * 0.45);
   padding: 11px 13px;
@@ -435,11 +485,52 @@
   resize: vertical;
 }
 
+.inv-select {
+  appearance: none;
+  font-weight: 600;
+  font-size: 16px;
+  padding-inline-end: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2396681A' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+/* The one [dir] override on this page: background-position has no widely
+   supported flow-relative keyword yet, so the caret is flipped by hand. */
+[dir="rtl"] .inv-select {
+  background-position: left 14px center;
+}
+
 .inv-input:focus,
-.inv-textarea:focus {
+.inv-textarea:focus,
+.inv-select:focus {
   outline: none;
   border-color: var(--inv-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--inv-accent) 18%, transparent);
+}
+
+/* ---- decline branch ------------------------------------------------------ */
+
+.inv-why {
+  margin: 0 0 20px;
+}
+
+.inv-why-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--inv-ink);
+  margin: 0 0 2px;
+}
+
+.inv-why-hint {
+  font-size: 12px;
+  color: var(--inv-muted);
+  margin: 0 0 10px;
+}
+
+/* An unchosen select shows its placeholder in the muted tone. */
+.inv-select:has(option[value=""]:checked) {
+  color: var(--inv-muted);
 }
 
 /* Stepper — logical properties throughout so the row mirrors itself in RTL
@@ -457,12 +548,14 @@
   justify-content: space-between;
   gap: 8px;
   border: 1px solid var(--inv-line);
-  border-radius: calc(var(--inv-radius) * 0.45);
-  padding: 8px 10px;
+  border-radius: calc(var(--inv-radius) * 0.6);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--inv-surface) 55%, var(--inv-bg));
 }
 
 .inv-stepper-label {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--inv-muted);
 }
 
@@ -473,14 +566,14 @@
 }
 
 .inv-step-btn {
-  inline-size: 32px;
-  block-size: 32px;
+  inline-size: 30px;
+  block-size: 30px;
   display: grid;
   place-items: center;
   border: 1px solid var(--inv-line);
   border-radius: 999px;
-  background: transparent;
-  color: var(--inv-ink);
+  background: var(--inv-surface);
+  color: var(--inv-accent);
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
@@ -500,7 +593,8 @@
 .inv-step-value {
   min-inline-size: 28px;
   text-align: center;
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -611,6 +705,209 @@
   margin-block-start: 1px;
   accent-color: var(--inv-accent);
   flex: none;
+}
+
+/* ---- contribution --------------------------------------------------------
+   Decorative tones derive from the palette via color-mix so a generated theme
+   repaints them; the PAID strip is the exception — success is green in every
+   theme, the same way .inv-error is always rust. */
+
+.inv-contrib {
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.7);
+  background: color-mix(in srgb, var(--inv-surface) 55%, var(--inv-bg));
+  padding: 16px;
+  margin: 0 0 18px;
+}
+
+.inv-contrib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+
+.inv-contrib-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--inv-ink);
+}
+
+.inv-contrib-req {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b0533a;
+  background: #f8e2d8;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.inv-contrib-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--inv-muted);
+  margin: 0 0 12px;
+}
+
+.inv-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--inv-surface);
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.6);
+  padding: 12px;
+  margin: 0 0 12px;
+}
+
+/* A FIXED slot — the box holds its size whatever artwork lands in it. */
+.inv-product-img {
+  flex: none;
+  inline-size: 52px;
+  block-size: 52px;
+  object-fit: cover;
+  border-radius: calc(var(--inv-radius) * 0.45);
+  background: color-mix(in srgb, var(--inv-accent) 10%, var(--inv-surface));
+}
+
+.inv-product-info {
+  min-inline-size: 0;
+  display: grid;
+  gap: 2px;
+  text-align: start;
+}
+
+.inv-product-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--inv-ink);
+}
+
+.inv-product-price {
+  font-size: 12px;
+  color: var(--inv-muted);
+}
+
+/* Deliberately QUIETER than the accent submit pill — paying is a step inside
+   the reply, and "Send my reply" must stay the loudest thing on the card. */
+.inv-btn-contrib {
+  font-size: 14px;
+  min-height: 46px;
+  padding-block: 12px;
+  background: color-mix(in srgb, var(--inv-accent) 55%, var(--inv-ink));
+  border-color: color-mix(in srgb, var(--inv-accent) 55%, var(--inv-ink));
+}
+
+.inv-contrib-small {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--inv-muted);
+  opacity: 0.85;
+  text-align: center;
+  margin: 8px 0 0;
+}
+
+.inv-contrib-pending {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--inv-muted);
+  text-align: center;
+  margin: 0 0 10px;
+}
+
+.inv-paid {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #dde5d3;
+  border-radius: calc(var(--inv-radius) * 0.6);
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #33502f;
+  text-align: start;
+}
+
+.inv-paid-check {
+  flex: none;
+  inline-size: 18px;
+  block-size: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #4e6b3f;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ---- confirmation -------------------------------------------------------- */
+
+.inv-confirm {
+  text-align: center;
+}
+
+/* Another fixed slot for generated art. */
+.inv-confirm-art {
+  display: block;
+  inline-size: 76px;
+  block-size: 76px;
+  object-fit: contain;
+  margin: 0 auto 12px;
+}
+
+.inv-confirm-title {
+  font-family: var(--inv-font-heading);
+  font-size: clamp(21px, 5vw, 24px);
+  line-height: 1.25;
+  font-weight: 500;
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+
+.inv-summary {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--inv-muted);
+  margin: 0 0 10px;
+}
+
+.inv-summary strong {
+  color: var(--inv-ink);
+  font-weight: 700;
+}
+
+/* ---- majlis props --------------------------------------------------------
+   The 1A prop art. Absolute, pointer-transparent, and clipped by the card's
+   overflow:hidden where they overhang. Logical insets mirror them in RTL. */
+
+.inv-props {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.inv-prop-lantern {
+  position: absolute;
+  inset-block-start: -22px;
+  inset-inline-start: -26px;
+  inline-size: 96px;
+  block-size: auto;
+  transform: rotate(-8deg);
+  opacity: 0.9;
+}
+
+.inv-prop-stars {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-end: -18px;
+  inline-size: 72px;
+  block-size: auto;
+  opacity: 0.55;
 }
 
 /* ---- misc --------------------------------------------------------------- */
