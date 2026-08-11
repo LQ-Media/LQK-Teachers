@@ -12,8 +12,15 @@ const PUBLIC_ROUTES = ["/login"];
    verified in lib/events/queries.js#getGuestByToken.
 
    Keep this as a PREFIX test: the path carries a token, so it can never match
-   the exact-equality PUBLIC_ROUTES list. */
-const PUBLIC_PREFIXES = ["/i/"];
+   the exact-equality PUBLIC_ROUTES list.
+
+   /prop/ and /dzikir/ are the invitation's artwork (lantern, stars, the
+   confirmation rose) and the email card's crescent. A guest has no session and
+   an email client never will, so behind the gate these render as a redirect to
+   /login — i.e. broken images on exactly the surfaces outsiders see. Found by
+   screenshotting the invite from a cookie-less browser; an authenticated dev
+   session masks it completely. */
+const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/"];
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;

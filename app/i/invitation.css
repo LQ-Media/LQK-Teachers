@@ -542,11 +542,13 @@
   margin: 0 0 18px;
 }
 
+/* Label ABOVE the controls (as in the reference), not beside them — at 375px,
+   "Children" next to two 30px buttons overflows the card because a flex label
+   refuses to shrink below its text. Stacking makes overflow impossible. */
 .inv-stepper {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 8px;
+  justify-items: center;
   border: 1px solid var(--inv-line);
   border-radius: calc(var(--inv-radius) * 0.6);
   padding: 12px 14px;
@@ -562,7 +564,10 @@
 .inv-stepper-controls {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
+  inline-size: 100%;
+  max-inline-size: 132px;
 }
 
 .inv-step-btn {
