@@ -5,6 +5,7 @@ import { getEvent, listGuests, eventStats, guestsNeedingReminder } from "@/lib/e
 import { mailConfigured } from "@/lib/events/mail";
 import { watiConfigured } from "@/lib/events/wati";
 import { driveConfigured } from "@/lib/events/drive";
+import { contributionWebhookConfigured } from "@/lib/events/shopify";
 import PageHeading from "@/components/PageHeading";
 import EventDetail from "./EventDetail";
 
@@ -115,6 +116,7 @@ export default async function EventPage({ params, searchParams }) {
           mail: mailConfigured(),
           whatsapp: watiConfigured(),
           drive: driveConfigured(),
+          shopifyWebhook: contributionWebhookConfigured(),
         }}
       />
     </div>

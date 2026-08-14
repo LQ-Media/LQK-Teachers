@@ -1,5 +1,6 @@
 import { themeVars, sanitizeTheme } from "@/lib/events/theme";
 import { t as translate, dirFor, formatEventDate } from "@/lib/events/i18n";
+import { bodyParagraphs } from "@/lib/events/fields";
 import Ornament from "./Ornament";
 
 /* The invitation itself, factored out so ONE renderer serves two callers:
@@ -52,6 +53,9 @@ export function InvitationShell({ theme, lang = "en", children, className = "", 
 export default function InvitationCard({ event, guest, theme, lang = "en", children }) {
   const th = sanitizeTheme(theme);
   const t = translate(lang);
+  // The host's own paragraphs. Not translated — Karim writes them once, in the
+  // language he means, and they appear as written on every guest's invitation.
+  const body = bodyParagraphs(event.body_text);
 
   return (
     <article className="inv-card inv-rise">
@@ -90,6 +94,18 @@ export default function InvitationCard({ event, guest, theme, lang = "en", child
         <p className="inv-host">
           {t("hostedBy")} <bdi>{event.host_name}</bdi>
         </p>
+      ) : null}
+
+      {body.length ? (
+        <div className="inv-body">
+          {body.map((para, i) => (
+            // Positional key: these are paragraphs of one text, split on blank
+            // lines — they have no identity beyond their order.
+            <p key={i}>
+              <bdi>{para}</bdi>
+            </p>
+          ))}
+        </div>
       ) : null}
 
       <hr className="inv-rule" />

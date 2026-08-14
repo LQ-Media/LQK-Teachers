@@ -227,6 +227,7 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
           crescentUrl: `${baseUrl()}/prop/crescent.png`,
           contactNumber: process.env.LQK_CONTACT_WHATSAPP || "",
           registrationUrl: event.registration_url || "",
+          bodyText: event.body_text || "",
         }),
         text: inviteEmailText({
           guestName: guest.name,
@@ -237,6 +238,7 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
           lang: guest.lang,
           deadlineText,
           registrationUrl: event.registration_url || "",
+          bodyText: event.body_text || "",
         }),
         replyTo: process.env.MAIL_REPLY_TO || undefined,
       });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { declineReasonLabel } from "@/lib/events/i18n";
-import { answerText, parseAnswers } from "@/lib/events/fields";
+import { answerText, parseAnswers, MAX_BODY_TEXT } from "@/lib/events/fields";
 import { DRESS_CODE_GROUPS, PARTY_SIZE_GROUPS, clampPartySize } from "@/lib/events/presets";
 import Combobox from "@/components/events/Combobox";
 import FieldBuilder from "@/components/events/FieldBuilder";
@@ -92,6 +92,7 @@ export default function EventDetail({
   const [form, setForm] = useState({
     title: event.title || "",
     host_name: event.host_name || "",
+    body_text: event.body_text || "",
     starts_at: (event.starts_at || "").slice(0, 16),
     venue_name: event.venue_name || "",
     venue_address: event.venue_address || "",
@@ -249,6 +250,28 @@ export default function EventDetail({
               <label className={label} htmlFor="f-start">Starts</label>
               <input id="f-start" type="datetime-local" className={field} value={form.starts_at} onChange={set("starts_at")} />
             </div>
+            <div className="sm:col-span-2">
+              <label className={label} htmlFor="f-body">
+                Invitation message <span className="font-normal text-charcoal-soft">— optional</span>
+              </label>
+              <textarea
+                id="f-body"
+                className={`${field} min-h-32 leading-relaxed`}
+                value={form.body_text}
+                onChange={set("body_text")}
+                maxLength={MAX_BODY_TEXT}
+                placeholder={
+                  "Assalamu'alaikum warahmatullah.\n\n" +
+                  "It would be our honour to have your family join us for an evening of " +
+                  "selawat and remembrance, followed by dinner together.\n\n" +
+                  "Jazakumullahu khayran."
+                }
+              />
+              <p className="mt-1.5 text-xs text-charcoal-soft">
+                Your own words, shown on the invitation and in the invitation email.
+                Leave a blank line between paragraphs. {form.body_text.length}/{MAX_BODY_TEXT}
+              </p>
+            </div>
             <div>
               <label className={label} htmlFor="f-venue">Venue</label>
               <input id="f-venue" className={field} value={form.venue_name} onChange={set("venue_name")} />
@@ -373,6 +396,26 @@ export default function EventDetail({
                     <Notice tone="bad">
                       The switch is on but there&rsquo;s no product link — guests will see no
                       contribution at all until you paste one.
+                    </Notice>
+                  </div>
+                ) : null}
+                {/* The single most expensive misconfiguration in this feature:
+                    without the webhook, a family pays and can NEVER finish
+                    their reply, and nothing anywhere says why. */}
+                {!capabilities.shopifyWebhook ? (
+                  <div className="mt-2">
+                    <Notice tone="bad">
+                      <strong>Payments can&rsquo;t be confirmed yet.</strong> The store&rsquo;s
+                      &ldquo;Order payment&rdquo; webhook isn&rsquo;t connected, so families who
+                      pay will be stuck on &ldquo;waiting for the store&rdquo; and can&rsquo;t
+                      complete their reply. In the store admin go to Settings → Notifications →
+                      Webhooks, create an <em>Order payment</em> webhook (JSON) pointing at{" "}
+                      <code className="rounded bg-white/60 px-1">
+                        {baseUrl}/api/events/shopify
+                      </code>
+                      , then put its signing secret into{" "}
+                      <code className="rounded bg-white/60 px-1">SHOPIFY_EVENTS_WEBHOOK_SECRET</code>{" "}
+                      on Railway.
                     </Notice>
                   </div>
                 ) : null}

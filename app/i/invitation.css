@@ -712,6 +712,35 @@
   flex: none;
 }
 
+/* The "check again" button sits under the reopen-checkout link in the pending
+   state; it is the quieter of the two, so it gets no fill and a top margin
+   rather than its own block. */
+.inv-contrib-recheck {
+  margin-top: 8px;
+}
+
+/* The host's own paragraphs, between the title block and the details rule.
+   `pre-line` so a single newline the admin typed stays a line break — they are
+   writing prose in a textarea, not authoring HTML, and a poem or a list of
+   three lines must not collapse into one. Blank-line-separated paragraphs
+   arrive as separate <p> elements from bodyParagraphs(). */
+.inv-body {
+  margin: 18px auto 0;
+  max-width: 46ch;
+}
+
+.inv-body p {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--inv-ink);
+  white-space: pre-line;
+}
+
+.inv-body p:last-child {
+  margin-bottom: 0;
+}
+
 /* ---- custom questions ----------------------------------------------------
    Everything here is painted from the same --inv-* variables as the rest of the
    card, so a question Karim adds on a Tuesday inherits whatever design was

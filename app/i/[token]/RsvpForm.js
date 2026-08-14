@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   t as translate,
@@ -104,7 +104,7 @@ function CountInput({ label, value, onChange, max }) {
 
 /* The product card + CTA / pending note / paid strip. Mutually exclusive
    states — the reference stacks them only so both are visible at once. */
-function ContributionBlock({ t, product, status, paidLine, busy, onContribute }) {
+function ContributionBlock({ t, product, status, paidLine, busy, onContribute, checkoutUrl, onRecheck, rechecking }) {
   return (
     <div className="inv-contrib">
       <div className="inv-contrib-head">
@@ -142,11 +142,34 @@ function ContributionBlock({ t, product, status, paidLine, busy, onContribute })
           </span>
           <span>{paidLine}</span>
         </div>
+      ) : status === "pending" ? (
+        /* The checkout is out there somewhere. The reply itself is ALREADY
+           saved — say so, because a guest who thinks nothing was recorded will
+           either give up or reply twice. */
+        <>
+          <p className="inv-contrib-pending">{t("contribPendingNote")}</p>
+          {checkoutUrl ? (
+            <a
+              className="inv-btn inv-btn-contrib"
+              href={checkoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {`${t("contribOpenCheckout")} ↗`}
+            </a>
+          ) : null}
+          <button
+            type="button"
+            className="inv-btn inv-btn-quiet inv-contrib-recheck"
+            disabled={rechecking}
+            onClick={onRecheck}
+          >
+            {rechecking ? t("contribChecking") : t("contribRecheck")}
+          </button>
+          <p className="inv-contrib-small">{t("contribPendingSmall")}</p>
+        </>
       ) : (
         <>
-          {status === "pending" ? (
-            <p className="inv-contrib-pending">{t("contribPendingNote")}</p>
-          ) : null}
           <button type="button" className="inv-btn inv-btn-contrib" disabled={busy} onClick={onContribute}>
             {busy ? t("saving") : `${t("contribCta")} ↗`}
           </button>
@@ -200,8 +223,11 @@ export default function RsvpForm({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [checkoutUrl, setCheckoutUrl] = useState(null);
+  const [rechecking, setRechecking] = useState(false);
   const [done, setDone] = useState(!!savedAttending);
   const [editing, setEditing] = useState(!savedAttending);
+  const errorRef = useRef(null);
 
   const cap = event.max_party_size || 10;
   const needsContribution = !!event.ask_contribution && !!contribution;
@@ -213,6 +239,16 @@ export default function RsvpForm({
      three hundred repeated blocks. The cap is enforced identically on the
      server, so what is asked and what is validated can't drift. */
   const blocks = perPerson.length ? Math.min(headCount, MAX_ATTENDEE_BLOCKS) : 0;
+
+  /* An error the guest can't see is an error that didn't happen. This form is
+     long — the contribution button sits well above the fields it can fail on —
+     so every rejection scrolls itself into view. */
+  function showError(message) {
+    setError(message);
+    requestAnimationFrame(() => {
+      errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
 
   function setCustom(id, value) {
     setCustomAnswers((a) => ({ ...a, [id]: value }));
@@ -237,39 +273,50 @@ export default function RsvpForm({
   /* While a checkout is out there, poll our own row. The webhook does the real
      work; this only repaints. Also refreshes when the tab regains focus —
      which is exactly the moment the guest comes back from the store. */
+  /* One place that asks "has the store confirmed yet?", used by the 5s poll,
+     by the tab-focus check, and by the guest tapping "I've paid — check again".
+     Returns true when it flipped, so the manual path can say something honest
+     when it didn't. */
+  const checkContribution = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/i/${token}/contribution`, { cache: "no-store" });
+      if (!res.ok) return false;
+      const body = await res.json();
+      if (body.status !== "paid") return false;
+      setContributionStatus("paid");
+      setContributionTitle(body.title || "");
+      setContributionQty(body.qty || 1);
+      setContributionPaidAt(body.paidAt || null);
+      router.refresh();
+      return true;
+    } catch {
+      /* transient network — the next tick tries again */
+      return false;
+    }
+  }, [token, router]);
+
   useEffect(() => {
     if (contributionStatus !== "pending") return undefined;
-    let stopped = false;
-
-    async function check() {
-      try {
-        const res = await fetch(`/api/i/${token}/contribution`, { cache: "no-store" });
-        if (!res.ok) return;
-        const body = await res.json();
-        if (stopped) return;
-        if (body.status === "paid") {
-          setContributionStatus("paid");
-          setContributionTitle(body.title || "");
-          setContributionQty(body.qty || 1);
-          setContributionPaidAt(body.paidAt || null);
-          router.refresh();
-        }
-      } catch {
-        /* transient network — the next tick tries again */
-      }
-    }
-
-    const interval = setInterval(check, 5000);
+    const interval = setInterval(checkContribution, 5000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") check();
+      if (document.visibilityState === "visible") checkContribution();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      stopped = true;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [contributionStatus, token, router]);
+  }, [contributionStatus, checkContribution]);
+
+  /* The manual re-check. The poll already runs, but a guest coming back from a
+     checkout in another tab has no way to know that — a button they can press
+     is worth more than a spinner they can't see. */
+  async function onRecheck() {
+    setRechecking(true);
+    const flipped = await checkContribution();
+    setRechecking(false);
+    if (!flipped) showError(t("contribStillPending"));
+  }
 
   function choose(value) {
     setAttending(value);
@@ -350,10 +397,18 @@ export default function RsvpForm({
     return uploadFieldFile(token, { fieldId, dataUrl });
   }
 
+  /* "Contribute & continue".
+
+     The client validates EXACTLY what startContribution validates. It used to
+     skip validation whenever attending === "yes" — which is every time this
+     button is reachable — so a required custom question left blank failed on
+     the server, the pre-opened tab was closed again, and the only sign was an
+     error message rendered near the submit button far below the fold. From the
+     guest's seat the button simply did nothing. */
   async function onContribute() {
     const invalid = validateLocally();
-    if (invalid && attending !== "yes") {
-      setError(t(invalid));
+    if (invalid) {
+      showError(t(invalid));
       return;
     }
     setSaving(true);
@@ -368,7 +423,7 @@ export default function RsvpForm({
 
     if (!result.ok) {
       checkoutTab?.close();
-      setError(t(result.error) || t("error"));
+      showError(t(result.error) || t("error"));
       return;
     }
     if (result.alreadyPaid) {
@@ -376,9 +431,15 @@ export default function RsvpForm({
       setContributionStatus("paid");
       return;
     }
+
     setContributionStatus("pending");
+    /* Keep the URL either way. If the popup was blocked — the default on iOS
+       Safari — we must NOT navigate this tab away: the store's thank-you page
+       has no route back to the invitation, so the guest would be stranded mid
+       reply with no way to finish. Showing a real anchor instead is the one
+       thing no popup blocker stops. */
+    setCheckoutUrl(result.checkoutUrl);
     if (checkoutTab) checkoutTab.location.replace(result.checkoutUrl);
-    else window.location.assign(result.checkoutUrl);
   }
 
   async function onSubmit(e) {
@@ -450,6 +511,9 @@ export default function RsvpForm({
               status={contributionStatus}
               busy={saving}
               onContribute={onContribute}
+              checkoutUrl={checkoutUrl}
+              onRecheck={onRecheck}
+              rechecking={rechecking}
             />
           </>
         ) : null}
@@ -607,6 +671,9 @@ export default function RsvpForm({
               paidLine={paidLine}
               busy={saving}
               onContribute={onContribute}
+              checkoutUrl={checkoutUrl}
+              onRecheck={onRecheck}
+              rechecking={rechecking}
             />
           ) : null}
 
@@ -754,7 +821,9 @@ export default function RsvpForm({
         </div>
       ) : null}
 
-      {error ? <p className="inv-error">{error}</p> : null}
+      <p ref={errorRef} className="inv-error" role="alert" hidden={!error}>
+        {error}
+      </p>
 
       <button type="submit" className="inv-btn" disabled={saving}>
         {saving ? t("saving") : savedAttending ? t("update") : t("submit")}
