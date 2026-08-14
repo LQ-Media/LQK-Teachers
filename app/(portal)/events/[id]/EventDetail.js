@@ -3,10 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { declineReasonLabel } from "@/lib/events/i18n";
+import { answerText, parseAnswers } from "@/lib/events/fields";
+import { DRESS_CODE_GROUPS, PARTY_SIZE_GROUPS, clampPartySize } from "@/lib/events/presets";
+import Combobox from "@/components/events/Combobox";
+import FieldBuilder from "@/components/events/FieldBuilder";
 import { updateEventAction, importGuestsAction, sendInvitesAction } from "../actions";
 
 const TABS = [
   ["details", "Details"],
+  ["questions", "Questions"],
   ["guests", "Guests"],
   ["send", "Send"],
   ["replies", "Replies"],
@@ -90,14 +95,18 @@ export default function EventDetail({
     starts_at: (event.starts_at || "").slice(0, 16),
     venue_name: event.venue_name || "",
     venue_address: event.venue_address || "",
+    venue_map_url: event.venue_map_url || "",
     dress_code: event.dress_code || "",
     rsvp_deadline: (event.rsvp_deadline || "").slice(0, 10),
+    registration_url: event.registration_url || "",
     support_url: event.support_url || "",
-    max_party_size: event.max_party_size || 10,
+    ask_contribution: !!event.ask_contribution,
+    max_party_size: String(event.max_party_size || 10),
     ask_photo: !!event.ask_photo,
     status: event.status,
   });
 
+  const [customFields, setCustomFields] = useState(event.customFields || []);
   const [importText, setImportText] = useState("");
   const [channels, setChannels] = useState(["email"]);
 
@@ -109,12 +118,20 @@ export default function EventDetail({
       }));
   }
 
+  function setValue(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
   async function save() {
     setBusy(true);
     setFlash(null);
     let res;
     try {
-      res = await updateEventAction(event.id, form);
+      res = await updateEventAction(event.id, {
+        ...form,
+        max_party_size: clampPartySize(form.max_party_size, event.max_party_size || 10),
+        customFields,
+      });
     } catch {
       res = null;
     }
@@ -179,7 +196,11 @@ export default function EventDetail({
 
   const unsent = guests.filter((g) => !g.sent_email_at && !g.sent_wa_at);
   const replied = guests.filter((g) => g.attending === "yes" || g.attending === "no");
-  const hasContribution = !!event.support_url;
+  const hasContribution = !!event.ask_contribution;
+  // Read from the SAVED event, not the unsaved builder state — the Replies tab
+  // must describe the questions guests actually answered.
+  const savedFields = event.customFields || [];
+  const savedPerPerson = savedFields.filter((f) => f.scope === "attendee");
 
   return (
     <>
@@ -237,32 +258,61 @@ export default function EventDetail({
               <input id="f-deadline" type="date" className={field} value={form.rsvp_deadline} onChange={set("rsvp_deadline")} />
             </div>
             <div className="sm:col-span-2">
-              <label className={label} htmlFor="f-address">Address</label>
-              <input id="f-address" className={field} value={form.venue_address} onChange={set("venue_address")} />
+              <MapField
+                address={form.venue_address}
+                mapUrl={form.venue_map_url}
+                venueName={form.venue_name}
+                onAddress={(v) => setValue("venue_address", v)}
+                onMapUrl={(v) => setValue("venue_map_url", v)}
+              />
             </div>
             <div>
-              <label className={label} htmlFor="f-dress">Dress code</label>
-              <input id="f-dress" className={field} value={form.dress_code} onChange={set("dress_code")} />
+              <label className={label} htmlFor="f-dress">
+                Dress code <span className="font-normal text-charcoal-soft">— optional</span>
+              </label>
+              <Combobox
+                id="f-dress"
+                value={form.dress_code}
+                onChange={(v) => setValue("dress_code", v)}
+                groups={DRESS_CODE_GROUPS}
+                placeholder="Pick one, or type your own"
+                ariaLabel="Dress code"
+              />
+              <p className="mt-1.5 text-xs text-charcoal-soft">
+                Leave it empty and the invitation simply won&rsquo;t mention attire.
+              </p>
             </div>
             <div>
               <label className={label} htmlFor="f-party">Max party size</label>
-              <input id="f-party" type="number" min="1" max="20" className={field} value={form.max_party_size} onChange={set("max_party_size")} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label} htmlFor="f-support">Contribution product</label>
-              <input
-                id="f-support"
-                className={field}
-                value={form.support_url}
-                onChange={set("support_url")}
-                placeholder="https://lqkstore.littlequrankids.sg/products/…"
+              <Combobox
+                id="f-party"
+                value={form.max_party_size}
+                onChange={(v) => setValue("max_party_size", v.replace(/[^\d]/g, ""))}
+                groups={PARTY_SIZE_GROUPS}
+                placeholder="10"
+                inputMode="numeric"
+                ariaLabel="Max party size"
               />
               <p className="mt-1.5 text-xs text-charcoal-soft">
-                Paste any product link from the LQK store (add ?variant=… to pin a variant).
-                When set, every attending family must buy it through checkout before their
-                reply counts as complete; leave empty for a free event. Payment confirmation
-                needs the store&rsquo;s &ldquo;Order payment&rdquo; webhook pointed at this
-                portal — see app/api/events/shopify/route.js.
+                The most people one invitation may bring. Type any number up to 5000.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <label className={label} htmlFor="f-register">
+                Registration link <span className="font-normal text-charcoal-soft">— optional</span>
+              </label>
+              <input
+                id="f-register"
+                className={field}
+                value={form.registration_url}
+                onChange={set("registration_url")}
+                placeholder="https://forms.gle/… or any link you want to share"
+              />
+              <p className="mt-1.5 text-xs text-charcoal-soft">
+                A link anyone can open and sign up through — a form, a ticket page, a
+                WhatsApp group. It appears as a button on every invitation and in the
+                invitation email. Unlike the personal invite links, this one is safe to
+                share in a group chat.
               </p>
             </div>
             <div>
@@ -285,8 +335,77 @@ export default function EventDetail({
             </label>
           </div>
 
+          {/* ---- contribution ---- */}
+          <div className="mt-6 rounded-control border border-line bg-paper p-4">
+            <label className="flex items-start gap-2.5 text-sm font-semibold text-ink">
+              <input
+                type="checkbox"
+                checked={form.ask_contribution}
+                onChange={set("ask_contribution")}
+                className="mt-0.5 size-4 accent-gold"
+              />
+              <span>
+                Ask attending families to contribute
+                <span className="mt-0.5 block text-xs font-normal text-charcoal-soft">
+                  Off for a free event. On, every attending family buys the product below
+                  through the store before their reply counts as complete.
+                </span>
+              </span>
+            </label>
+
+            {form.ask_contribution ? (
+              <div className="mt-4">
+                <label className={label} htmlFor="f-support">Contribution product</label>
+                <input
+                  id="f-support"
+                  className={field}
+                  value={form.support_url}
+                  onChange={set("support_url")}
+                  placeholder="https://lqkstore.littlequrankids.sg/products/…"
+                />
+                <p className="mt-1.5 text-xs text-charcoal-soft">
+                  Paste any product link from the LQK store (add ?variant=… to pin a variant).
+                  Payment confirmation needs the store&rsquo;s &ldquo;Order payment&rdquo;
+                  webhook pointed at this portal — see app/api/events/shopify/route.js.
+                </p>
+                {!form.support_url.trim() ? (
+                  <div className="mt-2">
+                    <Notice tone="bad">
+                      The switch is on but there&rsquo;s no product link — guests will see no
+                      contribution at all until you paste one.
+                    </Notice>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           <button type="button" onClick={save} disabled={busy} className={`${btn} mt-5`}>
             {busy ? "Saving…" : "Save changes"}
+          </button>
+        </section>
+      ) : null}
+
+      {/* ---- questions ---- */}
+      {tab === "questions" ? (
+        <section className={card}>
+          <h2 className="font-heading text-lg text-ink">What guests are asked</h2>
+          <p className="mb-4 mt-0.5 text-sm text-charcoal-soft">
+            Every invitation already asks whether the family is coming, how many adults and
+            children, and leaves room for a message. Add your own questions here — asked
+            once of the family, or repeated for every person in their party.
+          </p>
+
+          <FieldBuilder
+            fields={customFields}
+            onChange={setCustomFields}
+            drivePlaceholder={
+              capabilities.drive ? null : "Drive isn't configured — uploads will fail until it is."
+            }
+          />
+
+          <button type="button" onClick={save} disabled={busy} className={`${btn} mt-5`}>
+            {busy ? "Saving…" : "Save questions"}
           </button>
         </section>
       ) : null}
@@ -504,6 +623,7 @@ export default function EventDetail({
                         </td>
                         <td className="py-2.5 text-charcoal-soft">
                           {reasonBits.length ? reasonBits.join(" · ") : "—"}
+                          <Answers guest={g} fields={savedFields} />
                         </td>
                       </tr>
                     );
@@ -517,6 +637,11 @@ export default function EventDetail({
             <a href={`/api/events/${event.id}/csv`} className={btnHoney}>
               Download guest list (CSV)
             </a>
+            {savedPerPerson.length ? (
+              <a href={`/api/events/${event.id}/csv?view=people`} className={btnQuiet}>
+                Download one row per person
+              </a>
+            ) : null}
             <button
               type="button"
               onClick={() => doSend("remind")}
@@ -530,6 +655,172 @@ export default function EventDetail({
           </div>
         </section>
       ) : null}
+    </>
+  );
+}
+
+/* Custom answers under a reply. Family answers read inline; per-person answers
+   collapse behind a count, because an event asking three questions of eight
+   people would otherwise bury the reason and the message this column exists
+   for. Fields deleted after a guest replied simply stop being listed — the
+   answer stays in the row and in the CSV. */
+function Answers({ guest, fields }) {
+  const [open, setOpen] = useState(false);
+  if (!fields.length) return null;
+
+  const custom = parseAnswers(guest.custom_json, {});
+  const attendees = parseAnswers(guest.attendees_json, []);
+  const family = fields
+    .filter((f) => f.scope === "family")
+    .map((f) => [f.label, answerText(f, custom[f.id])])
+    .filter(([, value]) => value);
+  const perPerson = fields.filter((f) => f.scope === "attendee");
+  const filled = attendees.filter((entry) => perPerson.some((f) => answerText(f, entry?.[f.id])));
+
+  if (!family.length && !filled.length) return null;
+
+  return (
+    <div className="mt-1.5 grid gap-1 text-xs">
+      {family.map(([labelText, value]) => (
+        <span key={labelText}>
+          <span className="text-charcoal-soft">{labelText}:</span>{" "}
+          <span className="text-ink">
+            <bdi>{value}</bdi>
+          </span>
+        </span>
+      ))}
+
+      {filled.length ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="justify-self-start rounded-pill border border-line px-2.5 py-0.5 font-semibold text-charcoal-soft transition-transform duration-150 ease-out active:scale-95 hover:text-ink"
+          >
+            {open ? "Hide" : `${filled.length} ${filled.length === 1 ? "person" : "people"}`}
+          </button>
+          {open ? (
+            <ol className="grid gap-1.5 ps-4">
+              {filled.map((entry, i) => (
+                // Index keys are correct here: this list is positional — entry
+                // i IS "person i of the party" and has no other identity.
+                <li key={i} className="list-decimal">
+                  {perPerson
+                    .map((f) => [f.label, answerText(f, entry?.[f.id])])
+                    .filter(([, value]) => value)
+                    .map(([labelText, value]) => (
+                      <span key={labelText} className="me-2">
+                        <span className="text-charcoal-soft">{labelText}:</span>{" "}
+                        <span className="text-ink">
+                          <bdi>{value}</bdi>
+                        </span>
+                      </span>
+                    ))}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/* The address, and the map pin it resolves to.
+
+   Typing an address and hoping Google finds it is how guests end up at the
+   wrong Woodlands block. So the address is what the invitation PRINTS, and the
+   map link is what "Get directions" OPENS — two separate things, and the link
+   wins when both exist.
+
+   No Places API here by choice: this needs no key, no billing and no quota. The
+   button opens a Maps search for whatever address is typed; Karim finds the
+   real place, copies the URL from the address bar (or Share → Copy link), and
+   pastes it back. One extra step, and the pin is then exactly right forever. */
+function mapLinkState(url) {
+  const text = String(url || "").trim();
+  if (!text) return "empty";
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return "bad";
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "bad";
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+  const ok =
+    host === "maps.app.goo.gl" ||
+    host === "goo.gl" ||
+    host === "maps.google.com" ||
+    host === "google.com" ||
+    host.endsWith(".google.com") ||
+    /^google\.[a-z.]+$/.test(host) ||
+    host === "what3words.com";
+  return ok ? "good" : "foreign";
+}
+
+function MapField({ address, mapUrl, venueName, onAddress, onMapUrl }) {
+  const state = mapLinkState(mapUrl);
+  const search = [venueName, address].filter(Boolean).join(", ").trim();
+  const searchUrl = search
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(search)}`
+    : "https://www.google.com/maps";
+
+  return (
+    <>
+      <label className={label} htmlFor="f-address">Address</label>
+      <input
+        id="f-address"
+        className={field}
+        value={address}
+        onChange={(e) => onAddress(e.target.value)}
+        placeholder="12 Woodlands Square, #06-77, Singapore 737715"
+      />
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <a
+          href={searchUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-ink transition-transform duration-150 ease-out active:scale-[0.97]"
+        >
+          Find it on Google Maps ↗
+        </a>
+        <span className="text-xs text-charcoal-soft">
+          then copy the link from the address bar and paste it below
+        </span>
+      </div>
+
+      <label className={`${label} mt-3`} htmlFor="f-maplink">
+        Map link <span className="font-normal text-charcoal-soft">— optional, but it pins the exact spot</span>
+      </label>
+      <input
+        id="f-maplink"
+        className={field}
+        value={mapUrl}
+        onChange={(e) => onMapUrl(e.target.value)}
+        placeholder="https://maps.app.goo.gl/…"
+      />
+      {state === "good" ? (
+        <p className="mt-1.5 text-xs text-[#4E6B3F]">
+          ✓ &ldquo;Get directions&rdquo; will open this exact pin.
+        </p>
+      ) : state === "bad" ? (
+        <p className="mt-1.5 text-xs text-rust">
+          That isn&rsquo;t a link — it needs to start with https://
+        </p>
+      ) : state === "foreign" ? (
+        <p className="mt-1.5 text-xs text-rust">
+          That isn&rsquo;t a Google Maps link. Guests will still be sent there, so check it
+          goes where you mean.
+        </p>
+      ) : (
+        <p className="mt-1.5 text-xs text-charcoal-soft">
+          Empty is fine — guests get a Maps search for the address above, which is usually
+          right but can land on the wrong block for a unit number.
+        </p>
+      )}
     </>
   );
 }

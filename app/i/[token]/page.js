@@ -100,7 +100,10 @@ export default async function InvitePage({ params, searchParams }) {
   // storefront JSON. null when the event has no product configured (or the
   // store is unreachable and nothing is cached) — the form degrades to a
   // plain reply rather than blocking families on a fetch.
-  const contribution = event.support_url ? await getContributionProduct(event.support_url) : null;
+  const contribution =
+    event.ask_contribution && event.support_url
+      ? await getContributionProduct(event.support_url)
+      : null;
 
   return (
     /* InvitationShell owns the root element — dir, the --inv-* variables, the
@@ -166,6 +169,25 @@ export default async function InvitePage({ params, searchParams }) {
           mapUrl={mapUrl}
         />
       )}
+
+      {/* The one link on this page that ISN'T a credential. Everything else here
+          is scoped to this family's token; this is the open door Karim can drop
+          into a group chat, so it says so plainly rather than sitting next to
+          the personal actions and being mistaken for one. */}
+      {event.registration_url ? (
+        <div className="inv-card inv-rise inv-register">
+          <h2 className="inv-section-title">{t("registerTitle")}</h2>
+          <p className="inv-note">{t("registerBody")}</p>
+          <a
+            className="inv-btn inv-btn-quiet"
+            href={event.registration_url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t("registerCta")} ↗
+          </a>
+        </div>
+      ) : null}
 
       <p className="inv-footer">
         {event.rsvp_deadline

@@ -22,6 +22,7 @@ import {
 } from "@/lib/events/mail";
 import { sendInviteWhatsApp, watiConfigured } from "@/lib/events/wati";
 import { formatEventDate, formatDeadline } from "@/lib/events/i18n";
+import { clampPartySize } from "@/lib/events/presets";
 
 /* Admin actions. EVERY export re-checks the role — a server action is a public
    HTTP endpoint, and the fact that the only link to it sits behind an
@@ -47,9 +48,45 @@ export async function createEventAction(form) {
   return { ok: true, id: event.id };
 }
 
+/* Links are typed by hand, and "lqkstore.littlequrankids.sg/products/hamper"
+   without a scheme is a relative URL — it would send guests to
+   teachers.littlequrankids.sg/lqkstore… and look like a broken invitation.
+   Assume https rather than reject, and refuse anything that still isn't a
+   web address (javascript:, data:, plain prose). */
+function normalizeLink(value) {
+  const text = String(value || "").trim();
+  if (!text) return { ok: true, value: null };
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`;
+  let parsed;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    return { ok: false };
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return { ok: false };
+  if (!parsed.hostname.includes(".")) return { ok: false };
+  return { ok: true, value: parsed.toString() };
+}
+
 export async function updateEventAction(id, patch) {
   await requireRole(["admin"]);
-  updateEvent(id, patch);
+
+  const clean = { ...patch };
+
+  for (const [key, name] of [
+    ["registration_url", "registration link"],
+    ["venue_map_url", "map link"],
+    ["support_url", "contribution product link"],
+  ]) {
+    if (!(key in clean)) continue;
+    const result = normalizeLink(clean[key]);
+    if (!result.ok) return { ok: false, error: `That ${name} isn't a valid web address.` };
+    clean[key] = result.value;
+  }
+
+  if ("max_party_size" in clean) clean.max_party_size = clampPartySize(clean.max_party_size);
+
+  updateEvent(id, clean);
   revalidatePath(`/events/${id}`);
   revalidatePath("/events");
   return { ok: true };
@@ -189,6 +226,7 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
             (deadlineText ? ` — ${deadlineText}` : ""),
           crescentUrl: `${baseUrl()}/prop/crescent.png`,
           contactNumber: process.env.LQK_CONTACT_WHATSAPP || "",
+          registrationUrl: event.registration_url || "",
         }),
         text: inviteEmailText({
           guestName: guest.name,
@@ -198,6 +236,7 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
           url,
           lang: guest.lang,
           deadlineText,
+          registrationUrl: event.registration_url || "",
         }),
         replyTo: process.env.MAIL_REPLY_TO || undefined,
       });

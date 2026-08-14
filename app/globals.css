@@ -110,3 +110,28 @@ body {
     animation: none;
   }
 }
+
+/* Combobox panel reveal (components/events/Combobox.js).
+
+   A CSS animation rather than a React "mounted" flag driven by
+   requestAnimationFrame: rAF is paused in a backgrounded tab, so that pattern
+   can leave the panel at opacity 0 while it is fully interactive — the control
+   is open, focused and keyboard-navigable, and invisible.
+
+   Scaled from 0.97 and anchored to the top edge, because the panel belongs to
+   the input above it and nothing in the real world appears out of nothing. */
+@keyframes lqk-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.lqk-pop-in {
+  transform-origin: top center;
+  animation: lqk-pop-in 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lqk-pop-in {
+    animation: none;
+  }
+}

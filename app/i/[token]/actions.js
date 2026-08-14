@@ -9,6 +9,8 @@ import {
   markContributionPending,
 } from "@/lib/events/queries";
 import { isDeclineReason } from "@/lib/events/i18n";
+import { validateAnswers } from "@/lib/events/fields";
+import { MAX_PARTY_SIZE_LIMIT } from "@/lib/events/presets";
 import { getContributionProduct } from "@/lib/events/shopify";
 import { contributionCheckoutUrl } from "@/lib/events/shopify-core";
 import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive";
@@ -26,7 +28,12 @@ import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive"
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
-/* Shared validation for both save paths. Returns {error} or the clean row. */
+/* Shared validation for both save paths. Returns {error} or the clean row.
+
+   Custom answers are validated LAST and against the event's own field list —
+   never against a list sent by the client — so a guest cannot skip a required
+   question by posting a different set of fields, and cannot smuggle an answer
+   to a question this event doesn't ask. */
 function validateReply(event, payload) {
   if (!["yes", "no"].includes(payload?.attending)) return { error: "required" };
 
@@ -37,21 +44,37 @@ function validateReply(event, payload) {
     if (reason === "other" && !String(payload.declineReasonNote || "").trim()) {
       return { error: "reasonRequired" };
     }
+    const answers = validateAnswers(event.customFields, {
+      attending: "no",
+      custom: payload.custom,
+    });
+    if (answers.error) return { error: answers.error };
+
     return {
       attending: "no",
       declineReason: reason,
       declineReasonNote: reason === "other" ? payload.declineReasonNote : null,
       message: payload.message,
       photoConsent: payload.photoConsent,
+      custom: answers.custom,
+      attendees: [],
     };
   }
 
-  const adults = Math.max(0, Math.min(20, Number(payload.adults) || 0));
-  const children = Math.max(0, Math.min(20, Number(payload.children) || 0));
+  const adults = Math.max(0, Math.min(MAX_PARTY_SIZE_LIMIT, Number(payload.adults) || 0));
+  const children = Math.max(0, Math.min(MAX_PARTY_SIZE_LIMIT, Number(payload.children) || 0));
   // Cap enforced server-side. The client stepper also caps, but the client is
   // not a security boundary and headcount drives catering spend.
   if (adults + children > (event.max_party_size || 10)) return { error: "partyTooBig" };
   if (adults + children < 1) return { error: "required" };
+
+  const answers = validateAnswers(event.customFields, {
+    attending: "yes",
+    headCount: adults + children,
+    custom: payload.custom,
+    attendees: payload.attendees,
+  });
+  if (answers.error) return { error: answers.error };
 
   return {
     attending: "yes",
@@ -60,6 +83,8 @@ function validateReply(event, payload) {
     extraNames: payload.extraNames,
     message: payload.message,
     photoConsent: payload.photoConsent,
+    custom: answers.custom,
+    attendees: answers.attendees,
   };
 }
 
@@ -80,7 +105,7 @@ export async function submitRsvp(token, payload) {
 
   if (
     clean.attending === "yes" &&
-    event.support_url &&
+    event.ask_contribution &&
     rsvp?.contribution_status !== "paid"
   ) {
     return { ok: false, error: "contribIncomplete", contributionStatus: rsvp?.contribution_status || "none" };
@@ -102,7 +127,7 @@ export async function startContribution(token, payload) {
   const { guest, event, rsvp } = found;
   if (event.status === "draft") return { ok: false, error: "notFound" };
   if (isEventClosed(event)) return { ok: false, error: "closed" };
-  if (!event.support_url) return { ok: false, error: "error" };
+  if (!event.ask_contribution) return { ok: false, error: "error" };
 
   const clean = validateReply(event, { ...payload, attending: "yes" });
   if (clean.error) return { ok: false, error: clean.error };
@@ -135,6 +160,50 @@ export async function startContribution(token, payload) {
    party that can be slow or down, and an outage there must never cost us a
    reply — the RSVP is already committed by the time this runs. A failure here
    is reported as a photo problem, not an RSVP problem. */
+/* The same pipeline as the family photo, for a custom question of type "file".
+
+   Returns the Drive file id, which the form then submits as that question's
+   answer — the guest never names the destination, and an id that didn't come
+   from here can't be forged into one, because coerceAnswer only accepts the
+   id-shaped string and the file itself lives in LQK's own Drive folder.
+
+   The field id is checked against the EVENT'S list: an upload aimed at a
+   question this event doesn't ask is refused rather than quietly stored. */
+export async function uploadFieldFile(token, { fieldId, dataUrl }) {
+  const found = getGuestByToken(token);
+  if (!found) return { ok: false, error: "notFound" };
+  const { guest, event } = found;
+  if (event.status === "draft") return { ok: false, error: "notFound" };
+  if (isEventClosed(event)) return { ok: false, error: "closed" };
+
+  const field = (event.customFields || []).find((f) => f.id === fieldId && f.type === "file");
+  if (!field) return { ok: false, error: "error" };
+  if (!driveConfigured()) return { ok: false, error: "driveNotConfigured" };
+
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
+  if (!match) return { ok: false, error: "badImage" };
+
+  const [, mime, base64] = match;
+  if ((base64.length * 3) / 4 > MAX_PHOTO_BYTES) return { ok: false, error: "tooLarge" };
+
+  const result = await uploadPhoto({
+    base64,
+    mime,
+    filename: photoFilename({
+      // The question's label is in the filename so a folder of uploads is
+      // sortable by what was asked, not just by who answered.
+      familyName: `${field.label} — ${guest.family_name || guest.name}`,
+      guestName: guest.name,
+      token: guest.token,
+      mime,
+    }),
+    eventSlug: event.slug,
+  });
+
+  if (!result.ok) return { ok: false, error: result.error || "uploadFailed" };
+  return { ok: true, fileId: result.fileId };
+}
+
 export async function uploadFamilyPhoto(token, { dataUrl, familyName }) {
   const found = getGuestByToken(token);
   if (!found) return { ok: false, error: "notFound" };

@@ -9,7 +9,16 @@ import {
   DECLINE_REASONS,
   partyLine,
 } from "@/lib/events/i18n";
-import { submitRsvp, startContribution, uploadFamilyPhoto } from "./actions";
+import {
+  familyFields,
+  attendeeFields,
+  emptyAnswer,
+  coerceAnswer,
+  MAX_ATTENDEE_BLOCKS,
+} from "@/lib/events/fields";
+import { downscale } from "@/lib/events/downscale";
+import GuestField from "@/components/events/GuestField";
+import { submitRsvp, startContribution, uploadFamilyPhoto, uploadFieldFile } from "./actions";
 
 /* The reply block.
 
@@ -26,30 +35,17 @@ import { submitRsvp, startContribution, uploadFamilyPhoto } from "./actions";
    row and the poll paints the green strip without a reload. "Send my reply"
    only completes once the server has seen the payment.
 
-   Photos are downscaled IN THE BROWSER before upload. Not an optimisation: a
-   Next.js Server Action body defaults to a 1MB cap, phone photos are 2–8MB, and
-   the failure mode is a 500 mid-submit that looks to the guest like the whole
-   RSVP broke. Re-encoding to a 1400px JPEG also strips EXIF, so we aren't
-   quietly collecting the GPS coordinates of guests' homes. */
+   Photos are downscaled IN THE BROWSER before upload — see lib/events/downscale.
 
-const MAX_EDGE = 1400;
-const QUALITY = 0.82;
+   CUSTOM QUESTIONS (lib/events/fields.js) come in two scopes: asked once of the
+   family, or repeated for every head in the party. The per-person blocks are
+   driven by the steppers above them, so changing the headcount adds or removes
+   blocks live — and answers already typed into the remaining blocks survive,
+   because the array is only ever grown or trimmed at the end. */
 
-async function downscale(file) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close?.();
-
-  return canvas.toDataURL("image/jpeg", QUALITY);
-}
+/* Past this cap the steppers stop being usable — nobody taps + ninety times —
+   so a party-size-1000 event gets typed number inputs instead. */
+const STEPPER_CAP = 20;
 
 function Stepper({ label, value, onChange, min = 0, max = 20, minusLabel, plusLabel }) {
   return (
@@ -80,6 +76,28 @@ function Stepper({ label, value, onChange, min = 0, max = 20, minusLabel, plusLa
           +
         </button>
       </div>
+    </div>
+  );
+}
+
+/* The typed counterpart to Stepper, for events that invite hundreds. */
+function CountInput({ label, value, onChange, max }) {
+  return (
+    <div className="inv-stepper">
+      <span className="inv-stepper-label">{label}</span>
+      <input
+        type="number"
+        className="inv-count-input"
+        min={0}
+        max={max}
+        inputMode="numeric"
+        value={value}
+        aria-label={label}
+        onChange={(e) => {
+          const n = Math.round(Number(e.target.value.replace(/[^\d]/g, "")));
+          onChange(Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0);
+        }}
+      />
     </div>
   );
 }
@@ -175,13 +193,46 @@ export default function RsvpForm({
   const [contributionQty, setContributionQty] = useState(rsvp?.contribution_qty || 1);
   const [contributionPaidAt, setContributionPaidAt] = useState(rsvp?.contribution_paid_at || null);
 
+  const [customAnswers, setCustomAnswers] = useState(() => rsvp?.custom || {});
+  const [attendeeAnswers, setAttendeeAnswers] = useState(() =>
+    Array.isArray(rsvp?.attendees) ? rsvp.attendees : []
+  );
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(!!savedAttending);
   const [editing, setEditing] = useState(!savedAttending);
 
   const cap = event.max_party_size || 10;
-  const needsContribution = !!event.support_url && !!contribution;
+  const needsContribution = !!event.ask_contribution && !!contribution;
+
+  const perPerson = attendeeFields(event.customFields);
+  const shownFamilyFields = familyFields(event.customFields, attending || "no");
+  const headCount = attending === "yes" ? adults + children : 0;
+  /* An event that invites three hundred gets the built-in party-names box, not
+     three hundred repeated blocks. The cap is enforced identically on the
+     server, so what is asked and what is validated can't drift. */
+  const blocks = perPerson.length ? Math.min(headCount, MAX_ATTENDEE_BLOCKS) : 0;
+
+  function setCustom(id, value) {
+    setCustomAnswers((a) => ({ ...a, [id]: value }));
+    setError("");
+  }
+
+  function setAttendee(index, id, value) {
+    setAttendeeAnswers((list) => {
+      const next = [...list];
+      while (next.length <= index) next.push({});
+      next[index] = { ...next[index], [id]: value };
+      return next;
+    });
+    setError("");
+  }
+
+  function answerFor(index, field) {
+    const stored = attendeeAnswers[index]?.[field.id];
+    return stored === undefined ? emptyAnswer(field) : stored;
+  }
 
   /* While a checkout is out there, poll our own row. The webhook does the real
      work; this only repaints. Also refreshes when the tab regains focus —
@@ -242,14 +293,33 @@ export default function RsvpForm({
       declineReasonNote,
       message,
       photoConsent,
+      custom: customAnswers,
+      // Trimmed to the blocks actually shown: a family that said 4 people, then
+      // 2, must not silently submit answers for two people who aren't coming.
+      attendees: attendeeAnswers.slice(0, blocks),
     };
   }
 
+  /* Mirrors the server's rules so a guest sees the problem before the round
+     trip. The server is still the authority — this is courtesy, not a gate. */
   function validateLocally() {
     if (!attending) return "required";
     if (attending === "no" && !declineReason) return "reasonRequired";
     if (attending === "no" && declineReason === "other" && !declineReasonNote.trim())
       return "reasonRequired";
+    if (attending === "yes" && adults + children < 1) return "required";
+    if (attending === "yes" && adults + children > cap) return "partyTooBig";
+
+    for (const f of shownFamilyFields) {
+      const result = coerceAnswer(f, customAnswers[f.id]);
+      if (result.error) return result.error;
+    }
+    for (let i = 0; i < blocks; i += 1) {
+      for (const f of perPerson) {
+        const result = coerceAnswer(f, attendeeAnswers[i]?.[f.id]);
+        if (result.error) return result.error;
+      }
+    }
     return null;
   }
 
@@ -270,6 +340,14 @@ export default function RsvpForm({
       setPhotoState("idle");
       setError(t("error"));
     }
+  }
+
+  /* Custom "photo upload" answers go up the moment they're picked, on their own
+     round trip — same reasoning as the family photo: Drive must never be able
+     to cost a family their reply. The answer stored in the field is the Drive
+     file id the server hands back, never anything the guest chose. */
+  async function onFieldUpload({ fieldId, dataUrl }) {
+    return uploadFieldFile(token, { fieldId, dataUrl });
   }
 
   async function onContribute() {
@@ -484,22 +562,41 @@ export default function RsvpForm({
       {attending === "yes" ? (
         <>
           <div className="inv-steppers">
-            <Stepper
-              label={t("adults")}
-              value={adults}
-              onChange={setAdults}
-              max={Math.max(0, cap - children)}
-              minusLabel={t("fewerAdult")}
-              plusLabel={t("moreAdult")}
-            />
-            <Stepper
-              label={t("children")}
-              value={children}
-              onChange={setChildren}
-              max={Math.max(0, cap - adults)}
-              minusLabel={t("fewerChild")}
-              plusLabel={t("moreChild")}
-            />
+            {cap > STEPPER_CAP ? (
+              <>
+                <CountInput
+                  label={t("adults")}
+                  value={adults}
+                  onChange={setAdults}
+                  max={Math.max(0, cap - children)}
+                />
+                <CountInput
+                  label={t("children")}
+                  value={children}
+                  onChange={setChildren}
+                  max={Math.max(0, cap - adults)}
+                />
+              </>
+            ) : (
+              <>
+                <Stepper
+                  label={t("adults")}
+                  value={adults}
+                  onChange={setAdults}
+                  max={Math.max(0, cap - children)}
+                  minusLabel={t("fewerAdult")}
+                  plusLabel={t("moreAdult")}
+                />
+                <Stepper
+                  label={t("children")}
+                  value={children}
+                  onChange={setChildren}
+                  max={Math.max(0, cap - adults)}
+                  minusLabel={t("fewerChild")}
+                  plusLabel={t("moreChild")}
+                />
+              </>
+            )}
           </div>
 
           {needsContribution ? (
@@ -513,18 +610,51 @@ export default function RsvpForm({
             />
           ) : null}
 
-          <div className="inv-field">
-            <label className="inv-label" htmlFor="extraNames">
-              {t("partyNames")}
-              <span className="inv-hint">{t("partyNamesHint")}</span>
-            </label>
-            <textarea
-              id="extraNames"
-              className="inv-textarea"
-              value={extraNames}
-              onChange={(e) => setExtraNames(e.target.value)}
-            />
-          </div>
+          {blocks ? (
+            <div className="inv-people">
+              <h3 className="inv-section-title inv-people-title">{t("aboutEveryone")}</h3>
+              {Array.from({ length: blocks }, (_, i) => (
+                /* Index keys are right here: a block IS its position in the
+                   party, and reordering isn't a thing a party can do. */
+                <div key={i} className="inv-person">
+                  <p className="inv-person-label">
+                    {i < adults
+                      ? fmt(t("personAdult"), { n: i + 1 })
+                      : fmt(t("personChild"), { n: i - adults + 1 })}
+                  </p>
+                  {perPerson.map((f) => (
+                    <GuestField
+                      key={f.id}
+                      field={f}
+                      value={answerFor(i, f)}
+                      onChange={(v) => setAttendee(i, f.id, v)}
+                      t={t}
+                      disabled={saving}
+                      onUpload={onFieldUpload}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* The free-text list only earns its place when nobody is being asked
+              for names person by person — otherwise it asks for the same thing
+              twice, in a worse format. */}
+          {!blocks ? (
+            <div className="inv-field">
+              <label className="inv-label" htmlFor="extraNames">
+                {t("partyNames")}
+                <span className="inv-hint">{t("partyNamesHint")}</span>
+              </label>
+              <textarea
+                id="extraNames"
+                className="inv-textarea"
+                value={extraNames}
+                onChange={(e) => setExtraNames(e.target.value)}
+              />
+            </div>
+          ) : null}
 
           {event.ask_photo ? (
             <div className="inv-field">
@@ -591,6 +721,23 @@ export default function RsvpForm({
             </div>
           ) : null}
         </>
+      ) : null}
+
+      {attending && shownFamilyFields.length ? (
+        <div className="inv-extra">
+          <h3 className="inv-section-title inv-people-title">{t("aboutYou")}</h3>
+          {shownFamilyFields.map((f) => (
+            <GuestField
+              key={f.id}
+              field={f}
+              value={customAnswers[f.id] === undefined ? emptyAnswer(f) : customAnswers[f.id]}
+              onChange={(v) => setCustom(f.id, v)}
+              t={t}
+              disabled={saving}
+              onUpload={onFieldUpload}
+            />
+          ))}
+        </div>
       ) : null}
 
       {attending ? (

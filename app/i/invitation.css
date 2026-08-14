@@ -712,6 +712,133 @@
   flex: none;
 }
 
+/* ---- custom questions ----------------------------------------------------
+   Everything here is painted from the same --inv-* variables as the rest of the
+   card, so a question Karim adds on a Tuesday inherits whatever design was
+   approved for the event. Nothing in this section knows what the question is.
+
+   Logical properties only (margin-block, padding-inline) — these blocks sit
+   inside an Arabic RTL invitation as often as an English one. */
+
+/* A typed headcount, for events whose party cap is too large to tap out on a
+   stepper. Deliberately shares .inv-stepper's frame so a 40-person majlis and a
+   4-person one look like the same form. */
+.inv-count-input {
+  width: 100%;
+  max-width: 120px;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--inv-ink);
+  background: var(--inv-surface);
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.45);
+  padding: 8px 10px;
+  transition: border-color 200ms ease;
+}
+
+.inv-count-input:focus {
+  outline: none;
+  border-color: var(--inv-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--inv-accent) 18%, transparent);
+}
+
+/* nowrap keeps "· optional" together: without it the separator dot strands
+   itself at the end of a wrapped question and the word drops to the next line
+   on its own, which reads as a bullet point rather than an aside. */
+.inv-optional {
+  font-weight: 400;
+  color: var(--inv-muted);
+  white-space: nowrap;
+}
+
+/* A fieldset carrying tickboxes. `min-inline-size: 0` because a fieldset's
+   default min-content width ignores flex/grid shrinking and will push a long
+   option past the card edge on a narrow phone. */
+.inv-fieldset {
+  border: 0;
+  padding: 0;
+  margin-block: 0 18px;
+  min-inline-size: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.inv-fieldset > legend {
+  padding: 0;
+  margin-block-end: 4px;
+}
+
+.inv-extra,
+.inv-people {
+  margin-block: 0 18px;
+}
+
+.inv-people-title {
+  font-size: 16px;
+  margin-block-end: 12px;
+}
+
+/* One person's answers. The stagger is 40ms per block and capped at six: it
+   exists to show that a NEW block appeared when the headcount went up, not to
+   make a family of eight watch a cascade before they can type. */
+.inv-person {
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.6);
+  background: color-mix(in srgb, var(--inv-surface) 55%, var(--inv-bg));
+  padding: 14px 14px 0;
+  margin-block-end: 10px;
+  animation: inv-person-in 220ms var(--inv-ease) backwards;
+}
+
+.inv-person:nth-child(2) { animation-delay: 0ms; }
+.inv-person:nth-child(3) { animation-delay: 40ms; }
+.inv-person:nth-child(4) { animation-delay: 80ms; }
+.inv-person:nth-child(5) { animation-delay: 120ms; }
+.inv-person:nth-child(6) { animation-delay: 160ms; }
+.inv-person:nth-child(n + 7) { animation-delay: 200ms; }
+
+@keyframes inv-person-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.inv-person-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--inv-muted);
+  margin: 0 0 10px;
+}
+
+/* The last field in a block would otherwise double the card's bottom padding. */
+.inv-person .inv-field:last-child,
+.inv-person .inv-fieldset:last-child {
+  margin-block-end: 14px;
+}
+
+/* ---- the shareable registration link -------------------------------------
+   Set apart from the personal actions on purpose: everything else on this page
+   is scoped to one family's token, and this is the one link meant to travel. */
+.inv-register {
+  text-align: center;
+}
+
+.inv-register .inv-note {
+  margin-block-end: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inv-person {
+    animation: none;
+  }
+}
+
 /* ---- contribution --------------------------------------------------------
    Decorative tones derive from the palette via color-mix so a generated theme
    repaints them; the PAID strip is the exception — success is green in every
