@@ -9,7 +9,17 @@
  *     "LQK Event Photos".
  *  2. Project Settings → Script Properties → add:
  *        SHARED_TOKEN  = <a long random string you invent>
- *        FOLDER_ID     = 15pOeU8NJDfEoePO5tIkN0TiSQyjg_ISG
+ *        FOLDER_ID     = 1XNsUAj_2WUPINoDeKj-WSPlDScEhNKbQ
+ *
+ *     FOLDER_ID here is only a FALLBACK. The portal sends the folder on every
+ *     request from LQK_DRIVE_FOLDER_ID on Railway (already set to the id
+ *     above), and body.folderId wins — so the live destination is changed on
+ *     Railway, not here. Keep the two in step anyway so a manual `selfTest`
+ *     writes where you expect.
+ *
+ *     The account you deploy as MUST have edit access to that folder. The
+ *     script writes as you, not as the portal, so a folder owned by another
+ *     Google account fails at createFile() with a permissions error.
  *  3. Deploy → New deployment → type "Web app"
  *        Execute as:     Me (media@littlequrankids.sg)
  *        Who has access: Anyone
