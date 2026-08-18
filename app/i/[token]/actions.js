@@ -12,7 +12,7 @@ import { isDeclineReason } from "@/lib/events/i18n";
 import { validateAnswers } from "@/lib/events/fields";
 import { MAX_PARTY_SIZE_LIMIT } from "@/lib/events/presets";
 import { getContributionProduct } from "@/lib/events/shopify";
-import { contributionCheckoutUrl } from "@/lib/events/shopify-core";
+import { contributionCheckoutUrl, chooseVariant } from "@/lib/events/shopify-core";
 import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive";
 
 /* Server actions for the public invite page.
@@ -27,6 +27,19 @@ import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive"
    is the worst failure this page has. */
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+
+/* Drive failures come back as free text — "network error", whatever the Apps
+   Script threw, an HTTP status. None of that is a sentence to show a family,
+   and t() passes an unknown key straight through, so an upload failure used to
+   have a decent chance of printing the word "unauthorised" onto the invitation.
+
+   The reason is logged instead. It is the only trace of WHY the folder is empty,
+   and it belongs in Railway's logs where Karim can read it, not on the guest's
+   screen. */
+function photoError(where, result) {
+  console.warn(`[events/photo] ${where}: ${result?.error || "unknown"}`);
+  return result?.error === "driveNotConfigured" ? "driveNotConfigured" : "uploadFailed";
+}
 
 /* Shared validation for both save paths. Returns {error} or the clean row.
 
@@ -56,6 +69,7 @@ function validateReply(event, payload) {
       declineReasonNote: reason === "other" ? payload.declineReasonNote : null,
       message: payload.message,
       photoConsent: payload.photoConsent,
+      photoDriveId: driveId(payload.photoDriveId),
       custom: answers.custom,
       attendees: [],
     };
@@ -83,9 +97,23 @@ function validateReply(event, payload) {
     extraNames: payload.extraNames,
     message: payload.message,
     photoConsent: payload.photoConsent,
+    photoDriveId: driveId(payload.photoDriveId),
     custom: answers.custom,
     attendees: answers.attendees,
   };
+}
+
+/* The family photo now reaches Drive the moment it is picked, which can be
+   BEFORE this guest has any rsvp row to hang the file id on. The client
+   therefore carries the id back with the reply so the row records it on save.
+
+   Treated exactly like a "file" custom answer (lib/events/fields.js): the value
+   is only ever an id-shaped string naming a file that already lives in LQK's
+   own Drive folder, so the worst a hostile guest can do with a forged one is
+   mislabel their own row. */
+function driveId(value) {
+  const text = String(value || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 128);
+  return text || null;
 }
 
 /* The final "Send my reply". When the event carries a contribution product,
@@ -135,6 +163,17 @@ export async function startContribution(token, payload) {
   const product = await getContributionProduct(event.support_url);
   if (!product) return { ok: false, error: "error" };
 
+  /* Which tier the family chose. The store is the authority on what exists:
+     the id is resolved against the live product, and an admin-pinned variant
+     wins outright — so the checkout can only ever be for a real, purchasable
+     line the event actually offers. */
+  const variant = chooseVariant(
+    product,
+    product.pinned ? product.variantId : null,
+    payload?.variantId
+  );
+  if (!variant) return { ok: false, error: "error" };
+
   saveRsvp(guest.id, event.id, clean);
 
   // Already paid (e.g. a second click after the webhook landed): no second
@@ -144,12 +183,22 @@ export async function startContribution(token, payload) {
     return { ok: true, alreadyPaid: true };
   }
 
-  markContributionPending(guest.id, product.title);
+  // The pending line names the CHOSEN tier, not just the product — "$50 Family
+  // Sponsor" is the part Karim reconciles against, and the webhook overwrites
+  // this with Shopify's own wording once the payment lands.
+  markContributionPending(
+    guest.id,
+    variant.title && variant.title !== product.title
+      ? `${product.title} — ${variant.title}`
+      : product.title,
+    variant.id
+  );
   revalidatePath(`/i/${token}`);
   return {
     ok: true,
+    variantId: String(variant.id),
     checkoutUrl: contributionCheckoutUrl({
-      variantId: product.variantId,
+      variantId: String(variant.id),
       token: guest.token,
       eventId: event.id,
     }),
@@ -158,8 +207,7 @@ export async function startContribution(token, payload) {
 
 /* Photo upload is a SEPARATE action from the RSVP on purpose. Drive is a third
    party that can be slow or down, and an outage there must never cost us a
-   reply — the RSVP is already committed by the time this runs. A failure here
-   is reported as a photo problem, not an RSVP problem. */
+   reply. A failure here is reported as a photo problem, not an RSVP problem. */
 /* The same pipeline as the family photo, for a custom question of type "file".
 
    Returns the Drive file id, which the form then submits as that question's
@@ -178,7 +226,7 @@ export async function uploadFieldFile(token, { fieldId, dataUrl }) {
 
   const field = (event.customFields || []).find((f) => f.id === fieldId && f.type === "file");
   if (!field) return { ok: false, error: "error" };
-  if (!driveConfigured()) return { ok: false, error: "driveNotConfigured" };
+  if (!driveConfigured()) return { ok: false, error: photoError("field upload", { error: "driveNotConfigured" }) };
 
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
   if (!match) return { ok: false, error: "badImage" };
@@ -200,16 +248,30 @@ export async function uploadFieldFile(token, { fieldId, dataUrl }) {
     eventSlug: event.slug,
   });
 
-  if (!result.ok) return { ok: false, error: result.error || "uploadFailed" };
+  if (!result.ok) return { ok: false, error: photoError(`field ${fieldId}`, result) };
   return { ok: true, fileId: result.fileId };
 }
 
+/* Runs when the guest PICKS the photo, not when they send the reply.
+
+   It used to run only at the tail of submitRsvp, and on any event that asks for
+   a contribution that tail is unreachable until the store's webhook confirms
+   payment: "Contribute & continue" saved the reply and dropped the photo on the
+   floor, "Send my reply" returned early with contribIncomplete before ever
+   getting to the upload, and by the time the family came back from checkout the
+   in-memory preview was gone with the page. The net effect on the Maulid events
+   was that not one family photo ever reached Drive.
+
+   Uploading on pick is the same pattern uploadFieldFile already uses, and it
+   holds the invariant that matters: the photo and the reply never gate each
+   other in either direction. */
 export async function uploadFamilyPhoto(token, { dataUrl, familyName }) {
   const found = getGuestByToken(token);
   if (!found) return { ok: false, error: "notFound" };
   const { guest, event } = found;
+  if (event.status === "draft") return { ok: false, error: "notFound" };
   if (isEventClosed(event)) return { ok: false, error: "closed" };
-  if (!driveConfigured()) return { ok: false, error: "driveNotConfigured" };
+  if (!driveConfigured()) return { ok: false, error: photoError("family photo", { error: "driveNotConfigured" }) };
 
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
   if (!match) return { ok: false, error: "badImage" };
@@ -232,9 +294,14 @@ export async function uploadFamilyPhoto(token, { dataUrl, familyName }) {
     eventSlug: event.slug,
   });
 
-  if (!result.ok) return { ok: false, error: result.error || "uploadFailed" };
+  if (!result.ok) return { ok: false, error: photoError(`family photo for ${guest.id}`, result) };
 
+  /* Records the id on the reply row when there IS one. On a first visit there
+     isn't yet — the guest picked the photo before pressing anything — so the
+     client carries the id into the reply payload and saveRsvp writes it there.
+     Both paths run; whichever happens second is a harmless rewrite of the same
+     value. */
   attachPhoto(guest.id, result.fileId);
   revalidatePath(`/i/${token}`);
-  return { ok: true, filename };
+  return { ok: true, filename, fileId: result.fileId };
 }
