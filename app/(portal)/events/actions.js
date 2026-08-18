@@ -251,12 +251,13 @@ export async function sendInvitesAction(eventId, { mode = "invite", channels = [
     }
 
     if (wantWa && guest.phone) {
+      // Three parameters only — see the template contract in lib/events/wati.js.
+      // The reply-by date lives on the invitation page and in the email.
       const res = await sendInviteWhatsApp({
         phone: guest.phone,
         guestName: guest.name,
         eventTitle: event.title,
         url,
-        deadlineText,
         lang: guest.lang,
       });
       row.whatsapp = res.ok ? "sent" : res.error;

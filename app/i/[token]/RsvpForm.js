@@ -16,9 +16,8 @@ import {
   coerceAnswer,
   MAX_ATTENDEE_BLOCKS,
 } from "@/lib/events/fields";
-import { downscale, MAX_PICK_BYTES } from "@/lib/events/downscale";
 import GuestField from "@/components/events/GuestField";
-import { submitRsvp, startContribution, uploadFamilyPhoto, uploadFieldFile } from "./actions";
+import { submitRsvp, startContribution, uploadFieldFile } from "./actions";
 
 /* The reply block.
 
@@ -35,7 +34,8 @@ import { submitRsvp, startContribution, uploadFamilyPhoto, uploadFieldFile } fro
    row and the poll paints the green strip without a reload. "Send my reply"
    only completes once the server has seen the payment.
 
-   Photos are downscaled IN THE BROWSER before upload — see lib/events/downscale.
+   Images on a "Photo upload" question are downscaled IN THE BROWSER before
+   they go up — see lib/events/downscale.
 
    CUSTOM QUESTIONS (lib/events/fields.js) come in two scopes: asked once of the
    family, or repeated for every head in the party. The per-person blocks are
@@ -256,7 +256,6 @@ export default function RsvpForm({
 }) {
   const t = translate(lang);
   const router = useRouter();
-  const fileRef = useRef(null);
 
   // Legacy 'maybe' replies read as "not answered yet" — the option no longer
   // exists, and pre-filling either remaining choice would put words in the
@@ -270,11 +269,6 @@ export default function RsvpForm({
   const [declineReason, setDeclineReason] = useState(rsvp?.decline_reason || "");
   const [declineReasonNote, setDeclineReasonNote] = useState(rsvp?.decline_reason_note || "");
   const [message, setMessage] = useState(rsvp?.message || "");
-  const [familyName, setFamilyName] = useState(guest.family_name || "");
-  const [photoConsent, setPhotoConsent] = useState(!!rsvp?.photo_consent);
-  const [preview, setPreview] = useState(null);
-  const [photoState, setPhotoState] = useState(rsvp?.photo_drive_id ? "done" : "idle");
-  const [photoDriveId, setPhotoDriveId] = useState(rsvp?.photo_drive_id || "");
 
   const [contributionStatus, setContributionStatus] = useState(rsvp?.contribution_status || "none");
   const [contributionTitle, setContributionTitle] = useState(rsvp?.contribution_title || "");
@@ -397,8 +391,6 @@ export default function RsvpForm({
     if (value === "yes") {
       setDeclineReason("");
       setDeclineReasonNote("");
-    } else {
-      setPreview(null);
     }
   }
 
@@ -411,10 +403,6 @@ export default function RsvpForm({
       declineReason,
       declineReasonNote,
       message,
-      photoConsent,
-      // Already in Drive by now (uploaded on pick); this only records WHICH
-      // file on the reply row.
-      photoDriveId,
       custom: customAnswers,
       // Trimmed to the blocks actually shown: a family that said 4 people, then
       // 2, must not silently submit answers for two people who aren't coming.
@@ -445,50 +433,10 @@ export default function RsvpForm({
     return null;
   }
 
-  /* The family photo goes to Drive ON PICK, on its own round trip — exactly
-     like a custom "file" answer, and for the same reason: Drive and the reply
-     must never be able to cost each other.
-
-     It used to ride along at the end of onSubmit, which meant that on any event
-     asking for a contribution the photo could not go up at all. "Contribute &
-     continue" saved the reply and never touched the photo; "Send my reply"
-     bailed out at the contribIncomplete guard above the upload; and a family
-     returning from checkout on a fresh page load no longer had the preview in
-     memory to send. Nothing reached the Drive folder. */
-  async function onPickPhoto(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    if (file.size > MAX_PICK_BYTES) {
-      setError(t("tooLarge"));
-      return;
-    }
-
-    let dataUrl;
-    try {
-      setPhotoState("working");
-      dataUrl = await downscale(file);
-      setPreview(dataUrl);
-    } catch {
-      setPhotoState("idle");
-      setError(t("error"));
-      return;
-    }
-
-    const up = await uploadFamilyPhoto(token, { dataUrl, familyName });
-    if (!up.ok) {
-      setPhotoState("failed");
-      showError(t(up.error) || t("uploadFailed"));
-      return;
-    }
-    setPhotoDriveId(up.fileId || "");
-    setPhotoState("done");
-  }
-
-  /* Custom "photo upload" answers go up the moment they're picked, on their own
-     round trip — same reasoning as the family photo: Drive must never be able
-     to cost a family their reply. The answer stored in the field is the Drive
-     file id the server hands back, never anything the guest chose. */
+  /* "Photo upload" answers go up the moment they're picked, on their own round
+     trip, so Drive can never cost a family their reply. The answer stored in
+     the field is the Drive file id the server hands back, never anything the
+     guest chose. */
   async function onFieldUpload({ fieldId, dataUrl }) {
     return uploadFieldFile(token, { fieldId, dataUrl });
   }
@@ -563,8 +511,6 @@ export default function RsvpForm({
       return;
     }
 
-    // Nothing to do for the photo here: it went to Drive when it was picked,
-    // and replyPayload carried its file id onto the row just now.
     setSaving(false);
     setDone(true);
     setEditing(false);
@@ -613,8 +559,6 @@ export default function RsvpForm({
             />
           </>
         ) : null}
-
-        {photoState === "failed" ? <p className="inv-error">{t("photoFailed")}</p> : null}
 
         {/* The calendar and directions pills again — a family that just said
             yes shouldn't have to scroll back up to find them. */}
@@ -821,76 +765,6 @@ export default function RsvpForm({
             </div>
           ) : null}
 
-          {event.ask_photo ? (
-            <div className="inv-field">
-              <h3 className="inv-label" style={{ fontSize: 15 }}>
-                {t("photoTitle")}
-                <span className="inv-hint">{t("photoHint")}</span>
-              </h3>
-
-              {/* Asked BEFORE the picker, because the upload now happens the
-                  moment a photo is chosen and this name is what the file is
-                  called in Drive — Karim's downstream batch reads the family
-                  off the filename. Pre-filled from the guest record, so for
-                  most families it is already right and needs no thought. */}
-              <div className="inv-field" style={{ marginBottom: 12 }}>
-                <label className="inv-label" htmlFor="familyName">
-                  {t("familyName")}
-                  <span className="inv-hint">{t("familyNameHint")}</span>
-                </label>
-                <input
-                  id="familyName"
-                  className="inv-input"
-                  value={familyName}
-                  onChange={(e) => setFamilyName(e.target.value)}
-                />
-              </div>
-
-              {preview ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={preview} alt="" className="inv-photo-preview" />
-              ) : null}
-
-              <div
-                className="inv-photo-drop"
-                role="button"
-                tabIndex={0}
-                onClick={() => fileRef.current?.click()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    fileRef.current?.click();
-                  }
-                }}
-              >
-                {photoState === "working"
-                  ? t("uploading")
-                  : photoState === "done"
-                    ? `✓ ${t("uploaded")} — ${t("changePhoto")}`
-                    : photoState === "failed"
-                      ? t("changePhoto")
-                      : t("choosePhoto")}
-              </div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                hidden
-                onChange={onPickPhoto}
-              />
-
-              {preview ? (
-                <label className="inv-check" style={{ marginTop: 14 }}>
-                  <input
-                    type="checkbox"
-                    checked={photoConsent}
-                    onChange={(e) => setPhotoConsent(e.target.checked)}
-                  />
-                  <span>{t("photoConsent")}</span>
-                </label>
-              ) : null}
-            </div>
-          ) : null}
         </>
       ) : null}
 

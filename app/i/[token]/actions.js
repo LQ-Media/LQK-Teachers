@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import {
   getGuestByToken,
   saveRsvp,
-  attachPhoto,
   isEventClosed,
   markContributionPending,
 } from "@/lib/events/queries";
@@ -68,8 +67,6 @@ function validateReply(event, payload) {
       declineReason: reason,
       declineReasonNote: reason === "other" ? payload.declineReasonNote : null,
       message: payload.message,
-      photoConsent: payload.photoConsent,
-      photoDriveId: driveId(payload.photoDriveId),
       custom: answers.custom,
       attendees: [],
     };
@@ -96,24 +93,9 @@ function validateReply(event, payload) {
     children,
     extraNames: payload.extraNames,
     message: payload.message,
-    photoConsent: payload.photoConsent,
-    photoDriveId: driveId(payload.photoDriveId),
     custom: answers.custom,
     attendees: answers.attendees,
   };
-}
-
-/* The family photo now reaches Drive the moment it is picked, which can be
-   BEFORE this guest has any rsvp row to hang the file id on. The client
-   therefore carries the id back with the reply so the row records it on save.
-
-   Treated exactly like a "file" custom answer (lib/events/fields.js): the value
-   is only ever an id-shaped string naming a file that already lives in LQK's
-   own Drive folder, so the worst a hostile guest can do with a forged one is
-   mislabel their own row. */
-function driveId(value) {
-  const text = String(value || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 128);
-  return text || null;
 }
 
 /* The final "Send my reply". When the event carries a contribution product,
@@ -250,58 +232,4 @@ export async function uploadFieldFile(token, { fieldId, dataUrl }) {
 
   if (!result.ok) return { ok: false, error: photoError(`field ${fieldId}`, result) };
   return { ok: true, fileId: result.fileId };
-}
-
-/* Runs when the guest PICKS the photo, not when they send the reply.
-
-   It used to run only at the tail of submitRsvp, and on any event that asks for
-   a contribution that tail is unreachable until the store's webhook confirms
-   payment: "Contribute & continue" saved the reply and dropped the photo on the
-   floor, "Send my reply" returned early with contribIncomplete before ever
-   getting to the upload, and by the time the family came back from checkout the
-   in-memory preview was gone with the page. The net effect on the Maulid events
-   was that not one family photo ever reached Drive.
-
-   Uploading on pick is the same pattern uploadFieldFile already uses, and it
-   holds the invariant that matters: the photo and the reply never gate each
-   other in either direction. */
-export async function uploadFamilyPhoto(token, { dataUrl, familyName }) {
-  const found = getGuestByToken(token);
-  if (!found) return { ok: false, error: "notFound" };
-  const { guest, event } = found;
-  if (event.status === "draft") return { ok: false, error: "notFound" };
-  if (isEventClosed(event)) return { ok: false, error: "closed" };
-  if (!driveConfigured()) return { ok: false, error: photoError("family photo", { error: "driveNotConfigured" }) };
-
-  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
-  if (!match) return { ok: false, error: "badImage" };
-
-  const [, mime, base64] = match;
-  // base64 inflates by ~4/3; check the decoded size, not the string length.
-  if ((base64.length * 3) / 4 > MAX_PHOTO_BYTES) return { ok: false, error: "tooLarge" };
-
-  const filename = photoFilename({
-    familyName: familyName || guest.family_name || guest.name,
-    guestName: guest.name,
-    token: guest.token,
-    mime,
-  });
-
-  const result = await uploadPhoto({
-    base64,
-    mime,
-    filename,
-    eventSlug: event.slug,
-  });
-
-  if (!result.ok) return { ok: false, error: photoError(`family photo for ${guest.id}`, result) };
-
-  /* Records the id on the reply row when there IS one. On a first visit there
-     isn't yet — the guest picked the photo before pressing anything — so the
-     client carries the id into the reply payload and saveRsvp writes it there.
-     Both paths run; whichever happens second is a harmless rewrite of the same
-     value. */
-  attachPhoto(guest.id, result.fileId);
-  revalidatePath(`/i/${token}`);
-  return { ok: true, filename, fileId: result.fileId };
 }

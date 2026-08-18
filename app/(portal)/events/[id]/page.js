@@ -60,10 +60,6 @@ export default async function EventPage({ params, searchParams }) {
   const reminderCount = guestsNeedingReminder(id).length;
 
   const baseUrl = (process.env.LQK_PUBLIC_BASE_URL || "https://teachers.littlequrankids.sg").replace(/\/+$/, "");
-  const driveFolderUrl = process.env.LQK_DRIVE_FOLDER_ID
-    ? `https://drive.google.com/drive/folders/${process.env.LQK_DRIVE_FOLDER_ID}`
-    : null;
-
   return (
     <div className="px-4 py-6 sm:p-8 max-w-4xl">
       <Link href="/events" className="mb-4 inline-block text-sm text-gold hover:underline">
@@ -72,19 +68,13 @@ export default async function EventPage({ params, searchParams }) {
 
       <PageHeading route="/events" icon="calendar" title={event.title} subtitle={event.venue_name || "Event invitation"} />
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat label="families invited" value={stats.invited} />
         <Stat label="replied" value={stats.replied} hint={`${stats.pending} still to answer`} />
         <Stat
           label="people attending"
           value={stats.headcount}
           hint={`${plural(stats.adults, "adult")} · ${plural(stats.children, "child", "children")}`}
-        />
-        <Stat
-          label="photos"
-          value={stats.photos}
-          hint={driveFolderUrl ? "open the Drive folder" : undefined}
-          href={driveFolderUrl}
         />
       </div>
 

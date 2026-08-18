@@ -684,16 +684,6 @@
   border-color: var(--inv-accent);
 }
 
-.inv-photo-preview {
-  display: block;
-  max-width: 100%;
-  width: 220px;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: calc(var(--inv-radius) * 0.5);
-  margin: 0 auto 10px;
-}
-
 .inv-check {
   display: flex;
   align-items: flex-start;

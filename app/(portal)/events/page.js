@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/dal";
 import { listEvents } from "@/lib/events/queries";
+import { eventInstant, endOfDeadlineDay } from "@/lib/events/when";
 import PageHeading from "@/components/PageHeading";
 import NewEventForm from "./NewEventForm";
 
@@ -26,7 +27,8 @@ function StatusPill({ status }) {
    history. */
 function deadlineWarning(event) {
   if (event.status !== "live" || !event.rsvp_deadline) return null;
-  const end = new Date(`${event.rsvp_deadline}T23:59:59+08:00`).getTime();
+  const end = endOfDeadlineDay(event.rsvp_deadline)?.getTime();
+  if (!end) return null;
   const days = Math.ceil((end - Date.now()) / 86400000);
   if (days < 0) return null;
   if (days === 0) return "Replies close today";
@@ -96,9 +98,9 @@ export default async function EventsPage() {
                       <span className="ms-auto text-sm font-semibold text-rust">{warning}</span>
                     ) : null}
                   </div>
-                  {e.starts_at ? (
+                  {eventInstant(e.starts_at) ? (
                     <p className="mt-0.5 text-sm text-charcoal-soft">
-                      {new Date(e.starts_at).toLocaleString("en-SG", {
+                      {eventInstant(e.starts_at).toLocaleString("en-SG", {
                         dateStyle: "medium",
                         timeStyle: "short",
                         timeZone: "Asia/Singapore",
