@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import {
   getGuestByToken,
   saveRsvp,
-  attachPhoto,
   isEventClosed,
   markContributionPending,
 } from "@/lib/events/queries";
@@ -12,7 +11,7 @@ import { isDeclineReason } from "@/lib/events/i18n";
 import { validateAnswers } from "@/lib/events/fields";
 import { MAX_PARTY_SIZE_LIMIT } from "@/lib/events/presets";
 import { getContributionProduct } from "@/lib/events/shopify";
-import { contributionCheckoutUrl } from "@/lib/events/shopify-core";
+import { contributionCheckoutUrl, chooseVariant } from "@/lib/events/shopify-core";
 import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive";
 
 /* Server actions for the public invite page.
@@ -27,6 +26,19 @@ import { uploadPhoto, photoFilename, driveConfigured } from "@/lib/events/drive"
    is the worst failure this page has. */
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+
+/* Drive failures come back as free text — "network error", whatever the Apps
+   Script threw, an HTTP status. None of that is a sentence to show a family,
+   and t() passes an unknown key straight through, so an upload failure used to
+   have a decent chance of printing the word "unauthorised" onto the invitation.
+
+   The reason is logged instead. It is the only trace of WHY the folder is empty,
+   and it belongs in Railway's logs where Karim can read it, not on the guest's
+   screen. */
+function photoError(where, result) {
+  console.warn(`[events/photo] ${where}: ${result?.error || "unknown"}`);
+  return result?.error === "driveNotConfigured" ? "driveNotConfigured" : "uploadFailed";
+}
 
 /* Shared validation for both save paths. Returns {error} or the clean row.
 
@@ -55,7 +67,6 @@ function validateReply(event, payload) {
       declineReason: reason,
       declineReasonNote: reason === "other" ? payload.declineReasonNote : null,
       message: payload.message,
-      photoConsent: payload.photoConsent,
       custom: answers.custom,
       attendees: [],
     };
@@ -82,7 +93,6 @@ function validateReply(event, payload) {
     children,
     extraNames: payload.extraNames,
     message: payload.message,
-    photoConsent: payload.photoConsent,
     custom: answers.custom,
     attendees: answers.attendees,
   };
@@ -135,6 +145,17 @@ export async function startContribution(token, payload) {
   const product = await getContributionProduct(event.support_url);
   if (!product) return { ok: false, error: "error" };
 
+  /* Which tier the family chose. The store is the authority on what exists:
+     the id is resolved against the live product, and an admin-pinned variant
+     wins outright — so the checkout can only ever be for a real, purchasable
+     line the event actually offers. */
+  const variant = chooseVariant(
+    product,
+    product.pinned ? product.variantId : null,
+    payload?.variantId
+  );
+  if (!variant) return { ok: false, error: "error" };
+
   saveRsvp(guest.id, event.id, clean);
 
   // Already paid (e.g. a second click after the webhook landed): no second
@@ -144,12 +165,22 @@ export async function startContribution(token, payload) {
     return { ok: true, alreadyPaid: true };
   }
 
-  markContributionPending(guest.id, product.title);
+  // The pending line names the CHOSEN tier, not just the product — "$50 Family
+  // Sponsor" is the part Karim reconciles against, and the webhook overwrites
+  // this with Shopify's own wording once the payment lands.
+  markContributionPending(
+    guest.id,
+    variant.title && variant.title !== product.title
+      ? `${product.title} — ${variant.title}`
+      : product.title,
+    variant.id
+  );
   revalidatePath(`/i/${token}`);
   return {
     ok: true,
+    variantId: String(variant.id),
     checkoutUrl: contributionCheckoutUrl({
-      variantId: product.variantId,
+      variantId: String(variant.id),
       token: guest.token,
       eventId: event.id,
     }),
@@ -158,8 +189,7 @@ export async function startContribution(token, payload) {
 
 /* Photo upload is a SEPARATE action from the RSVP on purpose. Drive is a third
    party that can be slow or down, and an outage there must never cost us a
-   reply — the RSVP is already committed by the time this runs. A failure here
-   is reported as a photo problem, not an RSVP problem. */
+   reply. A failure here is reported as a photo problem, not an RSVP problem. */
 /* The same pipeline as the family photo, for a custom question of type "file".
 
    Returns the Drive file id, which the form then submits as that question's
@@ -178,7 +208,7 @@ export async function uploadFieldFile(token, { fieldId, dataUrl }) {
 
   const field = (event.customFields || []).find((f) => f.id === fieldId && f.type === "file");
   if (!field) return { ok: false, error: "error" };
-  if (!driveConfigured()) return { ok: false, error: "driveNotConfigured" };
+  if (!driveConfigured()) return { ok: false, error: photoError("field upload", { error: "driveNotConfigured" }) };
 
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
   if (!match) return { ok: false, error: "badImage" };
@@ -200,41 +230,6 @@ export async function uploadFieldFile(token, { fieldId, dataUrl }) {
     eventSlug: event.slug,
   });
 
-  if (!result.ok) return { ok: false, error: result.error || "uploadFailed" };
+  if (!result.ok) return { ok: false, error: photoError(`field ${fieldId}`, result) };
   return { ok: true, fileId: result.fileId };
-}
-
-export async function uploadFamilyPhoto(token, { dataUrl, familyName }) {
-  const found = getGuestByToken(token);
-  if (!found) return { ok: false, error: "notFound" };
-  const { guest, event } = found;
-  if (isEventClosed(event)) return { ok: false, error: "closed" };
-  if (!driveConfigured()) return { ok: false, error: "driveNotConfigured" };
-
-  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
-  if (!match) return { ok: false, error: "badImage" };
-
-  const [, mime, base64] = match;
-  // base64 inflates by ~4/3; check the decoded size, not the string length.
-  if ((base64.length * 3) / 4 > MAX_PHOTO_BYTES) return { ok: false, error: "tooLarge" };
-
-  const filename = photoFilename({
-    familyName: familyName || guest.family_name || guest.name,
-    guestName: guest.name,
-    token: guest.token,
-    mime,
-  });
-
-  const result = await uploadPhoto({
-    base64,
-    mime,
-    filename,
-    eventSlug: event.slug,
-  });
-
-  if (!result.ok) return { ok: false, error: result.error || "uploadFailed" };
-
-  attachPhoto(guest.id, result.fileId);
-  revalidatePath(`/i/${token}`);
-  return { ok: true, filename };
 }

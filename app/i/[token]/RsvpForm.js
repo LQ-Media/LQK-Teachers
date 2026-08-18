@@ -16,9 +16,8 @@ import {
   coerceAnswer,
   MAX_ATTENDEE_BLOCKS,
 } from "@/lib/events/fields";
-import { downscale } from "@/lib/events/downscale";
 import GuestField from "@/components/events/GuestField";
-import { submitRsvp, startContribution, uploadFamilyPhoto, uploadFieldFile } from "./actions";
+import { submitRsvp, startContribution, uploadFieldFile } from "./actions";
 
 /* The reply block.
 
@@ -35,7 +34,8 @@ import { submitRsvp, startContribution, uploadFamilyPhoto, uploadFieldFile } fro
    row and the poll paints the green strip without a reload. "Send my reply"
    only completes once the server has seen the payment.
 
-   Photos are downscaled IN THE BROWSER before upload — see lib/events/downscale.
+   Images on a "Photo upload" question are downscaled IN THE BROWSER before
+   they go up — see lib/events/downscale.
 
    CUSTOM QUESTIONS (lib/events/fields.js) come in two scopes: asked once of the
    family, or repeated for every head in the party. The per-person blocks are
@@ -103,8 +103,35 @@ function CountInput({ label, value, onChange, max }) {
 }
 
 /* The product card + CTA / pending note / paid strip. Mutually exclusive
-   states — the reference stacks them only so both are visible at once. */
-function ContributionBlock({ t, product, status, paidLine, busy, onContribute, checkoutUrl, onRecheck, rechecking }) {
+   states — the reference stacks them only so both are visible at once.
+
+   LQK's contribution products are TIERED — the Maulid product carries $30, $50,
+   $100 and $300 variants — so the card is driven by the tier the family chose,
+   not by the product's headline price. The chooser appears only while there is
+   still a choice to make: an event whose product link pins a variant is a fixed
+   amount (product.pinned), and once a checkout is pending or paid the tier is
+   already decided. */
+function ContributionBlock({
+  t,
+  product,
+  status,
+  paidLine,
+  busy,
+  onContribute,
+  checkoutUrl,
+  onRecheck,
+  rechecking,
+  variantId,
+  onVariantChange,
+}) {
+  const variants = product?.variants?.length ? product.variants : null;
+  const selected = variants?.find((v) => v.id === variantId) || variants?.[0] || null;
+  const canChoose = !!variants && variants.length > 1 && !product.pinned && status !== "paid" && status !== "pending";
+
+  // A single-variant product has no tier name of its own — shape() falls its
+  // title back to the product's, and printing "X — X" reads as a bug.
+  const tier = selected && selected.title !== product?.title ? selected.title : null;
+
   return (
     <div className="inv-contrib">
       <div className="inv-contrib-head">
@@ -113,23 +140,60 @@ function ContributionBlock({ t, product, status, paidLine, busy, onContribute, c
       </div>
       <p className="inv-contrib-body">{t("contribBody")}</p>
 
+      {canChoose ? (
+        /* Tier ROWS, not a <select>. The names come from the store and run long
+           ("$100 — Supporter Set A (Green Dome Flatlay A4 Frame)"); inside a
+           269px select on a phone that is clipped to nonsense, and on the
+           Arabic invitation it is the PRICE end that gets cut. A row wraps.
+
+           Same visually-hidden-radio pattern as the yes/no choices above, so
+           it is the real radio that keyboards and screen readers operate. */
+        <fieldset className="inv-tiers">
+          <legend className="inv-tiers-legend">{t("contribChoose")}</legend>
+          {variants.map((v) => (
+            <label key={v.id} className="inv-tier">
+              <input
+                type="radio"
+                name="contrib-variant"
+                value={v.id}
+                checked={selected?.id === v.id}
+                disabled={busy || !v.available}
+                onChange={() => onVariantChange(v.id)}
+              />
+              <span>
+                {/* The mark, not colour alone, is what says "chosen". */}
+                <span className="inv-choice-dot" aria-hidden>
+                  {selected?.id === v.id ? "✓" : ""}
+                </span>
+                <span className="inv-tier-body">
+                  <bdi className="inv-tier-name">{v.title}</bdi>
+                  <span className="inv-tier-price">{v.priceText}</span>
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+
       {product ? (
         <div className="inv-product">
-          {product.image ? (
+          {selected?.image || product.image ? (
             /* Plain <img>: a 52px thumbnail from the store CDN doesn't earn a
                remotePatterns entry in next.config. eslint knows better: */
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={product.image} alt="" className="inv-product-img" />
+            <img src={selected?.image || product.image} alt="" className="inv-product-img" />
           ) : (
             <span className="inv-product-img" aria-hidden />
           )}
           <div className="inv-product-info">
+            {/* ONE bdi around the whole line, not one per part: two adjacent
+                isolates are laid out right-to-left on the Arabic invitation, so
+                the tier printed before the product it belongs to. */}
             <span className="inv-product-title">
-              <bdi>{product.title}</bdi>
-              {product.variantTitle ? <bdi> — {product.variantTitle}</bdi> : null}
+              <bdi>{tier ? `${product.title} — ${tier}` : product.title}</bdi>
             </span>
             <span className="inv-product-price">
-              {product.priceText} · Little Quran Kids store
+              {selected?.priceText || product.priceText} · Little Quran Kids store
             </span>
           </div>
         </div>
@@ -192,7 +256,6 @@ export default function RsvpForm({
 }) {
   const t = translate(lang);
   const router = useRouter();
-  const fileRef = useRef(null);
 
   // Legacy 'maybe' replies read as "not answered yet" — the option no longer
   // exists, and pre-filling either remaining choice would put words in the
@@ -206,15 +269,18 @@ export default function RsvpForm({
   const [declineReason, setDeclineReason] = useState(rsvp?.decline_reason || "");
   const [declineReasonNote, setDeclineReasonNote] = useState(rsvp?.decline_reason_note || "");
   const [message, setMessage] = useState(rsvp?.message || "");
-  const [familyName, setFamilyName] = useState(guest.family_name || "");
-  const [photoConsent, setPhotoConsent] = useState(!!rsvp?.photo_consent);
-  const [preview, setPreview] = useState(null);
-  const [photoState, setPhotoState] = useState(rsvp?.photo_drive_id ? "done" : "idle");
 
   const [contributionStatus, setContributionStatus] = useState(rsvp?.contribution_status || "none");
   const [contributionTitle, setContributionTitle] = useState(rsvp?.contribution_title || "");
   const [contributionQty, setContributionQty] = useState(rsvp?.contribution_qty || 1);
   const [contributionPaidAt, setContributionPaidAt] = useState(rsvp?.contribution_paid_at || null);
+  /* Which tier of a tiered contribution product the family is buying. A tier
+     already sent to checkout wins over the product default, so coming back to
+     this page — the normal way a family returns from the store — still shows
+     the amount they actually chose. */
+  const [variantId, setVariantId] = useState(
+    rsvp?.contribution_variant_id || contribution?.variantId || ""
+  );
 
   const [customAnswers, setCustomAnswers] = useState(() => rsvp?.custom || {});
   const [attendeeAnswers, setAttendeeAnswers] = useState(() =>
@@ -325,8 +391,6 @@ export default function RsvpForm({
     if (value === "yes") {
       setDeclineReason("");
       setDeclineReasonNote("");
-    } else {
-      setPreview(null);
     }
   }
 
@@ -339,7 +403,6 @@ export default function RsvpForm({
       declineReason,
       declineReasonNote,
       message,
-      photoConsent,
       custom: customAnswers,
       // Trimmed to the blocks actually shown: a family that said 4 people, then
       // 2, must not silently submit answers for two people who aren't coming.
@@ -370,29 +433,10 @@ export default function RsvpForm({
     return null;
   }
 
-  async function onPickPhoto(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    if (file.size > 25 * 1024 * 1024) {
-      setError(t("tooLarge"));
-      return;
-    }
-    try {
-      setPhotoState("working");
-      const dataUrl = await downscale(file);
-      setPreview(dataUrl);
-      setPhotoState("ready");
-    } catch {
-      setPhotoState("idle");
-      setError(t("error"));
-    }
-  }
-
-  /* Custom "photo upload" answers go up the moment they're picked, on their own
-     round trip — same reasoning as the family photo: Drive must never be able
-     to cost a family their reply. The answer stored in the field is the Drive
-     file id the server hands back, never anything the guest chose. */
+  /* "Photo upload" answers go up the moment they're picked, on their own round
+     trip, so Drive can never cost a family their reply. The answer stored in
+     the field is the Drive file id the server hands back, never anything the
+     guest chose. */
   async function onFieldUpload({ fieldId, dataUrl }) {
     return uploadFieldFile(token, { fieldId, dataUrl });
   }
@@ -418,7 +462,7 @@ export default function RsvpForm({
     // point it at the checkout once the server hands the URL back.
     const checkoutTab = typeof window !== "undefined" ? window.open("", "_blank") : null;
 
-    const result = await startContribution(token, replyPayload());
+    const result = await startContribution(token, { ...replyPayload(), variantId });
     setSaving(false);
 
     if (!result.ok) {
@@ -433,6 +477,9 @@ export default function RsvpForm({
     }
 
     setContributionStatus("pending");
+    // The server has the last word on which variant this is (a tier that went
+    // out of stock between render and click resolves to another one).
+    if (result.variantId) setVariantId(result.variantId);
     /* Keep the URL either way. If the popup was blocked — the default on iOS
        Safari — we must NOT navigate this tab away: the store's thank-you page
        has no route back to the invitation, so the guest would be stranded mid
@@ -462,13 +509,6 @@ export default function RsvpForm({
       setSaving(false);
       setError(t(result.error) || t("error"));
       return;
-    }
-
-    // The reply is committed. A photo failure from here on is reported on its
-    // own line and never reverts the RSVP the guest just made.
-    if (preview && photoState === "ready") {
-      const up = await uploadFamilyPhoto(token, { dataUrl: preview, familyName });
-      setPhotoState(up.ok ? "done" : "failed");
     }
 
     setSaving(false);
@@ -514,11 +554,11 @@ export default function RsvpForm({
               checkoutUrl={checkoutUrl}
               onRecheck={onRecheck}
               rechecking={rechecking}
+              variantId={variantId}
+              onVariantChange={setVariantId}
             />
           </>
         ) : null}
-
-        {photoState === "failed" ? <p className="inv-error">{t("photoFailed")}</p> : null}
 
         {/* The calendar and directions pills again — a family that just said
             yes shouldn't have to scroll back up to find them. */}
@@ -674,6 +714,8 @@ export default function RsvpForm({
               checkoutUrl={checkoutUrl}
               onRecheck={onRecheck}
               rechecking={rechecking}
+              variantId={variantId}
+              onVariantChange={setVariantId}
             />
           ) : null}
 
@@ -723,70 +765,6 @@ export default function RsvpForm({
             </div>
           ) : null}
 
-          {event.ask_photo ? (
-            <div className="inv-field">
-              <h3 className="inv-label" style={{ fontSize: 15 }}>
-                {t("photoTitle")}
-                <span className="inv-hint">{t("photoHint")}</span>
-              </h3>
-
-              {preview ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={preview} alt="" className="inv-photo-preview" />
-              ) : null}
-
-              <div
-                className="inv-photo-drop"
-                role="button"
-                tabIndex={0}
-                onClick={() => fileRef.current?.click()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    fileRef.current?.click();
-                  }
-                }}
-              >
-                {photoState === "working"
-                  ? "…"
-                  : preview || photoState === "done"
-                    ? t("changePhoto")
-                    : t("choosePhoto")}
-              </div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                hidden
-                onChange={onPickPhoto}
-              />
-
-              {preview ? (
-                <>
-                  <div className="inv-field" style={{ marginTop: 14, marginBottom: 12 }}>
-                    <label className="inv-label" htmlFor="familyName">
-                      {t("familyName")}
-                      <span className="inv-hint">{t("familyNameHint")}</span>
-                    </label>
-                    <input
-                      id="familyName"
-                      className="inv-input"
-                      value={familyName}
-                      onChange={(e) => setFamilyName(e.target.value)}
-                    />
-                  </div>
-                  <label className="inv-check">
-                    <input
-                      type="checkbox"
-                      checked={photoConsent}
-                      onChange={(e) => setPhotoConsent(e.target.checked)}
-                    />
-                    <span>{t("photoConsent")}</span>
-                  </label>
-                </>
-              ) : null}
-            </div>
-          ) : null}
         </>
       ) : null}
 

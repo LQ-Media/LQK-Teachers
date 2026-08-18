@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getGuestByToken, markOpened, isEventClosed } from "@/lib/events/queries";
+import { eventInstant } from "@/lib/events/when";
 import { getContributionProduct } from "@/lib/events/shopify";
 import { themeVars } from "@/lib/events/theme";
 import {
@@ -31,9 +32,9 @@ export async function generateMetadata({ params }) {
 }
 
 function googleCalendarUrl(event) {
-  if (!event.starts_at) return null;
-  const start = new Date(event.starts_at);
-  const end = event.ends_at ? new Date(event.ends_at) : new Date(start.getTime() + 3 * 3600 * 1000);
+  const start = eventInstant(event.starts_at);
+  if (!start) return null;
+  const end = eventInstant(event.ends_at) || new Date(start.getTime() + 3 * 3600 * 1000);
   const fmtDate = (d) => d.toISOString().replace(/[-:]|\.\d{3}/g, "");
   const params = new URLSearchParams({
     action: "TEMPLATE",

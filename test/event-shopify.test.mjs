@@ -12,6 +12,7 @@ import { createHmac } from "node:crypto";
 import {
   parseProductRef,
   pickVariant,
+  chooseVariant,
   formatPrice,
   contributionCheckoutUrl,
   verifyShopifyHmac,
@@ -58,6 +59,46 @@ describe("pickVariant", () => {
     assert.equal(pickVariant(product, null).id, 2);
     assert.equal(pickVariant({ variants: [{ id: 9, available: false }] }, null).id, 9);
     assert.equal(pickVariant({ variants: [] }, null), null);
+  });
+});
+
+/* LQK's contribution products are TIERED, and the family picks their tier on
+   the invitation — so a variant id now arrives from the client. These are the
+   two rules that keep that safe: the store decides what exists, and a variant
+   the admin pinned outranks anything the guest sends. */
+describe("chooseVariant", () => {
+  const tiers = {
+    variants: [
+      { id: 30, available: true },   // $30, the default
+      { id: 50, available: true },
+      { id: 100, available: true },
+    ],
+  };
+
+  test("an unpinned product follows the guest's choice", () => {
+    assert.equal(chooseVariant(tiers, null, "100").id, 100);
+    assert.equal(chooseVariant(tiers, null, "50").id, 50);
+  });
+
+  test("no choice, or a made-up one, falls back to the default", () => {
+    assert.equal(chooseVariant(tiers, null, null).id, 30);
+    assert.equal(chooseVariant(tiers, null, "999999").id, 30);
+    assert.equal(chooseVariant(tiers, null, "'; DROP TABLE").id, 30);
+  });
+
+  test("a pinned variant is the event's decision — a guest cannot move off it", () => {
+    assert.equal(chooseVariant(tiers, "50", "100").id, 50);
+    assert.equal(chooseVariant(tiers, "50", null).id, 50);
+  });
+
+  test("a pin naming a variant the store no longer has degrades to the default", () => {
+    // Otherwise deleting a tier in Shopify would freeze every guest on a dead
+    // checkout link with no way to contribute at all.
+    assert.equal(chooseVariant(tiers, "777", "100").id, 100);
+  });
+
+  test("a product with no variants has nothing to choose", () => {
+    assert.equal(chooseVariant({ variants: [] }, null, "30"), null);
   });
 });
 

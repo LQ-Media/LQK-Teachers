@@ -103,7 +103,6 @@ export default function EventDetail({
     support_url: event.support_url || "",
     ask_contribution: !!event.ask_contribution,
     max_party_size: String(event.max_party_size || 10),
-    ask_photo: !!event.ask_photo,
     status: event.status,
   });
 
@@ -241,6 +240,18 @@ export default function EventDetail({
             <div className="sm:col-span-2">
               <label className={label} htmlFor="f-title">Title</label>
               <input id="f-title" className={field} value={form.title} onChange={set("title")} />
+              {/* The title is dropped into the approved WhatsApp template as a
+                  parameter. Braces are that template's own placeholder syntax,
+                  so a title carrying them reads as a bug to the family — one
+                  went out as "You're invited to {1} Test Maulid 2026." */}
+              {/[{}]/.test(form.title) ? (
+                <div className="mt-2">
+                  <Notice tone="bad">
+                    Curly brackets don&rsquo;t belong in a title — WhatsApp uses them for its
+                    own placeholders. Guests will see them in the message. Remove them here.
+                  </Notice>
+                </div>
+              ) : null}
             </div>
             <div>
               <label className={label} htmlFor="f-host">Hosted by</label>
@@ -346,16 +357,6 @@ export default function EventDetail({
                 <option value="closed">Closed — no more replies</option>
               </select>
             </div>
-          </div>
-
-          <div className="mt-4 grid gap-2">
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={form.ask_photo} onChange={set("ask_photo")} className="size-4 accent-gold" />
-              Ask guests for a family photo
-              {!capabilities.drive ? (
-                <span className="text-xs text-rust">(Drive not configured — uploads will fail)</span>
-              ) : null}
-            </label>
           </div>
 
           {/* ---- contribution ---- */}

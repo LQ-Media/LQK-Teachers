@@ -684,16 +684,6 @@
   border-color: var(--inv-accent);
 }
 
-.inv-photo-preview {
-  display: block;
-  max-width: 100%;
-  width: 220px;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: calc(var(--inv-radius) * 0.5);
-  margin: 0 auto 10px;
-}
-
 .inv-check {
   display: flex;
   align-items: flex-start;
@@ -911,6 +901,109 @@
   line-height: 1.5;
   color: var(--inv-muted);
   margin: 0 0 12px;
+}
+
+/* The tier chooser on a contribution product that carries several ($30 / $50 /
+   $100 …). Sits above the product card so the card reads as confirmation of
+   what was picked.
+
+   Rows rather than a <select> because the store's tier names run long and a
+   select clips them — see the comment at the markup. Everything below leans on
+   the .inv-choice rules above (same hidden-radio pattern, same ✓ dot); only the
+   two-line body is new. */
+.inv-tiers {
+  display: grid;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  min-inline-size: 0; /* a fieldset will not shrink below its content otherwise */
+}
+
+.inv-tiers-legend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.inv-tier input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.inv-tier > span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: start;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid var(--inv-line);
+  border-radius: calc(var(--inv-radius) * 0.6);
+  cursor: pointer;
+  background: var(--inv-surface);
+  transition:
+    transform 160ms ease-out,
+    border-color 200ms ease,
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+/* The name wraps; the price never does — it is the number the family is
+   deciding on and must stay whole at any width. */
+.inv-tier-body {
+  min-inline-size: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.inv-tier-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.inv-tier-price {
+  font-size: 12px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-tier > span:hover {
+    border-color: var(--inv-accent);
+  }
+}
+
+.inv-tier > span:active {
+  transform: scale(0.98);
+}
+
+.inv-tier input:focus-visible + span {
+  outline: 2px solid var(--inv-accent);
+  outline-offset: 2px;
+}
+
+.inv-tier input:checked + span {
+  background: var(--inv-accent);
+  border-color: var(--inv-accent);
+  color: var(--inv-surface);
+}
+
+.inv-tier input:checked + span .inv-choice-dot {
+  background: var(--inv-surface);
+  border-color: var(--inv-surface);
+  color: var(--inv-accent);
+}
+
+/* A sold-out tier stays listed and readable — dropping it silently would leave
+   a family looking for an amount they were told about. */
+.inv-tier input:disabled + span {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .inv-product {
