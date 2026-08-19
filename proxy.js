@@ -20,7 +20,13 @@ const PUBLIC_ROUTES = ["/login"];
    /login — i.e. broken images on exactly the surfaces outsiders see. Found by
    screenshotting the invite from a cookie-less browser; an authenticated dev
    session masks it completely. */
-const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/"];
+/* /q/ is QR Registration: the door check-in, a family's pass, the booth
+   scanner, the prize counter and the hall leaderboard. None of those people
+   have a portal account — a parent at the door, a volunteer on a borrowed
+   phone — and the TV showing the leaderboard cannot type a password. The
+   credential is the pass token in the path (verified in
+   lib/events/passport-queries.js) or the event's staff PIN. */
+const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/", "/q/"];
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
