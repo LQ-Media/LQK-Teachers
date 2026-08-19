@@ -31,6 +31,7 @@ const ICON_TONE = {
   trophy: "honey", // achievements
   settings: "sage", // admin
   calendar: "clay", // event invitations
+  grid: "honey", // qr registration
   compass: "clay", // qibla
   clock: "honey", // work hours
   bell: "honey", // solat & azan

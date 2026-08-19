@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/achievements", label: "Achievements", icon: "trophy" },
   { href: "/hours", label: "Work hours", icon: "clock" },
   { href: "/events", label: "Events", icon: "calendar", roles: ["admin"] },
+  { href: "/qr", label: "QR Registration", icon: "grid", roles: ["admin"] },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
 ];
 
