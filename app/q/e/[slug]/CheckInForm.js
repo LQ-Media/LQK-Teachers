@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Icon from "@/components/Icon";
 import { guessSurname } from "@/lib/qr/tokens";
+import { MAX_PAX } from "@/lib/qr/pax";
 import { checkInAction, searchExpectedAction } from "./actions";
 
 /* The door form.
@@ -52,7 +53,7 @@ function NamePicker({ slug, onPick, onSkip, picked }) {
   return (
     <div className="mt-8">
       <label className={label} htmlFor="guest-search">
-        {picked.length ? "Anyone else on the list?" : "Find your child’s name"}
+        {picked.length ? "Who else is on the list?" : "Find your child’s name"}
       </label>
       <input
         id="guest-search"
@@ -109,7 +110,7 @@ function NamePicker({ slug, onPick, onSkip, picked }) {
         onClick={onSkip}
         className="mt-6 w-full rounded-pill border border-line px-5 py-3.5 text-sm font-semibold text-ink transition-transform duration-150 ease-out active:scale-[0.98]"
       >
-        {picked.length ? "That’s everyone from the list" : "Not on the list — add by hand"}
+        {picked.length ? "Back" : "Not on the list — add by hand"}
       </button>
     </div>
   );
@@ -126,13 +127,22 @@ export default function CheckInForm({ event, hasList }) {
   const [email, setEmail] = useState("");
   const [answers, setAnswers] = useState({});
   const [people, setPeople] = useState([]);
+  const [extraPax, setExtraPax] = useState(0);
 
+  /* Picking a name goes STRAIGHT to the rest of the form.
+
+     It used to stay in the picker asking "anyone else on the list?", which
+     reads as the form having ignored the tap — most families have one child
+     here, so the common case was being made to answer a question it didn't
+     have. Adding a second child is still one tap, from "Search the list" on
+     the form itself. */
   function pick(match) {
     setPeople((prev) => [
       ...prev,
       { expectedId: match.id, name: match.name, className: match.class_name || "", kind: "child" },
     ]);
     setFamilyName((prev) => prev || guessSurname(match.name));
+    setStep("details");
   }
 
   const setPerson = (index, patch) =>
@@ -157,6 +167,7 @@ export default function CheckInForm({ event, hasList }) {
         email,
         answers,
         people,
+        extraPax,
       });
       if (res && !res.ok) {
         setError(res.error);
@@ -259,6 +270,46 @@ export default function CheckInForm({ event, hasList }) {
           ) : null}
         </div>
       </div>
+
+      {event.ask_pax ? (
+        <div>
+          <p className={label} id="pax-label">
+            {event.pax_label || "How many others are with you?"}
+          </p>
+          <div className="flex items-center gap-3 rounded-control border border-line bg-white px-4 py-3">
+            <span className="flex-1 text-sm text-charcoal-soft">
+              People you haven’t named above
+            </span>
+            {/* Buttons rather than a number input: a phone keypad over a
+                one-digit field is a lot of screen for a number that is almost
+                always 0, 1 or 2. */}
+            <button
+              type="button"
+              onClick={() => setExtraPax((n) => Math.max(0, n - 1))}
+              disabled={extraPax <= 0}
+              aria-label="One fewer person"
+              className="flex h-11 w-11 items-center justify-center rounded-control bg-paper-deep text-ink transition-transform duration-150 ease-out active:scale-[0.95] disabled:opacity-40"
+            >
+              <Icon name="minus" size={18} />
+            </button>
+            <span
+              aria-live="polite"
+              aria-labelledby="pax-label"
+              className="w-8 text-center text-lg font-semibold tabular-nums text-ink"
+            >
+              {extraPax}
+            </span>
+            <button
+              type="button"
+              onClick={() => setExtraPax((n) => Math.min(MAX_PAX, n + 1))}
+              aria-label="One more person"
+              className="flex h-11 w-11 items-center justify-center rounded-control bg-paper-deep text-ink transition-transform duration-150 ease-out active:scale-[0.95]"
+            >
+              <Icon name="plus" size={18} />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <label className={label} htmlFor="familyName">

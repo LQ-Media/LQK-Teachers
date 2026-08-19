@@ -26,7 +26,7 @@ export async function GET(_request, ctx) {
 
   const rows = listAttendance(id);
   const header = [
-    "Name", "Class", "Adult or child", "On the list", "Family", "Contact", "Phone", "Email",
+    "Name", "Class", "Adult or child", "On the list", "Family", "Others in party", "Contact", "Phone", "Email",
     ...event.fields.map((f) => f.label),
   ];
 
@@ -40,6 +40,10 @@ export async function GET(_request, ctx) {
         row.kind,
         row.expected_id ? "yes" : "walk-in",
         row.family_name,
+        // Party-level, so it repeats on each of the party's rows exactly as
+        // the contact and phone columns do. Summing this column would
+        // double-count; it belongs to the family, not to the person.
+        row.extra_pax || 0,
         row.contact_name || "",
         row.phone || "",
         row.email || "",

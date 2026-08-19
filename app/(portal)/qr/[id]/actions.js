@@ -50,8 +50,11 @@ export async function saveQrEventAction(id, form) {
     status,
     intro: form.intro,
     fields: parseFields(form.fields || []),
+    askPax: Boolean(form.askPax),
+    paxLabel: String(form.paxLabel || "").trim().slice(0, 80) || null,
     photoEnabled,
     photoPrompt: form.photoPrompt,
+    photoAspect: form.photoAspect,
     photoBlurb: form.photoBlurb,
     photoConsentText: String(form.photoConsentText || "").trim() || DEFAULT_CONSENT,
   });

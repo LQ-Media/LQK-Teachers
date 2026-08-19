@@ -36,6 +36,7 @@ export default async function PassPage({ params }) {
       eventTitle={event.title}
       venue={event.venue_name}
       people={attendanceFor(registration.id)}
+      extraPax={registration.extra_pax || 0}
       photoEnabled={Boolean(event.photo_enabled)}
       photoBlurb={event.photo_blurb}
       consentText={event.photo_consent_text}

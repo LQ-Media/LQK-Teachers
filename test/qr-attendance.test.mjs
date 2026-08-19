@@ -22,6 +22,8 @@ import {
 } from "../lib/qr/tokens.js";
 
 import { parseFields, validateAnswers, answerRows } from "../lib/qr/fields.js";
+import { clampPax, MAX_PAX } from "../lib/qr/pax.js";
+import { ASPECT_RATIOS, DEFAULT_ASPECT, isAspect } from "../lib/qr/asset-kinds.js";
 import { QR_SCHEMA_SQL } from "../lib/qr/schema.js";
 
 describe("pass tokens", () => {
@@ -240,5 +242,60 @@ describe("the schema's guards", () => {
     const row = db.prepare("SELECT name, expected_id FROM qr_attendance WHERE id = 'a1'").get();
     assert.equal(row.name, "Aisyah Rahman");
     assert.equal(row.expected_id, null);
+  });
+});
+
+describe("the accompanying-pax count", () => {
+  test("a plain number of people passes through", () => {
+    assert.equal(clampPax(3), 3);
+    assert.equal(clampPax("2"), 2);
+  });
+
+  test("nothing, nonsense and negatives all mean nobody", () => {
+    // The question is optional and the stepper starts at zero, so "no answer"
+    // has to be a real answer rather than an error a parent has to clear.
+    for (const value of [undefined, null, "", "lots", NaN, -4, false]) {
+      assert.equal(clampPax(value), 0, `${String(value)} should be 0`);
+    }
+  });
+
+  test("a fraction becomes a whole person, rounded down", () => {
+    assert.equal(clampPax(2.9), 2);
+  });
+
+  test("an absurd number is capped rather than believed", () => {
+    // A held "+" button or an edited page should not turn one family into a
+    // catering order for nine hundred. A big-but-plausible typo is capped
+    // rather than rejected, because 90 for 9 is a real mistake.
+    assert.equal(clampPax(9000), MAX_PAX);
+  });
+
+  test("a non-finite number is treated as no answer, not as the cap", () => {
+    // Infinity can only arrive from a crafted payload, and silently recording
+    // fifty extra guests would be worse than recording none.
+    assert.equal(clampPax(Infinity), 0);
+    assert.equal(clampPax(-Infinity), 0);
+  });
+});
+
+describe("the generated picture's shape", () => {
+  test("every offered ratio is one the image model accepts", () => {
+    // A ratio the API rejects fails the whole generation, and the family sees
+    // a broken picture rather than a bad shape.
+    const accepted = new Set(["1:1", "3:4", "4:3", "9:16", "16:9"]);
+    for (const r of ASPECT_RATIOS) {
+      assert.equal(accepted.has(r.value), true, `${r.value} is not a Gemini aspect ratio`);
+      assert.ok(r.label && r.hint, `${r.value} needs a label and a hint`);
+    }
+  });
+
+  test("the default is one of the offered ratios", () => {
+    assert.equal(isAspect(DEFAULT_ASPECT), true);
+  });
+
+  test("anything else is refused so it can fall back", () => {
+    for (const bad of ["", null, "banana", "4:5", "1:1 ", 43]) {
+      assert.equal(isAspect(bad), false, `${String(bad)} should not be accepted`);
+    }
   });
 });

@@ -7,7 +7,7 @@ import Icon from "@/components/Icon";
 import { formatToken, partyName } from "@/lib/qr/tokens";
 import { parseInviteeCsv } from "@/lib/qr/csv";
 import { FIELD_TYPES } from "@/lib/qr/fields";
-import { ASSET_KINDS, MAX_ASSET_BYTES } from "@/lib/qr/asset-kinds";
+import { ASSET_KINDS, ASPECT_RATIOS, DEFAULT_ASPECT, MAX_ASSET_BYTES } from "@/lib/qr/asset-kinds";
 import { shrinkImage } from "@/lib/qr/shrink";
 import {
   saveQrEventAction,
@@ -106,9 +106,12 @@ export default function AttendanceStudio({
   const [status, setStatus] = useState(event.status);
   const [intro, setIntro] = useState(event.intro || "");
   const [fields, setFields] = useState(event.fields || []);
+  const [askPax, setAskPax] = useState(Boolean(event.ask_pax));
+  const [paxLabel, setPaxLabel] = useState(event.pax_label || "");
 
   const [photoEnabled, setPhotoEnabled] = useState(Boolean(event.photo_enabled));
   const [photoPrompt, setPhotoPrompt] = useState(event.photo_prompt || "");
+  const [photoAspect, setPhotoAspect] = useState(event.photo_aspect || DEFAULT_ASPECT);
   const [photoBlurb, setPhotoBlurb] = useState(event.photo_blurb || "");
   const [photoConsentText, setPhotoConsentText] = useState(event.photo_consent_text || "");
 
@@ -118,6 +121,7 @@ export default function AttendanceStudio({
   const [listFilter, setListFilter] = useState("");
 
   const [uploadKind, setUploadKind] = useState("background");
+  const [uploadLabel, setUploadLabel] = useState("");
   const [uploadError, setUploadError] = useState(null);
   const fileRef = useRef(null);
 
@@ -155,8 +159,11 @@ export default function AttendanceStudio({
         status: nextStatus,
         intro,
         fields,
+        askPax,
+        paxLabel,
         photoEnabled,
         photoPrompt,
+        photoAspect,
         photoBlurb,
         photoConsentText,
       });
@@ -193,9 +200,16 @@ export default function AttendanceStudio({
       return;
     }
     startTransition(async () => {
-      const res = await uploadAssetAction(event.id, { kind: uploadKind, dataUrl: shrunk.dataUrl });
+      const res = await uploadAssetAction(event.id, {
+        kind: uploadKind,
+        label: uploadLabel,
+        dataUrl: shrunk.dataUrl,
+      });
       if (!res.ok) setUploadError(res.error);
-      else router.refresh();
+      else {
+        setUploadLabel("");
+        router.refresh();
+      }
       if (fileRef.current) fileRef.current.value = "";
     });
   }
@@ -361,6 +375,43 @@ export default function AttendanceStudio({
             >
               Add a question
             </button>
+
+            <div className="mt-6 border-t border-line pt-5">
+              <label className="flex items-start gap-3 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={askPax}
+                  onChange={(e) => setAskPax(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 flex-shrink-0 accent-[color:var(--color-gold)]"
+                />
+                <span>
+                  <span className="block font-semibold">Ask how many others are with them</span>
+                  {/* Said plainly because the two are easy to confuse: this is
+                      a NUMBER for people who are never named, and it is added
+                      to the named list rather than replacing it. */}
+                  <span className="mt-0.5 block text-charcoal-soft">
+                    A simple count for anyone they don’t want to name — a grandmother, a neighbour’s
+                    child. Added on top of the people they list, so the headcount is always right.
+                    Leaving it at zero is fine.
+                  </span>
+                </span>
+              </label>
+
+              {askPax ? (
+                <div className="mt-3 pl-8">
+                  <label className={label} htmlFor="qr-pax-label">
+                    How to word it
+                  </label>
+                  <input
+                    id="qr-pax-label"
+                    value={paxLabel}
+                    onChange={(e) => setPaxLabel(e.target.value)}
+                    placeholder="How many others are with you?"
+                    className={field}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className={card}>
@@ -617,6 +668,9 @@ export default function AttendanceStudio({
                   <p className="mt-1.5 truncate text-xs font-semibold text-ink">
                     {ASSET_KINDS.find((k) => k.kind === asset.kind)?.label || asset.kind}
                   </p>
+                  {asset.label ? (
+                    <p className="truncate text-[11px] text-charcoal-soft">{asset.label}</p>
+                  ) : null}
                   <button
                     type="button"
                     disabled={pending}
@@ -634,25 +688,40 @@ export default function AttendanceStudio({
               ))}
             </ul>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <select
-                value={uploadKind}
-                onChange={(e) => setUploadKind(e.target.value)}
-                aria-label="What kind of artwork"
-                className="rounded-control border border-line bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:border-gold"
-              >
-                {ASSET_KINDS.map((k) => (
-                  <option key={k.kind} value={k.kind}>{k.label}</option>
-                ))}
-              </select>
+            <div className="mt-4 rounded-control border border-line bg-paper p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={uploadKind}
+                  onChange={(e) => setUploadKind(e.target.value)}
+                  aria-label="What kind of artwork"
+                  className="rounded-control border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-gold"
+                >
+                  {ASSET_KINDS.map((k) => (
+                    <option key={k.kind} value={k.kind}>{k.label}</option>
+                  ))}
+                </select>
+                <input
+                  value={uploadLabel}
+                  onChange={(e) => setUploadLabel(e.target.value)}
+                  placeholder="Name it — optional, e.g. “Maulid wordmark”"
+                  aria-label="Name for this artwork"
+                  className="min-w-0 flex-1 rounded-control border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-gold"
+                />
+              </div>
               <input
                 ref={fileRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 onChange={(e) => onPickFile(e.target.files?.[0])}
                 aria-label="Choose an image to upload"
-                className="text-sm text-charcoal-soft file:mr-3 file:rounded-pill file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
+                className="mt-3 w-full text-sm text-charcoal-soft file:mr-3 file:rounded-pill file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
               />
+              {/* Said out loud because a one-of-each list is the obvious
+                  assumption, and two event logos is a normal thing to have. */}
+              <p className="mt-2 text-xs text-charcoal-soft">
+                Add as many as you like of any kind — two event logos, three sponsors. The name is
+                what the picture generator is told the image is, so your prompt can refer to it.
+              </p>
             </div>
             {uploadError ? (
               <div className="mt-3">
@@ -677,6 +746,24 @@ export default function AttendanceStudio({
               Your words go first and the house rules follow — the family’s faces are never altered,
               nobody is added or removed, and logos are reproduced rather than redrawn.
             </p>
+
+            <div className="mt-5 max-w-sm">
+              <label className={label} htmlFor="qr-photo-aspect">
+                Shape of the picture
+              </label>
+              <select
+                id="qr-photo-aspect"
+                value={photoAspect}
+                onChange={(e) => setPhotoAspect(e.target.value)}
+                className={field}
+              >
+                {ASPECT_RATIOS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label} — {r.hint}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="mt-5">
               <label className={label} htmlFor="qr-photo-blurb">
@@ -726,9 +813,9 @@ export default function AttendanceStudio({
         <>
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              ["people", stats.people, "people here"],
+              ["people", stats.people, stats.unnamed ? `here (${stats.unnamed} not named)` : "people here"],
               ["parties", stats.parties, "families"],
-              ["children", stats.children, "children"],
+              ["children", stats.children, "children named"],
               ["photos", stats.photos, "photos made"],
             ].map(([key, value, text]) => (
               <div key={key} className="rounded-card border border-line bg-white p-4">
@@ -799,7 +886,14 @@ export default function AttendanceStudio({
                         <td className="py-2.5 pr-3 font-mono text-xs tabular-nums text-charcoal-soft">
                           {formatToken(row.token)}
                         </td>
-                        <td className="py-2.5 pr-3 tabular-nums text-charcoal-soft">{row.head_count}</td>
+                        <td className="py-2.5 pr-3 tabular-nums text-charcoal-soft">
+                          {row.head_count}
+                          {row.extra_pax ? (
+                            <span className="block text-xs text-charcoal-soft">
+                              {row.named_count} named + {row.extra_pax}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="py-2.5">
                           {row.photo_status === "ready" ? (
                             <span className="flex items-center gap-2">

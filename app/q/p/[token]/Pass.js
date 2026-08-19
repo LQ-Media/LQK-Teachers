@@ -22,6 +22,7 @@ export default function Pass({
   eventTitle,
   venue,
   people,
+  extraPax,
   photoEnabled,
   photoBlurb,
   consentText,
@@ -93,7 +94,8 @@ export default function Pass({
 
       <section className="mt-6 rounded-card border border-line bg-white p-5">
         <h2 className="font-heading text-lg font-semibold text-charcoal">
-          {people.length} {people.length === 1 ? "person" : "people"} on this pass
+          {people.length + extraPax} {people.length + extraPax === 1 ? "person" : "people"} on this
+          pass
         </h2>
         <ul className="mt-3 divide-y divide-line">
           {[...children, ...adults].map((person) => (
@@ -115,6 +117,11 @@ export default function Pass({
             </li>
           ))}
         </ul>
+        {extraPax ? (
+          <p className="mt-3 text-sm text-charcoal-soft">
+            …and {extraPax} more with you.
+          </p>
+        ) : null}
       </section>
 
       {photoEnabled ? (
@@ -174,8 +181,16 @@ export default function Pass({
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
-                capture="environment"
+                /* No `capture` attribute, and a broad accept.
+
+                   `capture="environment"` makes iOS and Android open the
+                   CAMERA and hide the photo library entirely — so a family
+                   who already has the photo they want could not choose it.
+                   Without it the OS offers both. `image/*` rather than a
+                   list because an iPhone album hands over HEIC, which the
+                   browser re-encodes on the way through shrinkImage; naming
+                   only JPEG/PNG greys those photos out in the picker. */
+                accept="image/*"
                 onChange={(e) => onPick(e.target.files?.[0])}
                 aria-label="Choose a family photo"
                 className="mt-4 w-full text-sm text-charcoal-soft file:mr-3 file:rounded-pill file:border-0 file:bg-paper-deep file:px-5 file:py-3 file:text-sm file:font-semibold file:text-ink"

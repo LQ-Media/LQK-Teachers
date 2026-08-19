@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getOpenQrEvent, checkIn, searchExpected } from "@/lib/qr/queries";
+import { getOpenQrEvent, checkIn, searchExpected, clampPax } from "@/lib/qr/queries";
 import { normalizePhone } from "@/lib/events/phone";
 import { validateAnswers } from "@/lib/qr/fields";
 import { PASS_COOKIE } from "@/lib/qr/tokens";
@@ -68,6 +68,9 @@ export async function checkInAction(slug, form) {
 
   const created = checkIn(event.id, {
     familyName,
+    // Ignored unless the event asks — a number posted at an event that never
+    // offered the question is not an answer, it is somebody editing the page.
+    extraPax: event.ask_pax ? clampPax(form.extraPax) : 0,
     contactName: String(form.contactName || "").trim().slice(0, 60) || null,
     phone,
     email: email || null,
