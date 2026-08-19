@@ -1,18 +1,18 @@
 import { notFound } from "next/navigation";
-import { getFamilyByToken, passportFor, familyMembers } from "@/lib/qr/queries";
-import { displayName, formatToken } from "@/lib/qr/passport";
+import { getRegistrationByToken, attendanceFor, getPhoto } from "@/lib/qr/queries";
+import { partyName, formatToken } from "@/lib/qr/tokens";
 import QrCode from "@/components/qr/QrCode";
-import Passport from "./Passport";
+import Pass from "./Pass";
 
 /* A family's pass.
 
-   Per-request, never cached: it shows THIS family's progress, and a cached copy
-   would show one family another's letters. */
+   Per-request, never cached: it shows THIS family's people and their photo, and
+   a cached copy would show one family another's. */
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }) {
   const { token } = await params;
-  const found = getFamilyByToken(token);
+  const found = getRegistrationByToken(token);
   return {
     title: found ? `Our pass — ${found.event.title}` : "Pass",
     robots: { index: false, follow: false },
@@ -21,33 +21,33 @@ export async function generateMetadata({ params }) {
 
 export default async function PassPage({ params }) {
   const { token } = await params;
-  const found = getFamilyByToken(token);
+  const found = getRegistrationByToken(token);
   if (!found) notFound();
 
-  const { family, event } = found;
-  const passport = passportFor(event, family);
+  const { registration, event } = found;
+  const photo = getPhoto(registration.id);
   const baseUrl = (process.env.LQK_PUBLIC_BASE_URL || "https://teachers.littlequrankids.sg").replace(/\/+$/, "");
 
   return (
-    <Passport
-      name={displayName(family)}
-      code={formatToken(family.token)}
-      /* The RAW token keys the reveal state in localStorage. Keying it on the
-         printed form would tie a family's opened tiles to a display detail —
-         change the grouping and every pass in the hall silently re-seals. */
-      token={family.token}
+    <Pass
+      token={registration.token}
+      code={formatToken(registration.token)}
+      name={partyName(registration)}
       eventTitle={event.title}
-      passport={passport}
-      memberCount={familyMembers(family.id).length}
+      venue={event.venue_name}
+      people={attendanceFor(registration.id)}
+      photoEnabled={Boolean(event.photo_enabled)}
+      photoBlurb={event.photo_blurb}
+      consentText={event.photo_consent_text}
+      hasPhoto={photo?.status === "ready"}
       /* The pass QR encodes a FULL URL, not a bare code: a parent who scans
          their own pass with the phone camera then lands somewhere useful
-         instead of seeing eight meaningless characters. The booth scanner
-         pulls the token back out of the path. */
+         instead of seeing eight meaningless characters. */
       qr={
         <QrCode
-          value={`${baseUrl}/q/p/${family.token}`}
-          size={200}
-          title="Show this at each booth"
+          value={`${baseUrl}/q/p/${registration.token}`}
+          size={180}
+          title="Your family pass"
         />
       }
     />

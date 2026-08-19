@@ -2,85 +2,95 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getOpenQrEvent, registerFamily, searchInvitees } from "@/lib/qr/queries";
+import { getOpenQrEvent, checkIn, searchExpected } from "@/lib/qr/queries";
 import { normalizePhone } from "@/lib/events/phone";
-import { PASS_COOKIE } from "@/lib/qr/passport";
+import { validateAnswers } from "@/lib/qr/fields";
+import { PASS_COOKIE } from "@/lib/qr/tokens";
 
-/* Registration is a PUBLIC action — the whole point is that a parent with no
+/* Check-in is a PUBLIC action — the whole point is that a parent with no
    account can use it — so it re-reads the event itself and refuses anything
-   that isn't open. `getOpenQrEvent` returns nothing for an event that is a
-   draft or already closed, which is the gate. */
+   that isn't open. `getOpenQrEvent` returns nothing for a draft or a closed
+   event, which is the gate. */
 
-const MAX_MEMBERS = 20;
+const MAX_PEOPLE = 20;
 
 /* The door's type-ahead.
 
-   A server action rather than shipping the guest list to the browser: the whole
-   list in the bundle IS the list published, whatever the UI chooses to render.
-   The two-character minimum lives in searchInvitees. */
-export async function searchInviteesAction(slug, query) {
+   A server action rather than shipping the list to the browser: the whole list
+   in the bundle IS the list published, whatever the UI chooses to render — and
+   this one carries children's names and classes. The two-character minimum
+   lives in searchExpected. */
+export async function searchExpectedAction(slug, query) {
   const event = getOpenQrEvent(slug);
   if (!event) return [];
-  return searchInvitees(event.id, query);
+  return searchExpected(event.id, query);
 }
 
-export async function registerFamilyAction(slug, form) {
+export async function checkInAction(slug, form) {
   const event = getOpenQrEvent(slug);
   if (!event) return { ok: false, error: "Check-in for this event isn’t open." };
 
-  const surname = String(form.surname || "").trim().slice(0, 60);
-  if (!surname) return { ok: false, error: "Please add your family name." };
+  const familyName = String(form.familyName || "").trim().slice(0, 60);
+  if (!familyName) return { ok: false, error: "Please add your family name." };
 
-  const members = (Array.isArray(form.members) ? form.members : [])
-    .map((member) => ({
-      name: String(member?.name || "").trim().slice(0, 60),
-      kind: member?.kind === "adult" ? "adult" : "child",
-      className: String(member?.className || "").trim().slice(0, 40) || null,
+  const people = (Array.isArray(form.people) ? form.people : [])
+    .map((person) => ({
+      expectedId: String(person?.expectedId || "").trim() || null,
+      name: String(person?.name || "").trim().slice(0, 60),
+      className: String(person?.className || "").trim().slice(0, 40) || null,
+      kind: person?.kind === "adult" ? "adult" : "child",
     }))
-    .filter((member) => member.name)
-    .slice(0, MAX_MEMBERS);
+    .filter((person) => person.name)
+    .slice(0, MAX_PEOPLE);
 
-  /* A landline can't receive the "here's your pass again" message and a parent
-     who typed one would never know. Rejected at the door, where it can still be
-     fixed, rather than discovered afterwards. */
+  // Attendance is the whole point — a registration with nobody in it records
+  // that a family arrived without recording that anyone did.
+  if (!people.length) return { ok: false, error: "Add at least one person who is here." };
+
   let phone = null;
   const rawPhone = String(form.phone || "").trim();
   if (rawPhone) {
     phone = normalizePhone(rawPhone);
     // normalizePhone accepts SG landlines (leading 6) because the guest
-    // importer legitimately holds them. A pass can only be re-sent to a
-    // mobile, so this caller narrows it rather than changing the shared helper.
-    // SG mobiles start 8 or 9; 6 is a landline and 3 is VoIP.
+    // importer legitimately holds them. SG mobiles start 8 or 9; this caller
+    // narrows it rather than changing the shared helper.
     if (phone && phone.startsWith("+65") && !/^\+65[89]/.test(phone)) phone = null;
     if (!phone) return { ok: false, error: "That doesn’t look like a mobile number." };
   }
 
-  const created = registerFamily(event.id, {
-    inviteeId: String(form.inviteeId || "").trim() || null,
-    surname,
-    nickname: String(form.nickname || "").trim().slice(0, 60) || null,
-    parentName: String(form.parentName || "").trim().slice(0, 60) || null,
+  const email = String(form.email || "").trim().slice(0, 120);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "That doesn’t look like an email address." };
+  }
+
+  const checked = validateAnswers(event.fields, form.answers);
+  if (!checked.ok) return checked;
+
+  const created = checkIn(event.id, {
+    familyName,
+    contactName: String(form.contactName || "").trim().slice(0, 60) || null,
     phone,
-    members,
+    email: email || null,
+    answers: checked.answers,
+    people,
   });
 
-  // Two phones picked the same name within a second of each other. Says so
-  // rather than silently making a second family against one guest-list entry.
+  // Two phones checked the same student in within a second of each other.
   if (created.taken) {
-    return { ok: false, error: "Someone just checked in under that name. Pick your name again." };
+    return { ok: false, error: "Someone was just checked in under that name. Please pick the name again." };
   }
 
   /* Remember the pass on this phone. Re-scanning the door QR is the single most
      common accident of the day — a parent shows the code to a friend, or scans
      it again on the way past — and without this each one silently creates a
-     second family with a second empty pass. */
+     second registration and double-counts the family. */
   const cookieStore = await cookies();
   cookieStore.set(`${PASS_COOKIE}_${event.id}`, created.token, {
     httpOnly: false, // read on the client so the door page can offer the pass back
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24,
+    maxAge: 60 * 60 * 24 * 30,
   });
 
   // redirect() SIGNALS BY THROWING — it must be the last thing here and must

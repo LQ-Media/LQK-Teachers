@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/dal";
-import { getQrEvent, qrStats, listFamilies, listInvitees } from "@/lib/qr/queries";
+import { getQrEvent, qrStats, listRegistrations, listExpected } from "@/lib/qr/queries";
+import { geminiConfigured } from "@/lib/qr/photo";
 import PageHeading from "@/components/PageHeading";
 import QrCode from "@/components/qr/QrCode";
-import QrStudio from "./QrStudio";
+import AttendanceStudio from "./AttendanceStudio";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +37,13 @@ export default async function QrEventPage({ params }) {
         subtitle={event.venue_name || "QR Registration"}
       />
 
-      <QrStudio
+      <AttendanceStudio
         event={event}
         stats={qrStats(id)}
-        families={listFamilies(id)}
-        invitees={listInvitees(id)}
+        registrations={listRegistrations(id)}
+        expected={listExpected(id)}
         baseUrl={baseUrl}
+        hasGemini={geminiConfigured()}
         /* Rendered here, on the server, and handed down as a node: the encoder
            is pure JS and would work in the browser, but shipping it into the
            client bundle to draw one static symbol is pure weight. */

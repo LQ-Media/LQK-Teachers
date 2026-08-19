@@ -1,4 +1,4 @@
-// The expected-guest list parser (lib/qr/csv.js).
+// The expected-attendee list parser (lib/qr/csv.js).
 //
 // This is the only place in the feature that eats a file somebody else made.
 // It arrives as an Excel export, a Google Sheets paste, or a block of names
@@ -25,10 +25,10 @@ describe("parseInviteeCsv", () => {
   });
 
   test("a header row is used when it actually names a column", () => {
-    const result = parseInviteeCsv("name,phone,note\nFatimah Rahman,91234567,Iqra 2");
+    const result = parseInviteeCsv("name,class,phone\nFatimah Rahman,Iqra 2,91234567");
     assert.equal(result.usedHeader, true);
     assert.deepEqual(result.rows, [
-      { name: "Fatimah Rahman", phone: "91234567", note: "Iqra 2" },
+      { name: "Fatimah Rahman", className: "Iqra 2", phone: "91234567", note: null },
     ]);
   });
 
@@ -39,9 +39,11 @@ describe("parseInviteeCsv", () => {
   });
 
   test("column order is read from the header, not assumed", () => {
-    const result = parseInviteeCsv("Class,Full Name,Mobile\nTahfiz,Ahmad Ismail,98765432");
+    // Class is a FIRST-CLASS column: attendance is logged by name and class,
+    // so it must not land in a generic note field wherever the export put it.
+    const result = parseInviteeCsv("Class,Student,Mobile\nTahfiz,Ahmad Ismail,98765432");
     assert.deepEqual(result.rows, [
-      { name: "Ahmad Ismail", phone: "98765432", note: "Tahfiz" },
+      { name: "Ahmad Ismail", className: "Tahfiz", phone: "98765432", note: null },
     ]);
   });
 
@@ -74,7 +76,7 @@ describe("parseInviteeCsv", () => {
     assert.deepEqual(result.rows.map((r) => r.name), ["Fatimah Rahman", "Ahmad Ismail"]);
   });
 
-  test("the same name twice is one entry, and the repeat is reported", () => {
+  test("the exact same name twice is one entry, and the repeat is reported", () => {
     // A duplicate is a spreadsheet artefact. Left in, the second copy can never
     // be claimed and sits in "still to arrive" all day.
     const result = parseInviteeCsv("Fatimah Rahman\nfatimah rahman\nAhmad Ismail");
@@ -86,14 +88,24 @@ describe("parseInviteeCsv", () => {
     assert.deepEqual(names("  Fatimah    Rahman  "), ["Fatimah Rahman"]);
   });
 
-  test("without a header, a second column is only taken as a phone if it looks like one", () => {
-    // Otherwise a "Class" column lands in the phone field and the studio shows
-    // "Iqra 2" as a contact number.
-    const phone = parseInviteeCsv("Fatimah Rahman,9123 4567").rows[0];
-    assert.equal(phone.phone, "9123 4567");
-    const note = parseInviteeCsv("Fatimah Rahman,Iqra 2").rows[0];
-    assert.equal(note.phone, null);
-    assert.equal(note.note, "Iqra 2");
+  test("without a header, column two is the class unless it is plainly a phone", () => {
+    // "Name, Class" is overwhelmingly the shape of a hand-made list for a
+    // school event. But a list that puts the number there must not import
+    // "9123 4567" as a class name and show it as one on every door match.
+    const withClass = parseInviteeCsv("Fatimah Rahman,Iqra 2").rows[0];
+    assert.equal(withClass.className, "Iqra 2");
+    assert.equal(withClass.phone, null);
+
+    const withPhone = parseInviteeCsv("Fatimah Rahman,9123 4567").rows[0];
+    assert.equal(withPhone.phone, "9123 4567");
+    assert.equal(withPhone.className, null);
+  });
+
+  test("two children with the same name in different classes stay distinct", () => {
+    // Collapsing them means one of them can never be marked present.
+    const rows = parseInviteeCsv("Nur Aisyah,Iqra 1\nNur Aisyah,Quran").rows;
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((r) => r.className), ["Iqra 1", "Quran"]);
   });
 
   test("empty input yields nothing rather than throwing on a live page", () => {

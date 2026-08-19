@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getOpenQrEvent, getFamilyByToken, inviteeStats } from "@/lib/qr/queries";
-import { displayName, PASS_COOKIE } from "@/lib/qr/passport";
-import RegisterForm from "./RegisterForm";
+import { getOpenQrEvent, getRegistrationByToken, qrStats } from "@/lib/qr/queries";
+import { partyName, PASS_COOKIE } from "@/lib/qr/tokens";
+import CheckInForm from "./CheckInForm";
 
 /* The door.
 
@@ -26,22 +26,18 @@ export default async function CheckInPage({ params, searchParams }) {
   const event = getOpenQrEvent(slug);
   if (!event) notFound();
 
-  /* Re-scanning the door QR is the most common accident of the day. If this
-     phone already registered, offer the pass back instead of quietly creating
-     a second family with a second empty pass — the parent's real intent is
-     always "show me my code again".
-
-     ?new=1 is the deliberate escape hatch: one phone genuinely does register
-     two families when a grandparent brings the cousins. */
+  /* ?new=1 is the deliberate escape hatch: one phone genuinely does check two
+     families in when a grandparent brings the cousins. */
   const startingOver = query?.new === "1";
   const cookieStore = await cookies();
   const existingToken = startingOver ? null : cookieStore.get(`${PASS_COOKIE}_${event.id}`)?.value;
-  const existing = existingToken ? getFamilyByToken(existingToken) : null;
-  const alreadyHere = existing && existing.family.qr_event_id === event.id ? existing.family : null;
+  const existing = existingToken ? getRegistrationByToken(existingToken) : null;
+  const alreadyHere =
+    existing && existing.registration.qr_event_id === event.id ? existing.registration : null;
 
-  // Whether the door offers a name picker at all. An open house with no guest
-  // list still has to work — everyone is simply a walk-in.
-  const hasGuestList = inviteeStats(event.id).total > 0;
+  // Whether the door offers a name picker at all. An event with no list still
+  // has to work — everyone is simply a walk-in.
+  const hasList = qrStats(event.id).expected > 0;
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-lg px-5 py-10">
@@ -55,7 +51,7 @@ export default async function CheckInPage({ params, searchParams }) {
         <div className="mt-8 rounded-card border border-line bg-sand p-6 text-center">
           <p className="font-heading text-xl font-semibold text-charcoal">You’re already checked in</p>
           <p className="mt-1.5 text-sm text-gold-hover">
-            {displayName(alreadyHere)} registered on this phone.
+            {partyName(alreadyHere)} checked in on this phone.
           </p>
           <Link
             href={`/q/p/${alreadyHere.token}`}
@@ -64,7 +60,7 @@ export default async function CheckInPage({ params, searchParams }) {
             Open our pass
           </Link>
           <p className="mt-4 text-xs text-charcoal-soft">
-            Registering a different family?{" "}
+            Checking in a different family?{" "}
             <Link href={`/q/e/${event.slug}?new=1`} className="text-gold underline">
               Start a new one
             </Link>
@@ -75,11 +71,11 @@ export default async function CheckInPage({ params, searchParams }) {
         <>
           <p className="mt-6 text-center text-[15px] leading-relaxed text-charcoal-soft">
             {event.intro ||
-              (hasGuestList
-                ? "Find your name to get your family pass, then visit every booth to collect a letter."
-                : `Register your family to get your pass. Show it at each booth to collect a letter — all ${event.booths.length} of them spell a word.`)}
+              (hasList
+                ? "Find your child’s name to check your family in."
+                : "Tell us who’s here and we’ll check your family in.")}
           </p>
-          <RegisterForm event={event} hasGuestList={hasGuestList} />
+          <CheckInForm event={event} hasList={hasList} />
         </>
       )}
     </main>
