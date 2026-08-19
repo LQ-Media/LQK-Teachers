@@ -91,9 +91,11 @@ them on the order in admin.
   guest arriving from an invitation never sees this form. If Maulid places are
   sold through invitations, point that link at the product page instead, or
   capture attendees in the portal.
-- **The portal ignores these properties today.** The order webhook handler reads
-  `note_attributes` only (`orderInviteRef`). Attendee details arrive on the
-  order under `line_items[].properties`; wiring them into the portal is a
-  separate change.
+- **The portal shows these registrations.** The orders/paid webhook records any
+  paid order carrying attendee properties (`orderAttendees` in
+  `lib/events/shopify-core.js`) into the `store_orders` table; they appear under
+  **Events → Store registrations** with a one-row-per-person CSV export. The
+  same webhook + `SHOPIFY_EVENTS_WEBHOOK_SECRET` wiring that confirms
+  invitation contributions is all it needs.
 - Adding the same product twice with different details creates two line items,
   each with its own set of properties. That is Shopify's behaviour and is fine.
