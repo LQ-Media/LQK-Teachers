@@ -85,19 +85,6 @@ export default async function EventPage({ params, searchParams }) {
         >
           Design studio
         </Link>
-        <Link
-          href={`/events/${id}/qr`}
-          className="rounded-pill border border-line px-5 py-2.5 text-sm font-semibold text-ink transition-transform duration-150 ease-out active:scale-[0.97]"
-        >
-          QR Registration
-        </Link>
-        {/* Check-in being OPEN is the one bit of event-day state that matters
-            from here: it means the door link is live and families can walk in. */}
-        {event.qr_enabled ? (
-          <span className="rounded-control bg-gold-soft px-3 py-1.5 text-sm text-ink">
-            Check-in is open
-          </span>
-        ) : null}
         {/* A waiting draft is invisible from the guest side by design, so it
             has to be visible here — otherwise a generated design sits unnoticed
             and Karim assumes the studio didn't work. */}

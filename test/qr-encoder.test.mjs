@@ -1,4 +1,4 @@
-// The QR encoder (lib/events/qr.js).
+// The QR encoder (lib/qr/encoder.js).
 //
 // This is hand-written rather than a dependency, which means nothing else in
 // the world checks it. A QR that encodes almost-the-right-thing still scans —
@@ -11,7 +11,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import jsQR from "jsqr";
 
-import { qrMatrix, qrSvg } from "../lib/events/qr.js";
+import { qrMatrix, qrSvg } from "../lib/qr/encoder.js";
 
 /* Render the matrix to the RGBA buffer jsQR expects, with the 4-module quiet
    zone the spec requires — without it a decoder cannot find the finders. */

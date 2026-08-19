@@ -28,6 +28,7 @@ const MORE_ITEMS = [
   { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Awards", icon: "trophy" },
   { href: "/events", label: "Events", icon: "calendar", roles: ["admin"] },
+  { href: "/qr", label: "QR Registration", icon: "grid", roles: ["admin"] },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
   { href: "/profile", label: "Profile", icon: "user" },
 ];

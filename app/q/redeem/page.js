@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { getBoothSession } from "@/lib/events/booth-session";
-import { getQrEvent } from "@/lib/events/passport-queries";
+import { getBoothSession } from "@/lib/qr/booth-session";
+import { getQrEvent } from "@/lib/qr/queries";
 import RedeemDesk from "./RedeemDesk";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function RedeemPage() {
   // The desk shares the scanner's sign-in rather than owning a second one: one
   // PIN, typed once per phone, and a volunteer moved from a booth to the
   // counter mid-event doesn't have to find Karim again.
-  if (!event || !event.qr_enabled) {
+  if (!event || event.status === "draft") {
     return (
       <main className="mx-auto min-h-dvh w-full max-w-sm px-5 py-12">
         <h1 className="font-heading text-2xl font-semibold text-charcoal">Prize counter</h1>

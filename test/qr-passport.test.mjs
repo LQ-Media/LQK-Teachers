@@ -24,9 +24,9 @@ import {
   tierState,
   nextClaimable,
   displayName,
-} from "../lib/events/passport.js";
+} from "../lib/qr/passport.js";
 
-import { PASSPORT_SCHEMA_SQL } from "../lib/events/passport-schema.js";
+import { QR_SCHEMA_SQL } from "../lib/qr/schema.js";
 
 describe("pass tokens", () => {
   test("the alphabet excludes every character a volunteer misreads aloud", () => {
@@ -155,19 +155,22 @@ describe("the schema's guards", () => {
   function freshDb() {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
-    db.exec("CREATE TABLE events (id TEXT PRIMARY KEY);");
-    db.exec("INSERT INTO events (id) VALUES ('ev');");
-    db.exec(PASSPORT_SCHEMA_SQL);
+    db.exec("CREATE TABLE profiles (id TEXT PRIMARY KEY);");
+    db.exec(QR_SCHEMA_SQL);
 
     const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO qr_events (id, slug, title, status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+    ).run("ev", "demo", "Demo", "open", now, now);
+
     const booths = ["b1", "b2"].map((id, i) => {
-      db.prepare("INSERT INTO event_booths (id, event_id, name, position, created_at) VALUES (?,?,?,?,?)")
+      db.prepare("INSERT INTO qr_booths (id, qr_event_id, name, position, created_at) VALUES (?,?,?,?,?)")
         .run(id, "ev", `Booth ${i + 1}`, i, now);
       return id;
     });
     const families = ["f1", "f2"].map((id, i) => {
       db.prepare(
-        "INSERT INTO event_families (id, event_id, token, surname, created_at) VALUES (?,?,?,?,?)",
+        "INSERT INTO qr_families (id, qr_event_id, token, surname, created_at) VALUES (?,?,?,?,?)",
       ).run(id, "ev", `TOKEN${i}AA`, `Family${i}`, now);
       return id;
     });
@@ -176,14 +179,14 @@ describe("the schema's guards", () => {
 
   const award = (db, family, booth) =>
     db
-      .prepare("INSERT INTO event_visits (id, event_id, family_id, booth_id, created_at) VALUES (?,?,?,?,?)")
+      .prepare("INSERT INTO qr_visits (id, qr_event_id, family_id, booth_id, created_at) VALUES (?,?,?,?,?)")
       .run(randomUUID(), "ev", family, booth, new Date().toISOString());
 
   test("a booth cannot award the same family twice", () => {
     const { db, booths, families } = freshDb();
     award(db, families[0], booths[0]);
     assert.throws(() => award(db, families[0], booths[0]), /UNIQUE/);
-    const { n } = db.prepare("SELECT COUNT(*) AS n FROM event_visits").get();
+    const { n } = db.prepare("SELECT COUNT(*) AS n FROM qr_visits").get();
     assert.equal(n, 1, "the double scan left exactly one visit behind");
   });
 
@@ -193,7 +196,7 @@ describe("the schema's guards", () => {
     award(db, families[0], booths[1]);
     award(db, families[1], booths[0]);
     const count = (id) =>
-      db.prepare("SELECT COUNT(*) AS n FROM event_visits WHERE family_id = ?").get(id).n;
+      db.prepare("SELECT COUNT(*) AS n FROM qr_visits WHERE family_id = ?").get(id).n;
     assert.equal(count(families[0]), 2);
     assert.equal(count(families[1]), 1);
   });
@@ -203,22 +206,63 @@ describe("the schema's guards", () => {
     const claim = () =>
       db
         .prepare(
-          "INSERT INTO event_claims (id, event_id, family_id, tier_index, tier_label, created_at) VALUES (?,?,?,?,?,?)",
+          "INSERT INTO qr_claims (id, qr_event_id, family_id, tier_index, tier_label, created_at) VALUES (?,?,?,?,?,?)",
         )
         .run(randomUUID(), "ev", families[0], 0, "Goodie bag", new Date().toISOString());
     claim();
     assert.throws(claim, /UNIQUE/);
   });
 
-  test("deleting an event takes its passes, visits and prizes with it", () => {
+  // Two phones can hit "that's me" on the same guest-list entry within the same
+  // second. Without the constraint the second one silently takes the first
+  // family's place on the list, and "still to arrive" lies for the rest of the day.
+  test("one name on the guest list cannot be claimed by two families", () => {
+    const { db } = freshDb();
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO qr_invitees (id, qr_event_id, name, search_name, created_at) VALUES (?,?,?,?,?)",
+    ).run("i1", "ev", "Fatimah Rahman", "fatimah rahman", now);
+
+    const claimName = (familyId, token) =>
+      db
+        .prepare(
+          "INSERT INTO qr_families (id, qr_event_id, token, invitee_id, surname, created_at) VALUES (?,?,?,?,?,?)",
+        )
+        .run(familyId, "ev", token, "i1", "Rahman", now);
+
+    claimName("fa", "AAAA2222");
+    assert.throws(() => claimName("fb", "BBBB3333"), /UNIQUE/);
+  });
+
+  // Several walk-ins is the normal case, so a NULL invitee must never collide
+  // with another NULL — SQLite treats NULLs as distinct in a UNIQUE index, and
+  // this pins that down rather than trusting it.
+  test("walk-ins with no guest-list entry do not collide with each other", () => {
+    const { db } = freshDb();
+    const now = new Date().toISOString();
+    const addWalkIn = db.prepare(
+      "INSERT INTO qr_families (id, qr_event_id, token, invitee_id, surname, created_at) VALUES (?, ?, ?, NULL, ?, ?)",
+    );
+    addWalkIn.run("w1", "ev", "CCCC4444", "Walkin", now);
+    addWalkIn.run("w2", "ev", "DDDD5555", "Walkin", now);
+
+    const { n } = db.prepare("SELECT COUNT(*) AS n FROM qr_families WHERE invitee_id IS NULL").get();
+    assert.equal(n, 4, "the two seeded families plus both walk-ins");
+  });
+
+  test("deleting an event takes its list, passes, visits and prizes with it", () => {
     // An event's data is disposable by design — archived after follow-up, then
     // dropped. A cascade that missed a table would leave orphans behind.
     const { db, booths, families } = freshDb();
+    const now = new Date().toISOString();
     award(db, families[0], booths[0]);
-    db.prepare("INSERT INTO event_family_children (id, family_id, name, position) VALUES (?,?,?,?)")
-      .run(randomUUID(), families[0], "Aisyah", 0);
-    db.exec("DELETE FROM events WHERE id = 'ev'");
-    for (const table of ["event_booths", "event_families", "event_visits", "event_family_children"]) {
+    db.prepare("INSERT INTO qr_members (id, family_id, name, kind, position) VALUES (?,?,?,?,?)")
+      .run(randomUUID(), families[0], "Aisyah", "child", 0);
+    db.prepare("INSERT INTO qr_invitees (id, qr_event_id, name, search_name, created_at) VALUES (?,?,?,?,?)")
+      .run("i9", "ev", "Someone", "someone", now);
+
+    db.exec("DELETE FROM qr_events WHERE id = 'ev'");
+    for (const table of ["qr_booths", "qr_families", "qr_visits", "qr_members", "qr_invitees", "qr_claims"]) {
       const { n } = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get();
       assert.equal(n, 0, `${table} still holds rows after the event was deleted`);
     }

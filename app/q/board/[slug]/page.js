@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { getPublicQrEvent, leaderboard, qrStats } from "@/lib/events/passport-queries";
-import { displayName } from "@/lib/events/passport";
+import { getPublicQrEvent, leaderboard, qrStats } from "@/lib/qr/queries";
+import { displayName } from "@/lib/qr/passport";
 import BoardRefresh from "./BoardRefresh";
 
 /* The leaderboard, for a TV in the hall.

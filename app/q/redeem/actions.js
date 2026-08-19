@@ -5,9 +5,9 @@ import {
   getFamilyByToken,
   passportFor,
   claimTier,
-} from "@/lib/events/passport-queries";
-import { getBoothSession } from "@/lib/events/booth-session";
-import { parseToken, displayName } from "@/lib/events/passport";
+} from "@/lib/qr/queries";
+import { getBoothSession } from "@/lib/qr/booth-session";
+import { parseToken, displayName } from "@/lib/qr/passport";
 
 /* The prize counter. Same signed booth session as the scanner — one PIN, typed
    once per phone, covers both screens. */
@@ -16,7 +16,7 @@ async function requireDesk() {
   const session = await getBoothSession();
   if (!session) return { error: "Please enter the staff PIN again." };
   const event = getQrEvent(session.eventId);
-  if (!event || !event.qr_enabled) return { error: "Check-in for this event is closed." };
+  if (!event || event.status === "draft") return { error: "That registration isn’t live." };
   return { event };
 }
 
@@ -28,7 +28,7 @@ export async function lookupFamilyAction(scanned) {
   if (!token) return { ok: false, error: "That isn’t a pass code." };
 
   const found = getFamilyByToken(token);
-  if (!found || found.family.event_id !== event.id) {
+  if (!found || found.family.qr_event_id !== event.id) {
     return { ok: false, error: "That pass belongs to a different event." };
   }
 
@@ -55,7 +55,7 @@ export async function claimTierAction(scanned, tierIndex) {
 
   const token = parseToken(scanned);
   const found = token ? getFamilyByToken(token) : null;
-  if (!found || found.family.event_id !== event.id) {
+  if (!found || found.family.qr_event_id !== event.id) {
     return { ok: false, error: "That pass belongs to a different event." };
   }
 

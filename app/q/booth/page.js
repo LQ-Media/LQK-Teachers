@@ -1,5 +1,5 @@
-import { getBoothSession } from "@/lib/events/booth-session";
-import { getQrEvent, listQrEvents } from "@/lib/events/passport-queries";
+import { getBoothSession } from "@/lib/qr/booth-session";
+import { getQrEvent, listOpenQrEvents } from "@/lib/qr/queries";
 import BoothStation from "./BoothStation";
 
 /* The volunteer's phone. Three states, resolved on the server so a reload never
@@ -18,11 +18,11 @@ export default async function BoothPage() {
 
   // A session whose event was closed or deleted since sign-in is treated as no
   // session — otherwise the phone sits on a scanner that can never award.
-  const live = event && event.qr_enabled ? event : null;
+  const live = event && event.status === "open" ? event : null;
 
   return (
     <BoothStation
-      events={live ? [] : listQrEvents()}
+      events={live ? [] : listOpenQrEvents()}
       event={
         live
           ? {

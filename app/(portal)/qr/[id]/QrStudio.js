@@ -4,13 +4,19 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
-import { wordLetters, formatToken, displayName } from "@/lib/events/passport";
-import { saveQrSetupAction } from "./actions";
+import { wordLetters, formatToken, displayName } from "@/lib/qr/passport";
+import { parseInviteeCsv } from "@/lib/qr/csv";
+import {
+  saveQrSetupAction,
+  importInviteesAction,
+  clearInviteesAction,
+} from "./actions";
 
 const TABS = [
   ["setup", "Setup"],
+  ["guests", "Guest list"],
   ["hall", "On the day"],
-  ["families", "Families"],
+  ["families", "Checked in"],
 ];
 
 const field =
@@ -68,27 +74,36 @@ function LinkRow({ title, hint, url, icon }) {
   );
 }
 
-export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
+export default function QrStudio({ event, stats, families, invitees, baseUrl, doorQr }) {
   const router = useRouter();
   const [tab, setTab] = useState("setup");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState(null);
 
-  const [enabled, setEnabled] = useState(!!event.qr_enabled);
-  const [intro, setIntro] = useState(event.qr_intro || "");
-  const [word, setWord] = useState(event.qr_word || "");
-  const [pin, setPin] = useState(event.qr_pin || "");
-  const [booths, setBooths] = useState(
-    event.booths.length ? event.booths.map((b) => b.name) : [""],
-  );
-  const [tiers, setTiers] = useState(
-    event.tiers.length ? event.tiers : [{ at: 3, label: "" }],
-  );
+  const [title, setTitle] = useState(event.title || "");
+  const [venueName, setVenueName] = useState(event.venue_name || "");
+  const [status, setStatus] = useState(event.status);
+  const [intro, setIntro] = useState(event.intro || "");
+  const [word, setWord] = useState(event.word || "");
+  const [pin, setPin] = useState(event.pin || "");
+  const [booths, setBooths] = useState(event.booths.length ? event.booths.map((b) => b.name) : [""]);
+  const [tiers, setTiers] = useState(event.tiers.length ? event.tiers : [{ at: 3, label: "" }]);
   const [classes, setClasses] = useState((event.classes || []).join(", "));
+
+  const [paste, setPaste] = useState("");
+  const [replaceList, setReplaceList] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [guestFilter, setGuestFilter] = useState("");
 
   const filledBooths = booths.map((b) => b.trim()).filter(Boolean);
   const letters = wordLetters(word);
   const mismatch = letters.length !== filledBooths.length;
+
+  /* The same parser the server uses, run on the paste as it is typed. A guest
+     list is the one thing here that is copied out of someone else's
+     spreadsheet, so showing what WILL be imported before anything is written
+     is the difference between a clean list and a hundred rows of rubbish. */
+  const preview = useMemo(() => (paste.trim() ? parseInviteeCsv(paste) : null), [paste]);
 
   const links = useMemo(
     () => ({
@@ -96,16 +111,18 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
       booth: `${baseUrl}/q/booth`,
       redeem: `${baseUrl}/q/redeem`,
       board: `${baseUrl}/q/board/${event.slug}`,
-      poster: `${baseUrl}/events/${event.id}/qr/poster`,
+      poster: `${baseUrl}/qr/${event.id}/poster`,
     }),
     [baseUrl, event.slug, event.id],
   );
 
-  function save(nextEnabled = enabled) {
+  function save(nextStatus = status) {
     setResult(null);
     startTransition(async () => {
       const res = await saveQrSetupAction(event.id, {
-        enabled: nextEnabled,
+        title,
+        venueName,
+        status: nextStatus,
         intro,
         word,
         pin,
@@ -115,16 +132,16 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
       });
       setResult(res);
       if (res.ok) {
-        setEnabled(nextEnabled);
+        setStatus(nextStatus);
         router.refresh();
       }
     });
   }
 
   /* Every list update uses the functional form. The direct version reads the
-     `booths` captured by THIS render, so two taps landing in the same frame —
-     an impatient double-tap, which is how people use an "add" button — both
-     append to the same stale array and one of them is silently lost. */
+     array captured by THIS render, so two taps landing in the same frame — an
+     impatient double-tap, which is how people use an "add" button — both
+     append to the same stale array and one is silently lost. */
   const moveBooth = (from, to) => {
     if (to < 0 || to >= booths.length) return;
     setBooths((prev) => {
@@ -134,10 +151,15 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
     });
   };
 
+  const visibleGuests = useMemo(() => {
+    const term = guestFilter.trim().toLowerCase();
+    return term ? invitees.filter((i) => i.name.toLowerCase().includes(term)) : invitees;
+  }, [invitees, guestFilter]);
+
   return (
     <>
       <div className="mt-6 flex flex-wrap gap-2" role="tablist">
-        {TABS.map(([key, title]) => (
+        {TABS.map(([key, name]) => (
           <button
             key={key}
             type="button"
@@ -148,7 +170,7 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
               tab === key ? "bg-ink text-white" : "border border-line text-ink hover:bg-paper-deep"
             }`}
           >
-            {title}
+            {name}
           </button>
         ))}
       </div>
@@ -171,22 +193,53 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-heading text-lg font-semibold text-charcoal">
-                  {enabled ? "Check-in is open" : "Check-in is off"}
+                  {status === "open"
+                    ? "Check-in is open"
+                    : status === "closed"
+                      ? "Check-in is closed"
+                      : "Not open yet"}
                 </p>
-                <p className="mt-0.5 text-sm text-charcoal-soft">
-                  {enabled
+                <p className="mt-0.5 max-w-md text-sm text-charcoal-soft">
+                  {status === "open"
                     ? "Families who scan the door QR can register right now."
-                    : "The door link returns nothing until this is on — so a half-built setup can’t be walked into."}
+                    : status === "closed"
+                      ? "Nobody new can check in. Passes and the leaderboard still work."
+                      : "The door link returns nothing until this is open — so a half-built setup can’t be walked into."}
                 </p>
               </div>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => save(!enabled)}
-                className={enabled ? btnQuiet : btn}
-              >
-                {enabled ? "Close check-in" : "Open check-in"}
-              </button>
+              <div className="flex gap-2">
+                {status !== "open" ? (
+                  <button type="button" disabled={pending} onClick={() => save("open")} className={btn}>
+                    Open check-in
+                  </button>
+                ) : (
+                  <button type="button" disabled={pending} onClick={() => save("closed")} className={btnQuiet}>
+                    Close check-in
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className={card}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={label} htmlFor="qr-title">
+                  Name
+                </label>
+                <input id="qr-title" value={title} onChange={(e) => setTitle(e.target.value)} className={field} />
+              </div>
+              <div>
+                <label className={label} htmlFor="qr-venue">
+                  Where
+                </label>
+                <input
+                  id="qr-venue"
+                  value={venueName}
+                  onChange={(e) => setVenueName(e.target.value)}
+                  className={field}
+                />
+              </div>
             </div>
           </div>
 
@@ -245,7 +298,11 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
               ))}
             </ul>
 
-            <button type="button" onClick={() => setBooths((prev) => [...prev, ""])} className={`${btnQuiet} mt-3`}>
+            <button
+              type="button"
+              onClick={() => setBooths((prev) => [...prev, ""])}
+              className={`${btnQuiet} mt-3`}
+            >
               Add a booth
             </button>
 
@@ -258,16 +315,14 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
                 value={word}
                 onChange={(e) => setWord(e.target.value)}
                 placeholder="QURAN"
-                className={`${field} font-heading text-lg tracking-[0.3em] uppercase`}
+                className={`${field} font-heading text-lg uppercase tracking-[0.3em]`}
               />
               {/* The one mistake that is invisible until the day itself, so it
                   is stated here in the same breath as the two numbers. */}
               <p className={`mt-2 text-sm ${mismatch ? "text-rust" : "text-charcoal-soft"}`}>
                 {letters.length} letter{letters.length === 1 ? "" : "s"} · {filledBooths.length} booth
                 {filledBooths.length === 1 ? "" : "s"}
-                {mismatch
-                  ? " — these must match, or the word can never be completed."
-                  : " — a match."}
+                {mismatch ? " — these must match, or the word can never be completed." : " — a match."}
               </p>
             </div>
           </div>
@@ -295,8 +350,8 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
                   <input
                     value={tier.label}
                     onChange={(e) => {
-                      const label = e.target.value;
-                      setTiers((prev) => prev.map((t, i) => (i === index ? { ...t, label } : t)));
+                      const value = e.target.value;
+                      setTiers((prev) => prev.map((t, i) => (i === index ? { ...t, label: value } : t)));
                     }}
                     placeholder="Sticker sheet"
                     aria-label={`Prize ${index + 1}`}
@@ -334,7 +389,7 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
                 rows={3}
                 value={intro}
                 onChange={(e) => setIntro(e.target.value)}
-                placeholder="Welcome! Register your family to start collecting letters around the hall."
+                placeholder="Welcome! Find your name to get your pass."
                 className={field}
               />
             </div>
@@ -386,12 +441,187 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
         </>
       ) : null}
 
+      {/* ---- Guest list ------------------------------------------------ */}
+      {tab === "guests" ? (
+        <>
+          <div className={card}>
+            <h2 className="font-heading text-lg font-semibold text-charcoal">Who’s expected</h2>
+            <p className="mt-1 text-sm text-charcoal-soft">
+              Paste a list — one name per line, or a CSV with <strong>name</strong>,{" "}
+              <strong>phone</strong> and <strong>note</strong> columns. Families find their own name
+              at the door instead of typing it.
+            </p>
+
+            <textarea
+              rows={7}
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              placeholder={"name,phone,note\nFatimah Rahman,9123 4567,Iqra 2\nAhmad Ismail,,Tahfiz\nSiti Aminah"}
+              className={`${field} mt-4 font-mono text-sm`}
+              aria-label="Paste the guest list"
+            />
+
+            {preview ? (
+              <p className="mt-2 text-sm text-charcoal-soft">
+                {preview.rows.length} name{preview.rows.length === 1 ? "" : "s"} found
+                {preview.usedHeader ? ", using the header row" : ""}
+                {preview.skipped ? ` · ${preview.skipped} line${preview.skipped === 1 ? "" : "s"} skipped (blank or repeated)` : ""}
+              </p>
+            ) : null}
+
+            {preview?.rows.length ? (
+              <ul className="mt-3 max-h-40 overflow-y-auto rounded-control border border-line bg-paper p-3 text-sm">
+                {preview.rows.slice(0, 12).map((row, i) => (
+                  <li key={i} className="truncate text-ink">
+                    {row.name}
+                    {row.note ? <span className="text-charcoal-soft"> · {row.note}</span> : null}
+                    {row.phone ? <span className="text-charcoal-soft"> · {row.phone}</span> : null}
+                  </li>
+                ))}
+                {preview.rows.length > 12 ? (
+                  <li className="text-charcoal-soft">…and {preview.rows.length - 12} more</li>
+                ) : null}
+              </ul>
+            ) : null}
+
+            <label className="mt-4 flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={replaceList}
+                onChange={(e) => setReplaceList(e.target.checked)}
+                className="h-4 w-4 accent-[color:var(--color-gold)]"
+              />
+              Replace the list instead of adding to it
+            </label>
+            {replaceList ? (
+              <p className="mt-1.5 text-xs text-charcoal-soft">
+                Anyone who has already checked in stays on the list — removing them would orphan a
+                family standing in the hall holding a pass.
+              </p>
+            ) : null}
+
+            {importResult ? (
+              <div className="mt-4">
+                {importResult.ok ? (
+                  <Notice tone="good">
+                    Added {importResult.added} name{importResult.added === 1 ? "" : "s"}
+                    {importResult.duplicates
+                      ? ` · skipped ${importResult.duplicates} already on the list or blank`
+                      : ""}
+                    .
+                  </Notice>
+                ) : (
+                  <Notice tone="bad">{importResult.error}</Notice>
+                )}
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={pending || !preview?.rows.length}
+                onClick={() =>
+                  startTransition(async () => {
+                    const res = await importInviteesAction(event.id, paste, { replace: replaceList });
+                    setImportResult(res);
+                    if (res.ok) {
+                      setPaste("");
+                      router.refresh();
+                    }
+                  })
+                }
+                className={btn}
+              >
+                {pending ? "Importing…" : "Import"}
+              </button>
+              {invitees.length ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      await clearInviteesAction(event.id);
+                      setImportResult(null);
+                      router.refresh();
+                    })
+                  }
+                  className={btnQuiet}
+                >
+                  Clear the list
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {invitees.length ? (
+            <div className={card}>
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="font-heading text-lg font-semibold text-charcoal">
+                  {stats.arrived} of {stats.total} arrived
+                </h2>
+                <p className="text-sm text-charcoal-soft">
+                  {stats.awaited} still to come
+                </p>
+              </div>
+
+              <div
+                className="mt-3 flex h-2 w-full overflow-hidden rounded-pill bg-paper-deep"
+                role="img"
+                aria-label={`${stats.arrived} of ${stats.total} expected guests have checked in`}
+              >
+                <span
+                  className="bg-gold transition-[width] duration-300 ease-out"
+                  style={{ width: `${stats.total ? (stats.arrived / stats.total) * 100 : 0}%` }}
+                />
+              </div>
+
+              <input
+                value={guestFilter}
+                onChange={(e) => setGuestFilter(e.target.value)}
+                placeholder="Find a name"
+                aria-label="Find a name on the guest list"
+                className={`${field} mt-4`}
+              />
+
+              <ul className="mt-3 max-h-96 divide-y divide-line overflow-y-auto">
+                {visibleGuests.map((guest) => (
+                  <li key={guest.id} className="flex items-center gap-3 py-2.5">
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-control ${
+                        guest.family_id ? "bg-gold-soft text-ink" : "bg-paper-deep text-charcoal-soft"
+                      }`}
+                    >
+                      <Icon name={guest.family_id ? "check" : "user"} size={15} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink">{guest.name}</span>
+                      {guest.note || guest.phone ? (
+                        <span className="block truncate text-xs text-charcoal-soft">
+                          {[guest.note, guest.phone].filter(Boolean).join(" · ")}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="flex-shrink-0 text-xs text-charcoal-soft">
+                      {guest.family_id ? "Here" : "Not yet"}
+                    </span>
+                  </li>
+                ))}
+                {visibleGuests.length === 0 ? (
+                  <li className="py-3 text-sm text-charcoal-soft">Nobody matches “{guestFilter}”.</li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
       {/* ---- On the day ----------------------------------------------- */}
       {tab === "hall" ? (
         <>
-          {!enabled ? (
+          {status !== "open" ? (
             <div className="mt-4">
-              <Notice>Check-in is closed, so the door link is not live yet.</Notice>
+              <Notice>Check-in isn’t open, so the door link is not live yet.</Notice>
             </div>
           ) : null}
 
@@ -404,7 +634,7 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
                   This is the only QR a family scans on the way in. Print it big, put it at eye
                   level, and put a second one where the queue actually forms.
                 </p>
-                <Link href={links.poster} target="_blank" className={`${btnQuiet} mt-4 inline-block`}>
+                <Link href={`/qr/${event.id}/poster`} target="_blank" className={`${btnQuiet} mt-4 inline-block`}>
                   Open the printable poster
                 </Link>
               </div>
@@ -414,12 +644,7 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
           <div className={card}>
             <h2 className="font-heading text-lg font-semibold text-charcoal">Links for the team</h2>
             <div className="mt-3">
-              <LinkRow
-                icon="user-plus"
-                title="Check-in"
-                hint="Where the door QR sends a family"
-                url={links.door}
-              />
+              <LinkRow icon="user-plus" title="Check-in" hint="Where the door QR sends a family" url={links.door} />
               <LinkRow
                 icon="camera"
                 title="Booth scanner"
@@ -443,8 +668,8 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
 
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              ["families", stats.families, "registered"],
-              ["children", stats.children, "children"],
+              ["families", stats.families, "checked in"],
+              ["members", stats.members, "people named"],
               ["visits", stats.visits, "letters given"],
               ["prizes", stats.prizes, "prizes given"],
             ].map(([key, value, text]) => (
@@ -491,7 +716,7 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
         </>
       ) : null}
 
-      {/* ---- Families -------------------------------------------------- */}
+      {/* ---- Checked in ------------------------------------------------ */}
       {tab === "families" ? (
         <div className={card}>
           <h2 className="font-heading text-lg font-semibold text-charcoal">
@@ -504,7 +729,7 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
                   <tr className="border-b border-line text-xs uppercase tracking-wider text-charcoal-soft">
                     <th className="pb-2 pr-3 font-semibold">Family</th>
                     <th className="pb-2 pr-3 font-semibold">Code</th>
-                    <th className="pb-2 pr-3 font-semibold">Contact</th>
+                    <th className="pb-2 pr-3 font-semibold">People</th>
                     <th className="pb-2 font-semibold">Letters</th>
                   </tr>
                 </thead>
@@ -520,7 +745,9 @@ export default function QrStudio({ event, stats, families, baseUrl, doorQr }) {
                       <td className="py-2.5 pr-3 font-mono text-xs tabular-nums text-charcoal-soft">
                         {formatToken(family.token)}
                       </td>
-                      <td className="py-2.5 pr-3 text-charcoal-soft">{family.phone || "—"}</td>
+                      <td className="py-2.5 pr-3 tabular-nums text-charcoal-soft">
+                        {family.member_count}
+                      </td>
                       <td className="py-2.5 tabular-nums text-ink">
                         {family.collected} / {event.booths.length}
                       </td>

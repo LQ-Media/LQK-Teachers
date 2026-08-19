@@ -75,7 +75,7 @@ function writeSeen(token, ids) {
   listeners.forEach((listener) => listener());
 }
 
-export default function Passport({ name, code, token, eventTitle, passport, childCount, qr }) {
+export default function Passport({ name, code, token, eventTitle, passport, memberCount, qr }) {
   const router = useRouter();
 
   const raw = useSyncExternalStore(
@@ -132,7 +132,7 @@ export default function Passport({ name, code, token, eventTitle, passport, chil
         <h1 className="font-heading text-2xl font-semibold text-charcoal">{name}</h1>
         <p className="mt-0.5 text-sm text-charcoal-soft">
           {eventTitle}
-          {childCount ? ` · ${childCount} child${childCount === 1 ? "" : "ren"}` : ""}
+          {memberCount ? ` · ${memberCount} ${memberCount === 1 ? "person" : "people"}` : ""}
         </p>
       </header>
 

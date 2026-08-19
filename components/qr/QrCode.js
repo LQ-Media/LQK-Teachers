@@ -1,4 +1,4 @@
-import { qrSvg } from "@/lib/events/qr";
+import { qrSvg } from "@/lib/qr/encoder";
 
 /**
  * A QR symbol as inline SVG — no canvas, no image request, no client JS.

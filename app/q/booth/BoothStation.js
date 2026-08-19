@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
-import { parseToken } from "@/lib/events/passport";
+import { parseToken } from "@/lib/qr/passport";
 import {
   signInBoothAction,
   pickBoothAction,

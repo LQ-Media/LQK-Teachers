@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { getFamilyByToken, passportFor, familyChildren } from "@/lib/events/passport-queries";
-import { displayName, formatToken } from "@/lib/events/passport";
-import QrCode from "@/components/events/QrCode";
+import { getFamilyByToken, passportFor, familyMembers } from "@/lib/qr/queries";
+import { displayName, formatToken } from "@/lib/qr/passport";
+import QrCode from "@/components/qr/QrCode";
 import Passport from "./Passport";
 
 /* A family's pass.
@@ -38,7 +38,7 @@ export default async function PassPage({ params }) {
       token={family.token}
       eventTitle={event.title}
       passport={passport}
-      childCount={familyChildren(family.id).length}
+      memberCount={familyMembers(family.id).length}
       /* The pass QR encodes a FULL URL, not a bare code: a parent who scans
          their own pass with the phone camera then lands somewhere useful
          instead of seeing eight meaningless characters. The booth scanner

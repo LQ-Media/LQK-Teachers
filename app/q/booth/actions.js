@@ -8,9 +8,9 @@ import {
   awardBooth,
   getFamilyByToken,
   passportFor,
-} from "@/lib/events/passport-queries";
-import { createBoothSession, getBoothSession, clearBoothSession } from "@/lib/events/booth-session";
-import { parseToken, displayName } from "@/lib/events/passport";
+} from "@/lib/qr/queries";
+import { createBoothSession, getBoothSession, clearBoothSession } from "@/lib/qr/booth-session";
+import { parseToken, displayName } from "@/lib/qr/passport";
 
 /* Event-day actions for the booth phone and the prize counter.
 
@@ -20,7 +20,7 @@ import { parseToken, displayName } from "@/lib/events/passport";
 
 export async function signInBoothAction(eventId, pin) {
   const event = getQrEvent(eventId);
-  if (!event || !event.qr_enabled) return { ok: false, error: "That event isn’t open." };
+  if (!event || event.status !== "open") return { ok: false, error: "That event isn’t open." };
 
   /* A signed-in admin skips the PIN. They are already more trusted than the
      PIN makes anyone, and on the day it is always Karim who picks a phone up to
@@ -78,7 +78,7 @@ export async function awardAction(scanned) {
   if (!session?.boothId) return { ok: false, error: "Pick your booth first." };
 
   const event = getQrEvent(session.eventId);
-  if (!event || !event.qr_enabled) return { ok: false, error: "Check-in for this event is closed." };
+  if (!event || event.status !== "open") return { ok: false, error: "Check-in for this event is closed." };
 
   const token = parseToken(scanned);
   if (!token) return { ok: false, error: "That isn’t a pass code. Try again, or type the 8 characters." };
@@ -86,7 +86,7 @@ export async function awardAction(scanned) {
   const found = getFamilyByToken(token);
   // A pass from ANOTHER event scans perfectly and must not award here — two LQK
   // events in one month is normal, and a parent may still have the old tab open.
-  if (!found || found.family.event_id !== event.id) {
+  if (!found || found.family.qr_event_id !== event.id) {
     return { ok: false, error: "That pass belongs to a different event." };
   }
 
