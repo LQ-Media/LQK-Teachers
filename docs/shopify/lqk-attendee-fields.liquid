@@ -1,0 +1,250 @@
+{%- comment -%}
+  LQK attendee details — per-place name / email / phone on the product page.
+
+  Lives in this repo because the LQK Teachers portal reads the resulting orders
+  (see lib/events/shopify-core.js); it RUNS in the lqkstore theme. Install steps
+  are in docs/shopify/README.md.
+
+  What it does: renders one group of fields per unit of quantity. Quantity 1 is
+  the "Main attendee"; every extra unit adds "Attendee 2", "Attendee 3", … The
+  values ride along as Shopify LINE ITEM PROPERTIES, so they show on the order,
+  the packing slip and the confirmation email with no app and no Admin API.
+
+  Property names produced:
+    properties[Main Attendee Name]  / Email / Phone
+    properties[Attendee 2 Name]     / Email / Phone   (and 3, 4, … up to the cap)
+{%- endcomment -%}
+
+{%- assign lqk_af_handles = 'lqk-maulid-2026' -%}
+{%- assign lqk_af_list = lqk_af_handles | split: ',' -%}
+{%- if product and lqk_af_list contains product.handle -%}
+
+<div class="lqk-af" data-lqk-attendee-fields hidden>
+  <h3 class="lqk-af__title">Attendee details</h3>
+  <p class="lqk-af__note">
+    We need one set of details for every place booked. Increase the quantity above
+    and another attendee appears here.
+  </p>
+  <div class="lqk-af__groups" data-lqk-af-groups></div>
+</div>
+
+<style>
+  .lqk-af { margin: 1.5rem 0; }
+  .lqk-af__title { margin: 0 0 0.25rem; font-size: 1.05rem; }
+  .lqk-af__note { margin: 0 0 1rem; font-size: 0.85rem; opacity: 0.75; }
+  .lqk-af__groups { display: grid; gap: 1rem; }
+  .lqk-af__group {
+    display: grid; gap: 0.65rem; margin: 0; padding: 0.9rem 1rem 1.1rem;
+    border: 1px solid rgba(var(--color-foreground, 18 18 18), 0.16); border-radius: 0.5rem;
+  }
+  .lqk-af__legend { padding: 0 0.35rem; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.02em; }
+  .lqk-af__field { display: grid; gap: 0.3rem; }
+  .lqk-af__label { font-size: 0.8rem; opacity: 0.8; }
+  .lqk-af__input {
+    width: 100%; padding: 0.6rem 0.7rem; font: inherit; font-size: 0.95rem;
+    color: inherit; background: transparent; border-radius: 0.3rem;
+    border: 1px solid rgba(var(--color-foreground, 18 18 18), 0.3);
+  }
+  .lqk-af__input:focus { outline: 2px solid rgba(var(--color-foreground, 18 18 18), 0.5); outline-offset: 1px; }
+  .lqk-af__input:user-invalid { border-color: #c0392b; }
+</style>
+
+<script>
+  (function () {
+    /* ---- config -------------------------------------------------------- */
+    var MAX_GROUPS = 20;          // hard cap, so a fat-fingered quantity can't hang the page
+    var REQUIRED   = true;        // set false to let a guest check out with blanks
+    var FIELDS = [
+      { key: 'Name',  type: 'text',  autocomplete: 'name',  label: 'Name' },
+      { key: 'Email', type: 'email', autocomplete: 'email', label: 'Email' },
+      { key: 'Phone', type: 'tel',   autocomplete: 'tel',   label: 'Phone' }
+    ];
+
+    var root = document.querySelector('[data-lqk-attendee-fields]');
+    // Survives an innerHTML re-render by design: the copy is inert and the live
+    // instance must not initialise twice.
+    if (!root || root.dataset.lqkAfReady) return;
+    root.dataset.lqkAfReady = '1';
+
+    var groupsEl = root.querySelector('[data-lqk-af-groups]');
+    var typed = {};               // property name -> value, so decrementing then
+                                  // re-adding a place doesn't wipe what was typed
+    var form = null;
+    var qtyInput = null;
+    var boundQty = null;          // the node we last bound to, held in memory on purpose
+
+    /* form.id does NOT give you the id on a Shopify product form: every one of
+       them carries <input name="id" value="{{ variant.id }}">, and the form's
+       named-element getter shadows the id property — so form.id is that INPUT.
+       Writing it into a form="" attribute silently un-associates every field
+       here from the form and the attendee details never reach the cart. */
+    function formId() {
+      return form ? form.getAttribute('id') : null;
+    }
+
+    /* Group 1 is the buyer themself, hence a different label AND a different
+       property name — store staff read "Main Attendee Name" on the order. */
+    function propName(index, key) {
+      return index === 1 ? 'Main Attendee ' + key : 'Attendee ' + index + ' ' + key;
+    }
+
+    function buildGroup(index) {
+      var group = document.createElement('fieldset');
+      group.className = 'lqk-af__group';
+
+      var legend = document.createElement('legend');
+      legend.className = 'lqk-af__legend';
+      legend.textContent = index === 1 ? 'Main attendee' : 'Attendee ' + index;
+      group.appendChild(legend);
+
+      FIELDS.forEach(function (field) {
+        var name = propName(index, field.key);
+        var label = document.createElement('label');
+        label.className = 'lqk-af__field';
+
+        var caption = document.createElement('span');
+        caption.className = 'lqk-af__label';
+        caption.textContent = field.label;
+
+        var input = document.createElement('input');
+        input.className = 'lqk-af__input';
+        input.type = field.type;
+        input.name = 'properties[' + name + ']';
+        input.value = typed[name] || '';
+        if (REQUIRED) input.required = true;
+        // Only the buyer's own group should autofill; the rest are other people.
+        input.autocomplete = index === 1 ? field.autocomplete : 'off';
+        if (field.type === 'tel') input.inputMode = 'tel';
+        // formId(), never form.id — see the helper.
+        var owner = form && formId();
+        if (owner) input.setAttribute('form', owner);
+
+        label.appendChild(caption);
+        label.appendChild(input);
+        group.appendChild(label);
+      });
+
+      return group;
+    }
+
+    function quantity() {
+      var raw = qtyInput ? parseInt(qtyInput.value, 10) : 1;
+      if (!raw || raw < 1) raw = 1;
+      return Math.min(MAX_GROUPS, raw);
+    }
+
+    function sync() {
+      var want = quantity();
+      while (groupsEl.children.length > want) groupsEl.removeChild(groupsEl.lastElementChild);
+      while (groupsEl.children.length < want) groupsEl.appendChild(buildGroup(groupsEl.children.length + 1));
+      root.hidden = false;
+    }
+
+    /* Themes vary wildly, so find the real add-to-cart form rather than assuming
+       Dawn's markup: prefer one that actually owns a quantity input. */
+    function findForm() {
+      var forms = document.querySelectorAll('form[action*="/cart/add"]');
+      var fallback = null;
+      for (var i = 0; i < forms.length; i++) {
+        if (forms[i].closest('[hidden]')) continue;
+        if (forms[i].querySelector('input[name="quantity"]')) return forms[i];
+        if (!fallback) fallback = forms[i];
+      }
+      return fallback;
+    }
+
+    /* The fields must live INSIDE the form to be serialised by every theme, but
+       this snippet may be pasted anywhere on the page — so move ourselves in. */
+    function mount() {
+      var found = findForm();
+      if (!found) return;
+      form = found;
+
+      /* A re-rendered section leaves a COPY of these fields behind — inert (its
+         script never re-runs) but still serialised, which would submit every
+         attendee property twice, blank. Only the live root may survive. */
+      var strays = document.querySelectorAll('[data-lqk-attendee-fields]');
+      for (var i = 0; i < strays.length; i++) {
+        if (strays[i] !== root && strays[i].parentNode) strays[i].parentNode.removeChild(strays[i]);
+      }
+
+      if (!form.contains(root)) {
+        var anchor = form.querySelector('.product-form__buttons, [name="add"], button[type="submit"]');
+        if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(root, anchor);
+        else form.appendChild(root);
+      }
+
+      qtyInput =
+        form.querySelector('input[name="quantity"]') ||
+        document.querySelector('input[name="quantity"]');
+
+      /* Compared by NODE IDENTITY, not by a data- flag: a flag written with
+         dataset is serialised into the section's HTML, so after a re-render the
+         brand-new quantity input arrives already "flagged" and would never get
+         its listeners — the fields would then stop following the quantity. */
+      if (qtyInput && qtyInput !== boundQty) {
+        boundQty = qtyInput;
+        // 'change' covers the theme's +/- buttons, 'input' covers typing.
+        qtyInput.addEventListener('input', sync);
+        qtyInput.addEventListener('change', sync);
+      }
+
+      // Keeps the fields submitting even if a theme parks them outside the form.
+      var owner = formId();
+      if (owner) {
+        root.querySelectorAll('input').forEach(function (input) {
+          input.setAttribute('form', owner);
+        });
+      }
+
+      sync();
+    }
+
+    groupsEl.addEventListener('input', function (event) {
+      var input = event.target;
+      if (!input.name) return;
+      var match = /^properties\[(.+)\]$/.exec(input.name);
+      if (match) typed[match[1]] = input.value;
+    });
+
+    /* Themes re-render the product section on a variant change, which rips these
+       fields (and the quantity input) out of the DOM. Put them back. */
+    var pending = null;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = setTimeout(function () {
+        pending = null;
+        if (!root.isConnected || !form || !form.isConnected || (qtyInput && !qtyInput.isConnected)) mount();
+      }, 60);
+    }).observe(document.body, { childList: true, subtree: true });
+
+    /* Belt and braces for themes whose add-to-cart button skips native
+       validation: only ever blocks on OUR fields, never on the theme's. */
+    function blockIfIncomplete(event) {
+      var invalid = null;
+      var inputs = root.querySelectorAll('input');
+      for (var i = 0; i < inputs.length; i++) {
+        if (!inputs[i].checkValidity()) { invalid = inputs[i]; break; }
+      }
+      if (!invalid) return;
+      event.preventDefault();
+      event.stopPropagation();
+      invalid.reportValidity();
+    }
+
+    document.addEventListener('submit', function (event) {
+      if (form && event.target === form) blockIfIncomplete(event);
+    }, true);
+
+    document.addEventListener('click', function (event) {
+      if (!form || !event.target.closest) return;
+      var button = event.target.closest('[name="add"], button[type="submit"]');
+      if (button && form.contains(button)) blockIfIncomplete(event);
+    }, true);
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
+  })();
+</script>
+
+{%- endif -%}
