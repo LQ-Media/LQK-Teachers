@@ -135,3 +135,23 @@ body {
     animation: none;
   }
 }
+
+/* ---- QR Registration: the family-picture slideshow ----------------------
+
+   One short opacity fade as each slide arrives. Deliberately opacity only and
+   deliberately brief: this runs on a wall behind people who are talking to
+   each other, and anything that MOVES pulls the whole room's eyes to it. */
+@keyframes lqk-slide-in {
+  from {
+    opacity: 0;
+  }
+}
+.lqk-slide-in {
+  animation: lqk-slide-in 320ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lqk-slide-in {
+    animation: none;
+  }
+}

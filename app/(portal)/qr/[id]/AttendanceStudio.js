@@ -649,6 +649,25 @@ export default function AttendanceStudio({
             </div>
           </div>
 
+          {stats.photos ? (
+            <div className={card}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-heading text-lg font-semibold text-charcoal">
+                    {stats.photos} picture{stats.photos === 1 ? "" : "s"} made
+                  </p>
+                  <p className="mt-0.5 text-sm text-charcoal-soft">
+                    A wall of every family picture, with a full-screen slideshow to project or
+                    screen-share. Any signed-in teacher can open it.
+                  </p>
+                </div>
+                <Link href={`/qr/${event.id}/gallery`} className={btnQuiet}>
+                  Open the gallery
+                </Link>
+              </div>
+            </div>
+          ) : null}
+
           <div className={card}>
             <h2 className="font-heading text-lg font-semibold text-charcoal">The artwork</h2>
             <p className="mt-1 text-sm text-charcoal-soft">
@@ -898,7 +917,7 @@ export default function AttendanceStudio({
                           {row.photo_status === "ready" ? (
                             <span className="flex items-center gap-2">
                               <a
-                                href={`/api/qr/photo/${row.token}`}
+                                href={`/api/qr/photo/${row.token}?v=${row.photo_version}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs font-semibold text-gold underline"
