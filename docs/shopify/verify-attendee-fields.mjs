@@ -181,6 +181,18 @@ const snippet = renderedSnippet();
   ok("rejects a malformed email", (await page.evaluate(() => window.__submits)) === 1);
   await page.fill('input[name="properties[Main Attendee Email]"]', "aisha@example.com");
 
+  // Flat fee, even against a bumped stepper: quantity is pinned to 1 on submit.
+  await page.click("#plus");
+  await page.click("#plus");
+  ok("stepper bumped to 3 for the pin test", (await qty()) === "3", "qty=" + (await qty()));
+  await page.click('button[name="add"]');
+  ok("submit pins quantity back to 1", (await qty()) === "1", "qty=" + (await qty()));
+  ok(
+    "submitted FormData carries quantity 1",
+    (await fd()).some(([k, v]) => k === "quantity" && v === "1"),
+    JSON.stringify(await fd()),
+  );
+
   // Variant change: the theme throws the whole section away and re-parses it.
   await page.evaluate(() => {
     const sec = document.getElementById("shopify-section-main-product");
@@ -255,6 +267,75 @@ const snippet = renderedSnippet();
   ok(
     "serialises under a form with no id",
     (await page.$eval("form", (f) => [...new FormData(f).entries()])).filter(([k]) => k.startsWith("properties[")).length === 6,
+  );
+  await page.close();
+}
+
+/* ---- Cart guard (lqk-cart-flat-fee.liquid): a cart page AND a drawer, two
+   lines — line 1 is the Maulid registration (bumped to qty 2 by a shopper),
+   line 2 an ordinary product that must keep its stepper. The Cart AJAX API is
+   stubbed; window.name survives the reload the guard triggers, so the
+   /cart/change.js call is observable afterwards. ---- */
+{
+  const GUARD = new URL("./lqk-cart-flat-fee.liquid", import.meta.url).pathname;
+  const guard = fs
+    .readFileSync(GUARD, "utf8")
+    .replace(/{%-?\s*comment[\s\S]*?endcomment\s*-?%}/, "")
+    .trim();
+  const line = (i) => `
+    <div class="cart-item">
+      <quantity-input><button type="button">-</button>
+        <input type="number" name="updates[]" value="${i === 0 ? 2 : 5}">
+        <button type="button">+</button></quantity-input>
+    </div>`;
+  const url = write(
+    "cart.html",
+    `<!doctype html><html><body>
+<script>
+  window.fetch = function (input, opts) {
+    var url = String(input);
+    if (url.indexOf('/cart/change.js') !== -1) {
+      window.name = 'changed:' + (opts && opts.body);
+      return Promise.resolve({ json: function () { return Promise.resolve({}); } });
+    }
+    if (url.indexOf('/cart.js') !== -1) {
+      var fixed = window.name.indexOf('changed') === 0;
+      return Promise.resolve({ json: function () { return Promise.resolve({
+        items: [
+          { quantity: fixed ? 1 : 2, properties: { 'Main Attendee Name': 'Aisha', 'Main Attendee Email': 'a@e.com' } },
+          { quantity: 5, properties: {} },
+        ],
+      }); } });
+    }
+    return Promise.reject(new Error('unexpected fetch ' + url));
+  };
+<\/script>
+<form action="/cart" id="cart-page">${line(0)}${line(1)}</form>
+<div class="cart-drawer">${line(0)}${line(1)}</div>
+${guard}
+</body></html>`,
+  );
+
+  const page = await browser.newPage();
+  page.on("pageerror", (e) => fails.push("guard pageerror: " + e.message));
+  await page.goto(url);
+  await page.waitForFunction(() => window.name.indexOf("changed") === 0, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(400);
+
+  const changed = await page.evaluate(() => window.name);
+  ok(
+    "bumped registration line reset to quantity 1 via /cart/change.js",
+    changed.includes('"line":1') && changed.includes('"quantity":1'),
+    changed,
+  );
+  const hidden = await page.$$eval("[data-lqk-flat-hidden]", (els) => els.length);
+  ok("registration stepper hidden on the page AND in the drawer", hidden === 2, hidden + " hidden");
+  const visible = await page.$$eval("quantity-input", (els) => els.filter((e) => e.style.display !== "none").length);
+  ok("the other product keeps its stepper everywhere", visible === 2, visible + " visible");
+  ok(
+    'a static "1" stands in for each hidden stepper',
+    (await page.$$eval("[data-lqk-flat-hidden]", (els) => els.every((e) => e.previousElementSibling?.textContent === "1"))),
   );
   await page.close();
 }

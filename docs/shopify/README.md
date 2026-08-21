@@ -49,6 +49,21 @@ have to be adjacent to the buy button for the details to submit.
    ```
 3. `shopify theme push` as usual.
 
+## Making the flat fee stick — the cart guard
+
+The product form pins quantity to 1 at add-to-cart (and at "Buy it now"), but
+the cart page and drawer draw their own − / + stepper, and a bumped line
+multiplies the fee: 2 × $30 for one registration. `lqk-cart-flat-fee.liquid`
+closes that hole. For any cart line carrying attendee details it hides the
+stepper (a static "1" replaces it) and, if a line somehow reached quantity 2+
+(an old cart, a direct link), resets it to 1 via the Cart AJAX API. Other
+products in the same cart keep their steppers.
+
+Install it where it runs on **every** page, because the drawer opens
+everywhere: theme editor → **Footer → Add block → Custom Liquid** → paste the
+whole file → Save. (Or paste before `</body>` in `layout/theme.liquid` and
+push.)
+
 ## Scoping and options
 
 Everything adjustable sits at the top of the file:
@@ -88,10 +103,14 @@ place a test order to see them on the order in admin.
 
 ## Known limits, worth deciding on
 
-- **Quantity is left alone, so a shopper CAN still raise it** in the theme's
-  stepper or on the cart page — they'd pay the fee twice for one set of
-  attendees. If that matters, hide the quantity stepper for this product in the
-  theme editor (the snippet works fine without one on the page).
+- **Both files need installing** for the flat fee to hold end to end: the
+  product form pins quantity at checkout time, the cart guard covers the cart
+  page and drawer. With only the form installed, a shopper can still bump the
+  line in the cart.
+- **If a different attendee form is already installed in the theme** (one that
+  adds a ticket per attendee), remove it first — two forms would double the
+  fields on the order, and a per-ticket form re-introduces the multiplication
+  this pair exists to prevent.
 - **Invitation links bypass the product page entirely.** The portal sends guests
   to a cart permalink (`contributionCheckoutUrl` in `lib/events/shopify-core.js`,
   `/cart/<variant>:<qty>?attributes[...]`), which skips the product page — so a
