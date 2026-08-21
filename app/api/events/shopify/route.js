@@ -1,5 +1,10 @@
-import { verifyShopifyHmac, orderInviteRef } from "@/lib/events/shopify-core";
-import { applyContributionPayment } from "@/lib/events/queries";
+import {
+  verifyShopifyHmac,
+  orderInviteRef,
+  orderAttendees,
+  storeOrderRecord,
+} from "@/lib/events/shopify-core";
+import { applyContributionPayment, recordStoreOrder } from "@/lib/events/queries";
 
 /* Shopify "Order payment" webhook from the LQK store
    (lqkstore.littlequrankids.sg).
@@ -12,11 +17,16 @@ import { applyContributionPayment } from "@/lib/events/queries";
      Then copy the signing secret shown on that settings page into the
      SHOPIFY_EVENTS_WEBHOOK_SECRET env var on Railway.
 
-   Only orders that travelled through an invitation's "Contribute & continue"
-   button carry our two cart attributes (invite = 8-char token prefix,
-   event = event id); everything else the store sells lands here too and is
-   deliberately answered 200/skipped — a non-2xx would make Shopify retry for
-   days and eventually flag the webhook as broken.
+   Two kinds of order matter here, and both are picked out of the same firehose
+   (everything the store sells lands on this endpoint):
+     - invitation contributions — travelled through "Contribute & continue",
+       carry our two cart attributes (invite = 8-char token prefix, event =
+       event id), and confirm a guest's contribution_status;
+     - attendee registrations — ticketed products (LQK Maulid 2026) bought on
+       the product page, carrying per-place name/email/phone as line item
+       properties, recorded for the Store registrations page.
+   Anything that is neither is deliberately answered 200/skipped — a non-2xx
+   would make Shopify retry for days and eventually flag the webhook as broken.
 
    ⚠️ Never enable Shopify's "Send test notification" reasoning against this
    endpoint being idempotent — it is (kv-keyed by order id), but the dummy
@@ -50,7 +60,20 @@ export async function POST(request) {
   if (topic && topic !== "orders/paid") return Response.json({ ok: true, skipped: topic });
 
   const ref = orderInviteRef(order);
-  if (!ref) return Response.json({ ok: true, skipped: "no invite attributes" });
+
+  /* Ticketed products (LQK Maulid 2026) sell straight from the product page,
+     whose attendee form puts name/email/phone per place into line item
+     properties — no invitation, no cart attributes. Any paid order carrying
+     those properties is recorded for the Store registrations page, whether or
+     not it also matches an invitation below. */
+  const attendees = orderAttendees(order);
+  if (attendees.length) {
+    recordStoreOrder(storeOrderRecord(order, attendees), { eventId: ref?.eventId || null });
+  }
+
+  if (!ref) {
+    return Response.json({ ok: true, skipped: "no invite attributes", registered: attendees.length });
+  }
 
   const line = Array.isArray(order.line_items) ? order.line_items[0] : null;
   const result = applyContributionPayment({

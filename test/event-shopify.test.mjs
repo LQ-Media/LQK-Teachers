@@ -17,6 +17,8 @@ import {
   contributionCheckoutUrl,
   verifyShopifyHmac,
   orderInviteRef,
+  orderAttendees,
+  storeOrderRecord,
 } from "../lib/events/shopify-core.js";
 
 describe("parseProductRef", () => {
@@ -161,5 +163,109 @@ describe("orderInviteRef", () => {
       null
     );
     assert.equal(orderInviteRef({}), null);
+  });
+});
+
+/* The attendee form on ticketed product pages
+   (docs/shopify/lqk-attendee-fields.liquid) submits per-place details as line
+   item properties. What matters at this boundary: property ORDER is not
+   trusted (the index in the name is), other apps' properties are ignored, and
+   a blank group is dropped rather than shown as an empty seat. */
+describe("orderAttendees", () => {
+  const prop = (name, value) => ({ name, value });
+
+  test("reads main + numbered groups off line item properties, by index not order", () => {
+    const order = {
+      line_items: [
+        {
+          properties: [
+            prop("Attendee 2 Name", "Yusuf Rahman"),
+            prop("Main Attendee Name", "Aisha Rahman"),
+            prop("Main Attendee Email", "aisha@example.com"),
+            prop("Attendee 2 Phone", "+6598765432"),
+            prop("Main Attendee Phone", "+6591234567"),
+            prop("Attendee 2 Email", "yusuf@example.com"),
+          ],
+        },
+      ],
+    };
+    assert.deepEqual(orderAttendees(order), [
+      { name: "Aisha Rahman", email: "aisha@example.com", phone: "+6591234567", main: true },
+      { name: "Yusuf Rahman", email: "yusuf@example.com", phone: "+6598765432", main: false },
+    ]);
+  });
+
+  test("ignores other apps' properties and drops all-blank groups", () => {
+    const order = {
+      line_items: [
+        {
+          properties: [
+            prop("_gift_wrap", "yes"),
+            prop("Main Attendee Name", "Aisha"),
+            prop("Main Attendee Email", ""),
+            prop("Main Attendee Phone", ""),
+            prop("Attendee 2 Name", "  "),
+            prop("Attendee 2 Email", ""),
+            prop("Attendee 2 Phone", ""),
+            prop("Attendee 999 Name", "index out of range"),
+          ],
+        },
+      ],
+    };
+    assert.deepEqual(orderAttendees(order), [
+      { name: "Aisha", email: "", phone: "", main: true },
+    ]);
+  });
+
+  test("empty and malformed orders yield an empty list", () => {
+    assert.deepEqual(orderAttendees({}), []);
+    assert.deepEqual(orderAttendees({ line_items: [{ properties: null }] }), []);
+    assert.deepEqual(orderAttendees(null), []);
+  });
+});
+
+describe("storeOrderRecord", () => {
+  test("snapshots the order fields the registrations page shows", () => {
+    const attendees = [{ name: "Aisha", email: "a@example.com", phone: "+65", main: true }];
+    const record = storeOrderRecord(
+      {
+        id: 987654321,
+        order_number: 1024,
+        currency: "SGD",
+        current_total_price: "90.00",
+        email: "aisha@example.com",
+        customer: { first_name: "Aisha", last_name: "Rahman" },
+        processed_at: "2026-08-19T12:00:00+08:00",
+        line_items: [
+          { title: "LQK Maulid 2026", variant_title: "Family", quantity: 3 },
+        ],
+      },
+      attendees
+    );
+    assert.deepEqual(record, {
+      orderId: "987654321",
+      orderNumber: "1024",
+      lineTitle: "LQK Maulid 2026 — Family",
+      qty: 3,
+      amount: "90.00",
+      currency: "SGD",
+      customerName: "Aisha Rahman",
+      customerEmail: "aisha@example.com",
+      paidAt: "2026-08-19T12:00:00+08:00",
+      attendees,
+    });
+  });
+
+  test('hides "Default Title" and survives a bare payload', () => {
+    const record = storeOrderRecord(
+      { id: 1, name: "#7", line_items: [{ title: "Ticket", variant_title: "Default Title", quantity: 1 }] },
+      []
+    );
+    assert.equal(record.lineTitle, "Ticket");
+    assert.equal(record.orderNumber, "7");
+    const empty = storeOrderRecord({}, []);
+    assert.equal(empty.orderId, "");
+    assert.equal(empty.lineTitle, null);
+    assert.equal(empty.qty, null);
   });
 });

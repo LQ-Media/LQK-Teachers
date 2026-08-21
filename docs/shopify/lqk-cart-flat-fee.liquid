@@ -1,0 +1,114 @@
+{%- comment -%}
+  LQK flat-fee cart guard — companion to lqk-attendee-fields.liquid.
+
+  The product form pins quantity to 1 at add-to-cart, but the CART (page and
+  drawer) has its own − / + stepper, and a bumped line multiplies the
+  contribution fee: 2 × $30 for one set of attendees. This guard runs on every
+  page and, for any cart line that carries attendee details:
+
+    - hides that line's quantity stepper (a static "1" has no controls), and
+    - if the line somehow reached a quantity above 1 (an old cart, a direct
+      /cart/change call), resets it to 1 via the Cart AJAX API and reloads so
+      the totals the shopper sees are the totals they'll pay.
+
+  Other products in the same cart keep their steppers — the guard is per-line,
+  keyed by the "Main Attendee Name" property the attendee form submits.
+
+  INSTALL — it must run on every page, because the cart drawer opens
+  everywhere: Online Store → Themes → Customize → Footer → Add block →
+  Custom Liquid → paste this file → Save. (Or paste before </body> in
+  layout/theme.liquid and `shopify theme push`.)
+{%- endcomment -%}
+
+<script>
+  (function () {
+    if (window.__lqkFlatFeeGuard) return;
+    window.__lqkFlatFeeGuard = true;
+
+    // A line with this property is a flat-fee registration. The attendee form
+    // always submits it for the main attendee.
+    var MARKER = 'Main Attendee Name';
+    var fixing = false;
+
+    function lineInputs() {
+      /* One updates[] input per cart line is the storefront convention every
+         theme follows. The page and the drawer can BOTH be in the DOM, so
+         group by enclosing cart form/section and map ordinal -> line within
+         each group, rather than assuming one global list. */
+      var inputs = document.querySelectorAll('input[name="updates[]"]');
+      var groups = new Map();
+      inputs.forEach(function (input) {
+        var scope =
+          input.closest('form[action*="/cart"]') ||
+          input.closest('cart-drawer, #CartDrawer, .cart-drawer') ||
+          document;
+        if (!groups.has(scope)) groups.set(scope, []);
+        groups.get(scope).push(input);
+      });
+      return groups;
+    }
+
+    function hideStepper(input) {
+      var wrap =
+        input.closest('quantity-input') ||
+        input.closest('.cart-item__quantity-wrapper, .quantity') ||
+        input.parentElement;
+      if (!wrap || wrap.dataset.lqkFlatHidden) return;
+      wrap.dataset.lqkFlatHidden = '1';
+      wrap.style.display = 'none';
+      var one = document.createElement('span');
+      one.textContent = '1';
+      one.setAttribute('aria-label', 'Quantity fixed at 1 — one contribution per registration');
+      wrap.parentNode && wrap.parentNode.insertBefore(one, wrap);
+    }
+
+    function apply() {
+      // Cheap gate: no cart UI on the page, nothing to do — no fetch.
+      if (!document.querySelector('input[name="updates[]"]')) return;
+
+      fetch('/cart.js', { headers: { accept: 'application/json' } })
+        .then(function (res) { return res.json(); })
+        .then(function (cart) {
+          var flatLines = [];
+          (cart.items || []).forEach(function (item, i) {
+            var props = item.properties || {};
+            if (Object.prototype.hasOwnProperty.call(props, MARKER)) flatLines.push(i);
+          });
+          if (!flatLines.length) return;
+
+          lineInputs().forEach(function (inputs) {
+            flatLines.forEach(function (line) {
+              if (inputs[line]) hideStepper(inputs[line]);
+            });
+          });
+
+          // Belt and braces: a line that already got multiplied is repaired.
+          var bumped = flatLines.find(function (line) { return cart.items[line].quantity > 1; });
+          if (bumped !== undefined && !fixing) {
+            fixing = true;
+            fetch('/cart/change.js', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', accept: 'application/json' },
+              body: JSON.stringify({ line: bumped + 1, quantity: 1 }),
+            })
+              // Reload rather than patching the DOM: the theme owns the cart
+              // markup, and stale totals are worse than a flicker.
+              .then(function () { window.location.reload(); })
+              .catch(function () { fixing = false; });
+          }
+        })
+        .catch(function () {});
+    }
+
+    // The drawer renders lazily and re-renders on every cart change; watch the
+    // DOM instead of guessing which events this theme emits.
+    var pending = null;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = setTimeout(function () { pending = null; apply(); }, 200);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+    else apply();
+  })();
+</script>
