@@ -58,7 +58,8 @@ const browser = await chromium.launch();
 const snippet = renderedSnippet();
 
 /* ---- Theme A: Dawn-shaped. Snippet pasted OUTSIDE the form (a Custom Liquid
-   block), form has an id, quantity has +/- buttons, section re-renders. ---- */
+   block), form has an id, a quantity stepper the widget must NOT touch, and a
+   section that re-renders on variant change. ---- */
 {
   const url = write(
     "dawn.html",
@@ -90,10 +91,13 @@ const snippet = renderedSnippet();
   const inForm = () => page.$eval("#product-form-main", (f) => !!f.querySelector("[data-lqk-attendee-fields]"));
   const fd = () => page.$eval("#product-form-main", (f) => [...new FormData(f).entries()]);
   const props = async () => (await fd()).filter(([k]) => k.startsWith("properties["));
+  const qty = () => page.$eval('input[name="quantity"]', (i) => i.value);
+  const addAttendee = () => page.click("[data-lqk-af-add]");
+  const removeAttendee = () => page.click("[data-lqk-af-remove]");
 
   ok("moves itself into the product form", await inForm());
   ok(
-    "one group at qty 1",
+    "one group on load",
     JSON.stringify(await names()) ===
       JSON.stringify([
         "properties[Main Attendee Name]",
@@ -102,11 +106,12 @@ const snippet = renderedSnippet();
       ]),
     JSON.stringify(await names()),
   );
+  ok("remove button hidden with one group", await page.$eval("[data-lqk-af-remove]", (b) => b.hidden));
 
-  await page.click("#plus");
-  await page.click("#plus");
+  await addAttendee();
+  await addAttendee();
   const n = await names();
-  ok("qty 3 -> three groups", n.length === 9, n.length + " inputs");
+  ok("add button -> three groups", n.length === 9, n.length + " inputs");
   ok(
     "extra groups named Attendee 2 / 3",
     n.includes("properties[Attendee 2 Name]") && n.includes("properties[Attendee 3 Phone]"),
@@ -117,6 +122,9 @@ const snippet = renderedSnippet();
     JSON.stringify(await page.$$eval(".lqk-af__legend", (e) => e.map((x) => x.textContent))) ===
       JSON.stringify(["Main attendee", "Attendee 2", "Attendee 3"]),
   );
+
+  // The whole point of the flat-fee design: attendees never touch the quantity.
+  ok("quantity untouched by adding attendees", (await qty()) === "1", "qty=" + (await qty()));
 
   const vals = [
     ["Aisha Rahman", "aisha@example.com", "+6591234567"],
@@ -138,19 +146,28 @@ const snippet = renderedSnippet();
   );
   const entries = await fd();
   ok(
-    "theme fields still submit",
-    entries.some(([k, v]) => k === "id" && v === "4242") && entries.some(([k]) => k === "quantity"),
+    "theme fields still submit, quantity still 1",
+    entries.some(([k, v]) => k === "id" && v === "4242") &&
+      entries.some(([k, v]) => k === "quantity" && v === "1"),
+    JSON.stringify(entries),
   );
 
-  await page.click("#minus");
-  await page.click("#minus");
-  ok("back to one group at qty 1", (await names()).length === 3);
-  await page.click("#plus");
-  await page.click("#plus");
+  await removeAttendee();
+  await removeAttendee();
+  ok("remove button -> back to one group", (await names()).length === 3);
+  ok("remove button hides itself at one group", await page.$eval("[data-lqk-af-remove]", (b) => b.hidden));
+  await addAttendee();
+  await addAttendee();
   ok(
-    "typed values survive a quantity dip",
+    "typed values survive remove + re-add",
     (await page.$$eval(".lqk-af input", (e) => e.map((x) => x.value))).join("|") === vals.flat().join("|"),
   );
+
+  // The theme's own stepper must not grow or shrink the attendee list either.
+  await page.click("#plus");
+  await page.waitForTimeout(80);
+  ok("quantity stepper does not change attendee groups", (await names()).length === 9);
+  await page.click("#minus");
 
   await page.fill('input[name="properties[Attendee 3 Email]"]', "");
   await page.click('button[name="add"]');
@@ -176,27 +193,33 @@ const snippet = renderedSnippet();
   await page.waitForTimeout(300);
   ok("re-mounts after a section re-render", await inForm());
   ok("no stray duplicate container left behind", (await page.$$("[data-lqk-attendee-fields]")).length === 1);
-  await page.fill('input[name="quantity"]', "3");
-  await page.waitForTimeout(80);
   const after = await page.$$eval(".lqk-af input", (e) => e.map((x) => x.value));
-  ok("values survive the re-render", after.length === 9 && after.join("|") === vals.flat().join("|"), after.join("|"));
+  ok(
+    "groups and values survive the re-render",
+    after.length === 9 && after.join("|") === vals.flat().join("|"),
+    after.join("|"),
+  );
   ok("properties still serialise after a re-render", (await props()).length === 9, JSON.stringify(await fd()));
 
-  await page.fill('input[name="quantity"]', "999");
-  await page.waitForTimeout(80);
+  // The button hides itself at the cap, so click only while it's visible.
+  for (let i = 0; i < 30; i++) {
+    if (await page.$eval("[data-lqk-af-add]", (b) => b.hidden)) break;
+    await addAttendee();
+  }
   ok("caps at 20 groups", (await names()).length === 60, (await names()).length / 3 + " groups");
+  ok("add button hides itself at the cap", await page.$eval("[data-lqk-af-add]", (b) => b.hidden));
   await page.close();
 }
 
-/* ---- Theme B: snippet rendered INSIDE the form, form has no id, and the
-   add-to-cart button is type="button" driven by the theme's own JS. ---- */
+/* ---- Theme B: snippet rendered INSIDE the form, form has no id, no quantity
+   input at all, and the add-to-cart button is type="button" driven by the
+   theme's own JS. ---- */
 {
   const url = write(
     "custom.html",
     `<!doctype html><html><body>
 <form action="/cart/add" method="post">
   <input type="hidden" name="id" value="777">
-  <input type="number" name="quantity" value="2" min="1">
   ${snippet}
   <div class="product-form__buttons"><button type="button" name="add">Add to cart</button></div>
 </form>
@@ -211,12 +234,15 @@ const snippet = renderedSnippet();
   await page.goto(url);
 
   const inputs = () => page.$$eval(".lqk-af input", (e) => e.map((x) => ({ name: x.name, form: x.getAttribute("form") })));
-  ok("honours a quantity already above 1 on load", (await inputs()).length === 6, JSON.stringify(await inputs()));
+  ok("works with no quantity input on the page", (await inputs()).length === 3, JSON.stringify(await inputs()));
   ok("no bogus form attribute when the form has no id", (await inputs()).every((i) => i.form === null), JSON.stringify(await inputs()));
   ok(
     "does not relocate when already inside the form",
     (await page.$eval("form", (f) => f.querySelectorAll("[data-lqk-attendee-fields]").length)) === 1,
   );
+
+  await page.click("[data-lqk-af-add]");
+  ok("add button works here too", (await inputs()).length === 6);
 
   await page.click('[name="add"]');
   ok('type="button" add-to-cart blocked while blank', (await page.evaluate(() => window.__sent)) === 0);

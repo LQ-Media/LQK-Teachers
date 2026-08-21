@@ -1,14 +1,18 @@
 {%- comment -%}
-  LQK attendee details — per-place name / email / phone on the product page.
+  LQK attendee details — per-person name / email / phone on the product page.
 
   Lives in this repo because the LQK Teachers portal reads the resulting orders
   (see lib/events/shopify-core.js); it RUNS in the lqkstore theme. Install steps
   are in docs/shopify/README.md.
 
-  What it does: renders one group of fields per unit of quantity. Quantity 1 is
-  the "Main attendee"; every extra unit adds "Attendee 2", "Attendee 3", … The
-  values ride along as Shopify LINE ITEM PROPERTIES, so they show on the order,
-  the packing slip and the confirmation email with no app and no Admin API.
+  What it does: one "Main attendee" group, plus an "Add another attendee"
+  button that adds Attendee 2, 3, … — DELIBERATELY not tied to the quantity
+  stepper. The product's price ($30 / $50 / $100 / $300 tier) is ONE
+  contribution fee for the whole registration, so quantity stays at 1 however
+  many people are coming; extra attendees must never multiply the price.
+  The values ride along as Shopify LINE ITEM PROPERTIES, so they show on the
+  order, the packing slip and the confirmation email with no app and no
+  Admin API.
 
   Property names produced:
     properties[Main Attendee Name]  / Email / Phone
@@ -22,10 +26,16 @@
 <div class="lqk-af" data-lqk-attendee-fields hidden>
   <h3 class="lqk-af__title">Attendee details</h3>
   <p class="lqk-af__note">
-    We need one set of details for every place booked. Increase the quantity above
-    and another attendee appears here.
+    One contribution covers your whole registration. Add every person joining you —
+    the amount stays the same however many attend.
   </p>
   <div class="lqk-af__groups" data-lqk-af-groups></div>
+  <div class="lqk-af__actions">
+    <button type="button" class="lqk-af__btn" data-lqk-af-add>+ Add another attendee</button>
+    <button type="button" class="lqk-af__btn lqk-af__btn--quiet" data-lqk-af-remove hidden>
+      Remove last attendee
+    </button>
+  </div>
 </div>
 
 <style>
@@ -47,12 +57,19 @@
   }
   .lqk-af__input:focus { outline: 2px solid rgba(var(--color-foreground, 18 18 18), 0.5); outline-offset: 1px; }
   .lqk-af__input:user-invalid { border-color: #c0392b; }
+  .lqk-af__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.9rem; }
+  .lqk-af__btn {
+    padding: 0.55rem 0.9rem; font: inherit; font-size: 0.85rem; font-weight: 600;
+    color: inherit; background: transparent; cursor: pointer; border-radius: 0.3rem;
+    border: 1px solid rgba(var(--color-foreground, 18 18 18), 0.55);
+  }
+  .lqk-af__btn--quiet { border-color: rgba(var(--color-foreground, 18 18 18), 0.25); opacity: 0.8; }
 </style>
 
 <script>
   (function () {
     /* ---- config -------------------------------------------------------- */
-    var MAX_GROUPS = 20;          // hard cap, so a fat-fingered quantity can't hang the page
+    var MAX_GROUPS = 20;          // hard cap on attendees per registration
     var REQUIRED   = true;        // set false to let a guest check out with blanks
     var FIELDS = [
       { key: 'Name',  type: 'text',  autocomplete: 'name',  label: 'Name' },
@@ -67,11 +84,14 @@
     root.dataset.lqkAfReady = '1';
 
     var groupsEl = root.querySelector('[data-lqk-af-groups]');
-    var typed = {};               // property name -> value, so decrementing then
-                                  // re-adding a place doesn't wipe what was typed
+    var addBtn = root.querySelector('[data-lqk-af-add]');
+    var removeBtn = root.querySelector('[data-lqk-af-remove]');
+    var typed = {};               // property name -> value, so removing then
+                                  // re-adding an attendee doesn't wipe what was typed
+    var want = 1;                 // attendees currently shown; NOT the cart quantity —
+                                  // one contribution fee covers the whole registration,
+                                  // so the quantity input is deliberately left alone
     var form = null;
-    var qtyInput = null;
-    var boundQty = null;          // the node we last bound to, held in memory on purpose
 
     /* form.id does NOT give you the id on a Shopify product form: every one of
        them carries <input name="id" value="{{ variant.id }}">, and the form's
@@ -127,21 +147,26 @@
       return group;
     }
 
-    function quantity() {
-      var raw = qtyInput ? parseInt(qtyInput.value, 10) : 1;
-      if (!raw || raw < 1) raw = 1;
-      return Math.min(MAX_GROUPS, raw);
-    }
-
     function sync() {
-      var want = quantity();
       while (groupsEl.children.length > want) groupsEl.removeChild(groupsEl.lastElementChild);
       while (groupsEl.children.length < want) groupsEl.appendChild(buildGroup(groupsEl.children.length + 1));
+      removeBtn.hidden = want <= 1;
+      addBtn.hidden = want >= MAX_GROUPS;
       root.hidden = false;
     }
 
+    addBtn.addEventListener('click', function () {
+      if (want < MAX_GROUPS) { want += 1; sync(); }
+    });
+    /* Always the LAST group: removing from the middle would renumber everyone
+       and mis-file what was already typed. */
+    removeBtn.addEventListener('click', function () {
+      if (want > 1) { want -= 1; sync(); }
+    });
+
     /* Themes vary wildly, so find the real add-to-cart form rather than assuming
-       Dawn's markup: prefer one that actually owns a quantity input. */
+       Dawn's markup: prefer the one that owns a quantity input (the main product
+       form), even though this widget never touches that input. */
     function findForm() {
       var forms = document.querySelectorAll('form[action*="/cart/add"]');
       var fallback = null;
@@ -174,21 +199,6 @@
         else form.appendChild(root);
       }
 
-      qtyInput =
-        form.querySelector('input[name="quantity"]') ||
-        document.querySelector('input[name="quantity"]');
-
-      /* Compared by NODE IDENTITY, not by a data- flag: a flag written with
-         dataset is serialised into the section's HTML, so after a re-render the
-         brand-new quantity input arrives already "flagged" and would never get
-         its listeners — the fields would then stop following the quantity. */
-      if (qtyInput && qtyInput !== boundQty) {
-        boundQty = qtyInput;
-        // 'change' covers the theme's +/- buttons, 'input' covers typing.
-        qtyInput.addEventListener('input', sync);
-        qtyInput.addEventListener('change', sync);
-      }
-
       // Keeps the fields submitting even if a theme parks them outside the form.
       var owner = formId();
       if (owner) {
@@ -208,13 +218,14 @@
     });
 
     /* Themes re-render the product section on a variant change, which rips these
-       fields (and the quantity input) out of the DOM. Put them back. */
+       fields out of the DOM. Put them back; `typed` and `want` live in memory,
+       so nothing the shopper did is lost. */
     var pending = null;
     new MutationObserver(function () {
       if (pending) return;
       pending = setTimeout(function () {
         pending = null;
-        if (!root.isConnected || !form || !form.isConnected || (qtyInput && !qtyInput.isConnected)) mount();
+        if (!root.isConnected || !form || !form.isConnected) mount();
       }, 60);
     }).observe(document.body, { childList: true, subtree: true });
 

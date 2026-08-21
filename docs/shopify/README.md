@@ -4,8 +4,14 @@
 [LQK Maulid 2026](https://lqkstore.littlequrankids.sg/products/lqk-maulid-2026):
 
 - **Main attendee** — Name, Email, Phone (always shown)
-- **Attendee 2, 3, …** — Name, Email, Phone, one group appearing for every extra
-  unit of quantity the shopper adds, and disappearing again when they remove it
+- **Attendee 2, 3, …** — Name, Email, Phone, added with an **"Add another
+  attendee"** button (and removable again)
+
+The attendee list is deliberately **not** tied to the quantity stepper: the
+product's price ($30 / $50 / $100 / $300 tier) is one contribution fee for the
+whole registration, so quantity stays at 1 however many people attend — extra
+attendees never multiply the price. The snippet never reads or writes the
+quantity input.
 
 The values travel as Shopify **line item properties**, so they land on the cart,
 the checkout, the order in admin, the packing slip and the confirmation email
@@ -50,8 +56,8 @@ Everything adjustable sits at the top of the file:
 - `lqk_af_handles` — comma-separated product handles the form appears on.
   Defaults to `lqk-maulid-2026`; on any other product the snippet renders
   nothing at all.
-- `MAX_GROUPS` (default 20) — cap on attendee groups, so a mistyped quantity
-  cannot spawn hundreds of fields.
+- `MAX_GROUPS` (default 20) — cap on attendees per registration; the add
+  button hides itself at the cap.
 - `REQUIRED` (default `true`) — set `false` to let a shopper check out with
   blanks. While `true`, add-to-cart is blocked until every visible field is
   filled and the email addresses are well-formed.
@@ -63,8 +69,9 @@ node docs/shopify/verify-attendee-fields.mjs   # needs playwright + chromium
 ```
 
 It drives the snippet in a headless browser against two theme shapes and
-asserts what actually reaches `FormData` — including the two failure modes that
-look perfectly fine in the theme editor:
+asserts what actually reaches `FormData` — including that the quantity input is
+never touched, and the two failure modes that look perfectly fine in the theme
+editor:
 
 - **`form.id` is not the form's id on a Shopify product form.** Every one of
   them contains `<input name="id">`, and the form's named-element getter shadows
@@ -75,16 +82,16 @@ look perfectly fine in the theme editor:
   section's HTML, flags and all, so identity-based guards are the only ones that
   still work afterwards.
 
-Then in the store itself: add 3 to the cart, confirm the three attendee blocks
-appear under the line item in the cart drawer, and place a test order to see
-them on the order in admin.
+Then in the store itself: add two extra attendees with the button, confirm all
+three blocks appear under the line item in the cart drawer at quantity 1, and
+place a test order to see them on the order in admin.
 
 ## Known limits, worth deciding on
 
-- **Quantity changed on the cart page does not add groups.** Properties are
-  captured at add-to-cart. Someone who adds 1 and then bumps it to 3 in the cart
-  gets 3 places with 1 set of details. Either accept it, or hide the cart's
-  quantity stepper for this product.
+- **Quantity is left alone, so a shopper CAN still raise it** in the theme's
+  stepper or on the cart page — they'd pay the fee twice for one set of
+  attendees. If that matters, hide the quantity stepper for this product in the
+  theme editor (the snippet works fine without one on the page).
 - **Invitation links bypass the product page entirely.** The portal sends guests
   to a cart permalink (`contributionCheckoutUrl` in `lib/events/shopify-core.js`,
   `/cart/<variant>:<qty>?attributes[...]`), which skips the product page — so a
