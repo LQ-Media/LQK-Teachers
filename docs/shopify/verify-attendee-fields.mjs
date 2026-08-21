@@ -92,8 +92,7 @@ const snippet = renderedSnippet();
   const fd = () => page.$eval("#product-form-main", (f) => [...new FormData(f).entries()]);
   const props = async () => (await fd()).filter(([k]) => k.startsWith("properties["));
   const qty = () => page.$eval('input[name="quantity"]', (i) => i.value);
-  const addAttendee = () => page.click("[data-lqk-af-add]");
-  const removeAttendee = () => page.click("[data-lqk-af-remove]");
+  const setCount = (n) => page.selectOption("[data-lqk-af-count]", String(n));
 
   ok("moves itself into the product form", await inForm());
   ok(
@@ -106,12 +105,19 @@ const snippet = renderedSnippet();
       ]),
     JSON.stringify(await names()),
   );
-  ok("remove button hidden with one group", await page.$eval("[data-lqk-af-remove]", (b) => b.hidden));
+  ok(
+    "dropdown offers 1..20 and starts at 1",
+    (await page.$eval("[data-lqk-af-count]", (sel) => sel.options.length + ":" + sel.value)) === "20:1",
+    await page.$eval("[data-lqk-af-count]", (sel) => sel.options.length + ":" + sel.value),
+  );
+  ok(
+    "dropdown never submits (no name attribute)",
+    (await page.$eval("[data-lqk-af-count]", (sel) => sel.getAttribute("name"))) === null,
+  );
 
-  await addAttendee();
-  await addAttendee();
+  await setCount(3);
   const n = await names();
-  ok("add button -> three groups", n.length === 9, n.length + " inputs");
+  ok("dropdown 3 -> three groups", n.length === 9, n.length + " inputs");
   ok(
     "extra groups named Attendee 2 / 3",
     n.includes("properties[Attendee 2 Name]") && n.includes("properties[Attendee 3 Phone]"),
@@ -124,7 +130,7 @@ const snippet = renderedSnippet();
   );
 
   // The whole point of the flat-fee design: attendees never touch the quantity.
-  ok("quantity untouched by adding attendees", (await qty()) === "1", "qty=" + (await qty()));
+  ok("quantity untouched by the dropdown", (await qty()) === "1", "qty=" + (await qty()));
 
   const vals = [
     ["Aisha Rahman", "aisha@example.com", "+6591234567"],
@@ -152,14 +158,11 @@ const snippet = renderedSnippet();
     JSON.stringify(entries),
   );
 
-  await removeAttendee();
-  await removeAttendee();
-  ok("remove button -> back to one group", (await names()).length === 3);
-  ok("remove button hides itself at one group", await page.$eval("[data-lqk-af-remove]", (b) => b.hidden));
-  await addAttendee();
-  await addAttendee();
+  await setCount(1);
+  ok("dropdown back to 1 -> one group", (await names()).length === 3);
+  await setCount(3);
   ok(
-    "typed values survive remove + re-add",
+    "typed values survive dropping the count and raising it again",
     (await page.$$eval(".lqk-af input", (e) => e.map((x) => x.value))).join("|") === vals.flat().join("|"),
   );
 
@@ -205,6 +208,11 @@ const snippet = renderedSnippet();
   await page.waitForTimeout(300);
   ok("re-mounts after a section re-render", await inForm());
   ok("no stray duplicate container left behind", (await page.$$("[data-lqk-attendee-fields]")).length === 1);
+  ok(
+    "dropdown value survives the re-render",
+    (await page.$eval("[data-lqk-af-count]", (sel) => sel.value)) === "3",
+    await page.$eval("[data-lqk-af-count]", (sel) => sel.value),
+  );
   const after = await page.$$eval(".lqk-af input", (e) => e.map((x) => x.value));
   ok(
     "groups and values survive the re-render",
@@ -213,13 +221,8 @@ const snippet = renderedSnippet();
   );
   ok("properties still serialise after a re-render", (await props()).length === 9, JSON.stringify(await fd()));
 
-  // The button hides itself at the cap, so click only while it's visible.
-  for (let i = 0; i < 30; i++) {
-    if (await page.$eval("[data-lqk-af-add]", (b) => b.hidden)) break;
-    await addAttendee();
-  }
-  ok("caps at 20 groups", (await names()).length === 60, (await names()).length / 3 + " groups");
-  ok("add button hides itself at the cap", await page.$eval("[data-lqk-af-add]", (b) => b.hidden));
+  await setCount(20);
+  ok("caps at 20 groups (the dropdown's last option)", (await names()).length === 60, (await names()).length / 3 + " groups");
   await page.close();
 }
 
@@ -245,7 +248,7 @@ const snippet = renderedSnippet();
   page.on("pageerror", (e) => fails.push("pageerror: " + e.message));
   await page.goto(url);
 
-  const inputs = () => page.$$eval(".lqk-af input", (e) => e.map((x) => ({ name: x.name, form: x.getAttribute("form") })));
+  const inputs = () => page.$$eval("[data-lqk-af-groups] input", (e) => e.map((x) => ({ name: x.name, form: x.getAttribute("form") })));
   ok("works with no quantity input on the page", (await inputs()).length === 3, JSON.stringify(await inputs()));
   ok("no bogus form attribute when the form has no id", (await inputs()).every((i) => i.form === null), JSON.stringify(await inputs()));
   ok(
@@ -253,13 +256,13 @@ const snippet = renderedSnippet();
     (await page.$eval("form", (f) => f.querySelectorAll("[data-lqk-attendee-fields]").length)) === 1,
   );
 
-  await page.click("[data-lqk-af-add]");
-  ok("add button works here too", (await inputs()).length === 6);
+  await page.selectOption("[data-lqk-af-count]", "2");
+  ok("dropdown works here too", (await inputs()).length === 6);
 
   await page.click('[name="add"]');
   ok('type="button" add-to-cart blocked while blank', (await page.evaluate(() => window.__sent)) === 0);
 
-  const els = await page.$$(".lqk-af input");
+  const els = await page.$$("[data-lqk-af-groups] input");
   const v = ["Aisha", "aisha@example.com", "+6591234567", "Yusuf", "yusuf@example.com", "+6598765432"];
   for (let i = 0; i < els.length; i++) await els[i].fill(v[i]);
   await page.click('[name="add"]');

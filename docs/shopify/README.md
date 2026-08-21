@@ -3,9 +3,10 @@
 `lqk-attendee-fields.liquid` adds per-place attendee capture to
 [LQK Maulid 2026](https://lqkstore.littlequrankids.sg/products/lqk-maulid-2026):
 
+- **Number of attendees** — a dropdown (1–20) controlling only how many
+  detail blocks show; it has nothing to do with the cart quantity or the price
 - **Main attendee** — Name, Email, Phone (always shown)
-- **Attendee 2, 3, …** — Name, Email, Phone, added with an **"Add another
-  attendee"** button (and removable again)
+- **Attendee 2, 3, …** — Name, Email, Phone, one block per attendee selected
 
 The attendee list is deliberately **not** tied to the quantity stepper: the
 product's price ($30 / $50 / $100 / $300 tier) is one contribution fee for the
@@ -71,8 +72,7 @@ Everything adjustable sits at the top of the file:
 - `lqk_af_handles` — comma-separated product handles the form appears on.
   Defaults to `lqk-maulid-2026`; on any other product the snippet renders
   nothing at all.
-- `MAX_GROUPS` (default 20) — cap on attendees per registration; the add
-  button hides itself at the cap.
+- `MAX_GROUPS` (default 20) — the dropdown's highest option.
 - `REQUIRED` (default `true`) — set `false` to let a shopper check out with
   blanks. While `true`, add-to-cart is blocked until every visible field is
   filled and the email addresses are well-formed.
@@ -97,9 +97,9 @@ editor:
   section's HTML, flags and all, so identity-based guards are the only ones that
   still work afterwards.
 
-Then in the store itself: add two extra attendees with the button, confirm all
-three blocks appear under the line item in the cart drawer at quantity 1, and
-place a test order to see them on the order in admin.
+Then in the store itself: pick 3 in the attendees dropdown, confirm all three
+blocks appear under the line item in the cart drawer at quantity 1, and place a
+test order to see them on the order in admin.
 
 ## Known limits, worth deciding on
 

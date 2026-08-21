@@ -26,16 +26,14 @@
 <div class="lqk-af" data-lqk-attendee-fields hidden>
   <h3 class="lqk-af__title">Attendee details</h3>
   <p class="lqk-af__note">
-    One contribution covers your whole registration. Add every person joining you —
-    the amount stays the same however many attend.
+    One contribution covers your whole registration — the amount stays the same
+    however many attend.
   </p>
+  <label class="lqk-af__field lqk-af__count">
+    <span class="lqk-af__label">Number of attendees</span>
+    <select class="lqk-af__input" data-lqk-af-count></select>
+  </label>
   <div class="lqk-af__groups" data-lqk-af-groups></div>
-  <div class="lqk-af__actions">
-    <button type="button" class="lqk-af__btn" data-lqk-af-add>+ Add another attendee</button>
-    <button type="button" class="lqk-af__btn lqk-af__btn--quiet" data-lqk-af-remove hidden>
-      Remove last attendee
-    </button>
-  </div>
 </div>
 
 <style>
@@ -57,13 +55,8 @@
   }
   .lqk-af__input:focus { outline: 2px solid rgba(var(--color-foreground, 18 18 18), 0.5); outline-offset: 1px; }
   .lqk-af__input:user-invalid { border-color: #c0392b; }
-  .lqk-af__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.9rem; }
-  .lqk-af__btn {
-    padding: 0.55rem 0.9rem; font: inherit; font-size: 0.85rem; font-weight: 600;
-    color: inherit; background: transparent; cursor: pointer; border-radius: 0.3rem;
-    border: 1px solid rgba(var(--color-foreground, 18 18 18), 0.55);
-  }
-  .lqk-af__btn--quiet { border-color: rgba(var(--color-foreground, 18 18 18), 0.25); opacity: 0.8; }
+  .lqk-af__count { max-width: 14rem; margin-bottom: 1rem; }
+  select.lqk-af__input { cursor: pointer; }
 </style>
 
 <script>
@@ -84,10 +77,9 @@
     root.dataset.lqkAfReady = '1';
 
     var groupsEl = root.querySelector('[data-lqk-af-groups]');
-    var addBtn = root.querySelector('[data-lqk-af-add]');
-    var removeBtn = root.querySelector('[data-lqk-af-remove]');
-    var typed = {};               // property name -> value, so removing then
-                                  // re-adding an attendee doesn't wipe what was typed
+    var countEl = root.querySelector('[data-lqk-af-count]');
+    var typed = {};               // property name -> value, so dropping the count
+                                  // and raising it again doesn't wipe what was typed
     var want = 1;                 // attendees currently shown; NOT the cart quantity —
                                   // one contribution fee covers the whole registration.
                                   // The only write to the quantity input is pinQuantity()
@@ -148,21 +140,25 @@
       return group;
     }
 
+    // The dropdown is UI only — no name attribute, so it never submits, and it
+    // has NOTHING to do with the cart quantity or the price.
+    for (var i = 1; i <= MAX_GROUPS; i += 1) {
+      var option = document.createElement('option');
+      option.value = String(i);
+      option.textContent = String(i);
+      countEl.appendChild(option);
+    }
+
     function sync() {
       while (groupsEl.children.length > want) groupsEl.removeChild(groupsEl.lastElementChild);
       while (groupsEl.children.length < want) groupsEl.appendChild(buildGroup(groupsEl.children.length + 1));
-      removeBtn.hidden = want <= 1;
-      addBtn.hidden = want >= MAX_GROUPS;
+      countEl.value = String(want);
       root.hidden = false;
     }
 
-    addBtn.addEventListener('click', function () {
-      if (want < MAX_GROUPS) { want += 1; sync(); }
-    });
-    /* Always the LAST group: removing from the middle would renumber everyone
-       and mis-file what was already typed. */
-    removeBtn.addEventListener('click', function () {
-      if (want > 1) { want -= 1; sync(); }
+    countEl.addEventListener('change', function () {
+      var next = parseInt(countEl.value, 10);
+      if (next >= 1 && next <= MAX_GROUPS) { want = next; sync(); }
     });
 
     /* Themes vary wildly, so find the real add-to-cart form rather than assuming
