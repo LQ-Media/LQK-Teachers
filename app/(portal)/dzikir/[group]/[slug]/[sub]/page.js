@@ -18,13 +18,13 @@ export async function generateMetadata({ params }) {
 }
 
 /**
- * One sub-section, read a single passage at a time.
+ * One sub-section, read straight through on a single scrolling page.
  *
- * The whole sub-section is sent to the client even though only one passage is
- * on screen: swiping has to be instant, and a route per passage would mean a
- * server round-trip per page turn. A sub-section is a few dozen passages, not
- * the 708 of a whole collection, so the payload stays small — which is exactly
- * why the library splits at this level rather than at the collection.
+ * The whole sub-section is sent to the client and laid out at once: a litany is
+ * recited in order, so a page turn per verse fought the reading rather than
+ * helping it. The split stays at the sub-section rather than the collection to
+ * keep the payload sane — the largest sub-section is 150 passages, against the
+ * 708 of Dala'ilul Khairat entire.
  */
 export default async function DzikirPassagePage({ params }) {
   await requireSession();
