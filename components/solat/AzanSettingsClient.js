@@ -10,6 +10,9 @@ import {
   BUNDLED_SOUNDS,
   soundSrc,
   isCustomSoundId,
+  SUNRISE,
+  timeLabel,
+  timeMinutes,
 } from "@/lib/azan/catalog";
 import { AUTO, CHOICE_KEY, savedChoice, loadTimings, deviceTimezone } from "@/lib/azan/solat-client";
 import { AZAN_SETTINGS_EVENT } from "./AzanPlayer";
@@ -290,13 +293,18 @@ export default function AzanSettingsClient() {
   }
 
   // ---- Derived timetable -----------------------------------------------------
+  // `parsed` is the five prayers, and drives BOTH the countdown and the azan
+  // settings rows below. Syuruk is kept out of it deliberately (see SUNRISE in
+  // lib/azan/catalog.js) and joins only the rendered list.
   const parsed = useMemo(() => {
     if (!timings) return null;
-    return PRAYER_KEYS.map((key) => {
-      const t = String(timings[key] || "00:00").slice(0, 5);
-      const [h, m] = t.split(":").map(Number);
-      return { key, label: PRAYER_LABELS[key], icon: PRAYER_ICONS[key], time: t, minutes: h * 60 + m };
-    });
+    return PRAYER_KEYS.map((key) => ({
+      key,
+      label: PRAYER_LABELS[key],
+      icon: PRAYER_ICONS[key],
+      time: timeLabel(timings[key]) || "--:--",
+      minutes: timeMinutes(timings[key]) ?? 0,
+    }));
   }, [timings]);
 
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -304,6 +312,22 @@ export default function AzanSettingsClient() {
   const next = parsed ? (nextIndex === -1 ? parsed[0] : parsed[nextIndex]) : null;
   const diff = next ? (((next.minutes - nowMinutes) % 1440) + 1440) % 1440 : 0;
   const countdown = diff >= 60 ? `${Math.floor(diff / 60)}h ${diff % 60}m` : `${diff}m`;
+
+  // The rendered timetable: the same five rows with Syuruk slotted in after
+  // Subuh, flagged so it renders as a reference time with no azan controls.
+  const rows = useMemo(() => {
+    if (!parsed) return null;
+    const minutes = timeMinutes(timings?.[SUNRISE.key]);
+    if (minutes == null) return parsed; // source did not return it — omit the row
+    const out = [...parsed];
+    out.splice(1, 0, {
+      ...SUNRISE,
+      time: timeLabel(timings[SUNRISE.key]),
+      minutes,
+      marker: true,
+    });
+    return out;
+  }, [parsed, timings]);
 
   const soundOptions = useMemo(() => {
     const bundled = BUNDLED_SOUNDS.map((s) => ({ value: s.id, label: s.label }));
@@ -385,11 +409,32 @@ export default function AzanSettingsClient() {
         )}
 
         {/* Per-prayer settings */}
-        {parsed && (
+        {rows && (
           <ul className="divide-y divide-line">
-            {parsed.map((p, i) => {
+            {rows.map((p) => {
+              // Syuruk is a reference time, not a prayer: no ring, no azan
+              // toggle, no sound. It carries the line icon because there is no
+              // sunrise plate in /public/prayer and Subuh's is itself a
+              // sunrise, so borrowing it would read as a second Subuh.
+              if (p.marker) {
+                return (
+                  <li key={p.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-sage-soft text-ink">
+                      <Icon name={p.icon} size={18} />
+                    </span>
+                    <div className="min-w-[72px]">
+                      <div className="text-[14px] font-bold text-charcoal-soft">{p.label}</div>
+                      <div className="text-[12px] text-charcoal-soft">{p.time}</div>
+                    </div>
+                    <span className="ml-auto text-[12px] text-charcoal-soft/70">
+                      End of Subuh · no azan
+                    </span>
+                  </li>
+                );
+              }
+
               const cfg = settings.prayers[p.key];
-              const isNext = i === (nextIndex === -1 ? 0 : nextIndex);
+              const isNext = p.key === (next ? next.key : null);
               const previewValue = cfg.sound;
               return (
                 <li key={p.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
