@@ -5,13 +5,30 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import ProfileForm from "@/components/ProfileForm";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
+import ConnectedAccounts from "@/components/auth/ConnectedAccounts";
+import { enabledProviders, providerLabel } from "@/lib/auth/providers";
+import { listIdentities } from "@/lib/auth/identities";
 
 export const metadata = { title: "My profile · LQK Teachers Portal" };
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
 
-export default async function ProfilePage() {
+/* Outcome of a link round trip, handed back on the URL by
+   app/api/auth/[provider]/callback. */
+function linkNotice(sp) {
+  if (sp?.linked) return { tone: "good", text: `${providerLabel(sp.linked)} connected.` };
+  if (sp?.link_error === "claimed") {
+    return {
+      tone: "bad",
+      text: `That ${providerLabel(sp.provider || "")} account is already connected to a different portal account. Disconnect it there first, or ask your admin.`,
+    };
+  }
+  return null;
+}
+
+export default async function ProfilePage({ searchParams }) {
   const session = await requireSession();
+  const sp = await searchParams;
   const db = getDb();
   const profile = db
     .prepare("SELECT full_name, email, role, primary_location, position, photo FROM profiles WHERE id = ?")
@@ -23,6 +40,9 @@ export default async function ProfilePage() {
     .map((r) => r.location);
   const branches = locations.length ? locations : profile.primary_location ? [profile.primary_location] : [];
 
+  const providers = enabledProviders();
+  const linked = providers.length ? listIdentities(db, session.userId) : [];
+
   const initial = (profile.full_name || "?").trim().charAt(0).toUpperCase();
   const src = avatarSrc(session.userId, profile.photo);
 
@@ -33,7 +53,7 @@ export default async function ProfilePage() {
           route="/profile"
           icon="user"
           title="My profile"
-          subtitle="Update your photo and password."
+          subtitle="Update your photo, password and connected accounts."
         />
       </div>
 
@@ -56,10 +76,19 @@ export default async function ProfilePage() {
         <ProfileForm currentSrc={src} initial={initial} />
       </div>
 
-      <div>
+      <div className={providers.length ? "mb-6" : ""}>
         <div className="text-[11px] font-bold uppercase tracking-wider text-charcoal-soft mb-3">Password</div>
         <ChangePasswordForm mustChange={false} />
       </div>
+
+      {providers.length > 0 && (
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-charcoal-soft mb-3">
+            Connected accounts
+          </div>
+          <ConnectedAccounts providers={providers} linked={linked} notice={linkNotice(sp)} />
+        </div>
+      )}
     </div>
   );
 }
