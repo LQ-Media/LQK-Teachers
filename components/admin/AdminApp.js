@@ -20,6 +20,7 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import HoursAdmin from "@/components/admin/HoursAdmin";
 import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
+import AssessmentsAdmin from "@/components/admin/AssessmentsAdmin";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -96,7 +97,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts }) {
+export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts, initialAssess }) {
   const [tab, setTab] = useState("users");
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [staffModal, setStaffModal] = useState(null); // {mode, student?}
@@ -105,6 +106,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
 
   const pendingHours = initialHours?.pending?.length || 0;
   const missedCount = initialShifts?.missed?.length || 0;
+  const chaseCount = initialAssess?.data?.counts?.chase || 0;
   // Anyone who can hold a shift. Sorted by name so the pickers are scannable.
   const teacherOptions = [...users]
     .map((u) => ({ id: u.id, fullName: u.full_name }))
@@ -128,7 +130,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
           title="Admin"
           subtitle="Manage accounts, the tracked staff roster, and work hours."
         />
-        {tab !== "hours" && (
+        {tab !== "hours" && tab !== "assess" && (
           <button
             type="button"
             onClick={openAdd}
@@ -158,6 +160,9 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
         <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
           Work hours{pendingHours ? ` (${pendingHours})` : ""}
         </Tab>
+        <Tab active={tab === "assess"} onClick={() => setTab("assess")} icon="award">
+          Assessments{chaseCount ? ` (${chaseCount})` : ""}
+        </Tab>
       </div>
 
       {tab === "users" && (
@@ -169,6 +174,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
         <ShiftsAdmin teachers={teacherOptions} locations={locations} initial={initialShifts} />
       )}
       {tab === "hours" && <HoursAdmin initial={initialHours} />}
+      {tab === "assess" && <AssessmentsAdmin initial={initialAssess} />}
 
       {userModal && (
         <UserModal
@@ -306,6 +312,11 @@ function UsersTable({ users, onEdit, onCreds }) {
                 </td>
                 <td className="px-3 py-3">
                   <RolePill role={u.role} />
+                  {u.is_assessor && (
+                    <span className="mt-1 block w-fit rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
+                      Assessor
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-3 text-[12px] text-charcoal-soft">
                   {u.branches.length ? u.branches.join(", ") : "—"}
@@ -350,6 +361,7 @@ function UserModal({ modal, locations, onClose, onCreds }) {
     role: u.role || "teacher",
     position: u.position || "",
     pay_tier: u.pay_tier || "",
+    is_assessor: !!u.is_assessor,
     primary_location: u.primary_location || "",
     branches: new Set(u.branches || []),
   });
@@ -378,6 +390,7 @@ function UserModal({ modal, locations, onClose, onCreds }) {
       role: form.role,
       position: form.position,
       pay_tier: form.pay_tier,
+      is_assessor: form.is_assessor,
       primary_location: form.primary_location,
       branches: [...branches],
     };
@@ -431,6 +444,20 @@ function UserModal({ modal, locations, onClose, onCreds }) {
             ))}
           </select>
         </Labelled>
+        <label className="flex items-start gap-2.5 rounded-control border-[0.5px] border-line bg-paper px-3 py-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-ink"
+            checked={form.is_assessor}
+            onChange={(e) => set("is_assessor", e.target.checked)}
+          />
+          <span className="text-[13px] text-charcoal">
+            <span className="font-semibold">Assessor</span>
+            <span className="mt-0.5 block text-[11px] text-charcoal-soft">
+              Can observe and score other teachers under Assessments. Any tier, any branch. Results stay with admins.
+            </span>
+          </span>
+        </label>
         <Labelled label="Primary branch">
           <select
             className={field}

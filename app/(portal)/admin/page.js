@@ -4,6 +4,8 @@ import { avatarSrc } from "@/lib/avatar";
 import { hoursAdminData } from "@/lib/actions/hours";
 import { shiftsForRange, missedShifts } from "@/lib/actions/shifts";
 import { sgMonthNow } from "@/lib/hours/rates";
+import { adminYearData, yearsWithAssessments } from "@/lib/assess/queries";
+import { currentPeriod, yearOptions } from "@/lib/assess/periods";
 import AdminApp from "@/components/admin/AdminApp";
 
 export const metadata = { title: "Admin · LQK Teachers Portal" };
@@ -13,7 +15,7 @@ export default async function AdminPage() {
   const db = getDb();
 
   const profiles = db
-    .prepare("SELECT id, full_name, email, role, primary_location, position, photo, pay_tier FROM profiles ORDER BY full_name")
+    .prepare("SELECT id, full_name, email, role, primary_location, position, photo, pay_tier, is_assessor FROM profiles ORDER BY full_name")
     .all();
   const locRows = db.prepare("SELECT teacher_id, location, is_primary FROM teacher_locations").all();
   const byTeacher = new Map();
@@ -29,6 +31,7 @@ export default async function AdminPage() {
     primary_location: p.primary_location || "",
     position: p.position || "",
     pay_tier: p.pay_tier || "",
+    is_assessor: !!p.is_assessor,
     branches: byTeacher.get(p.id) || (p.primary_location ? [p.primary_location] : []),
     avatar: avatarSrc(p.id, p.photo),
     isSelf: p.id === session.userId,
@@ -67,6 +70,12 @@ export default async function AdminPage() {
   const [range, missedList] = await Promise.all([shiftsForRange(), missedShifts()]);
   const initialShifts = { ...range, missed: missedList.missed };
 
+  const thisYear = currentPeriod().year;
+  const initialAssess = {
+    data: adminYearData(thisYear),
+    years: yearOptions(thisYear, yearsWithAssessments()),
+  };
+
   return (
     <AdminApp
       users={users}
@@ -76,6 +85,7 @@ export default async function AdminPage() {
       classes={TRACKER_CLASSES}
       initialHours={initialHours}
       initialShifts={initialShifts}
+      initialAssess={initialAssess}
     />
   );
 }

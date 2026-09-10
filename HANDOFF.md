@@ -144,6 +144,85 @@ Two traps: only $10/15/20/25 are expressible (the portal stores a *tier*, not a 
 
 ---
 
+## 4b. Peer assessment, My classes, pack proposals, social sign-in (Sep 2026)
+
+Built 2026-09-10 from the rubric and build plan agreed with Karim (the
+decisions log is on the assessment artifact page and repeated in
+`lib/assess/rubric.js`). Five pieces, all on this branch, all additive.
+
+**Decisions, not accidents — check with Karim before changing any of them:**
+
+- **Five levels, one bar.** Level 3 (Proficient) is the target for every
+  tier. No link to pay this year: nothing here reads or writes payroll.
+- **Results are management-only.** No route shows a teacher their own
+  scores, notes or recordings. `assessmentDetail` returns null for anyone
+  but the owning assessor or an admin, and the page 404s on null. The only
+  record that a teacher heard their result is the admin-logged verbal review.
+- **Any tier can be appointed, any branch can be assessed.** The assessor
+  flag is a column (`profiles.is_assessor`), read per request in
+  `canAssessFor`, NOT a session claim — withdrawing it works immediately.
+- **No reciprocal pairs in a semester.** If A assessed B in S2 2026, B
+  cannot open an assessment of A in S2 2026 (`canAssess` + `reciprocalExists`).
+  Two assessors of one teacher are both kept, never averaged.
+- **Semesters are the two halves of the year** (Jan–Jun, Jul–Dec), derived
+  from the OBSERVATION date, not today. Every teacher needs at least one
+  submitted assessment by 30 November; the tracker chases from 1 October.
+- **Rubric wording is config, versioned.** Edit `lib/assess/rubric.js`; a
+  score row snapshots `rubric_version`. Bump the version for a change in
+  meaning. Never rename a criterion key once results exist.
+- **Recordings live on Drive, kept indefinitely.** Same Apps Script as
+  event photos, different folder (`LQK_ASSESS_DRIVE_FOLDER_ID`), under
+  `Assessments/<year>/<teacher>`. The portal stores the file id and a small
+  thumbnail. Playback is a gated 302; the Drive folder is shared to admins
+  only. Clips are capped at 45 MB because the script takes ~50 MB a request.
+  The portal never deletes from Drive.
+- **Domain B (reading and recitation) is scored live**, no recording.
+- **The parents portal owns the children roster.** `students` here is the
+  STAFF hifz roster and always was. "My classes" reads a teacher's classes
+  and children over `/api/bridge/*` on LQK-Parents (shared secret
+  `LQK_PARENTS_TOKEN` = `TEACHERS_API_SECRET`), and after-lesson reports go
+  back the same way into each child's feed. A report is stored here first
+  (`class_reports`) and marked sent on success, so a bad connection at a
+  centre never loses one.
+- **Teachers propose pack edits; reviewers apply them.** Approving writes
+  the wording into `lesson_packs.content`; the proposal row stays as the
+  record behind criterion A4.
+- **Social sign-in links on exact email only and never sets a role.**
+  Password stays. Facebook needs Meta app review before non-testers can use
+  it, and may share no email — those users are told to use another method.
+
+| Concern | File |
+|---|---|
+| Rubric, levels, domains | `lib/assess/rubric.js` |
+| Calendar, November rule (pure, tested) | `lib/assess/periods.js` |
+| Who may assess whom, annual view (pure, tested) | `lib/assess/rules.js` |
+| Read-side queries | `lib/assess/queries.js` |
+| Server actions | `lib/actions/assess.js` |
+| Assessor screens | `app/(portal)/assessments/`, `components/assess/` |
+| Evidence upload / playback | `app/api/assessments/[id]/evidence`, `app/api/assessments/evidence/[evidenceId]`, `lib/assess/evidence.js` |
+| Admin tab, CSV | `components/admin/AssessmentsAdmin.js`, `app/api/assessments/export` |
+| My classes | `lib/parents/bridge.js`, `lib/actions/classes.js`, `app/(portal)/classes/`, `components/classes/` |
+| Pack proposals | `lib/actions/packs.js` (bottom), `components/packs/PackEdits.js` |
+| Social sign-in | `lib/auth/oauth.js` (pure, tested), `app/api/auth/[provider]/{start,callback}`, `app/login/page.js` + `components/LoginClient.js` |
+| Schema | `lib/db.js` → the "Peer assessment" block at the end of `ensureSchema` |
+| Tests | `test/assess.test.mjs`, `test/oauth.test.mjs` |
+
+**Deploy steps:** push (the additive migration runs on boot, nothing to run
+by hand). Then on Railway set, as needed: `LQK_ASSESS_DRIVE_FOLDER_ID`,
+`LQK_PARENTS_URL` + `LQK_PARENTS_TOKEN` (and `TEACHERS_API_SECRET` on the
+parents service — the LQK-Parents PR carries its side), `LQK_APP_ORIGIN`,
+and the provider credentials in `.env.example`. Every one of them is
+optional: without it the relevant screen says so and the rest of the portal
+is unaffected. Redeploy the Apps Script from `scripts/drive-upload.gs` once —
+it now accepts a nested subfolder path.
+
+**Not verified in production:** everything in this section. Verified
+locally: `npm test` (271 tests, UTC and SGT), `npm run lint` (three
+pre-existing `set-state-in-effect` errors in components this work did not
+write, left alone), a clean
+`next build` of both portals, and the parents-side feed migration against a
+real old-shaped database.
+
 ## 5. Verified vs not
 
 **Verified locally**, on the code now in `main`: clean production build; the full `npm test` suite green (51 offline, plus 2 live-network tests when opted in); a live Nominatim lookup resolving a real Singapore address; and a full round trip of a tagged OT session appearing correctly in the teacher list, the admin approval queue, and the CSV export with label, coordinates, accuracy and map link.

@@ -36,6 +36,14 @@ export default async function PacksPage() {
 
   const approved = packs.filter((p) => p.status === "approved");
   const drafts = packs.filter((p) => p.status === "draft");
+  const pendingEdits = canReview
+    ? db
+        .prepare(
+          `SELECT e.pack_id, COUNT(*) AS n, MAX(p.label) AS label FROM lesson_pack_edits e JOIN lesson_packs p ON p.id = e.pack_id
+            WHERE e.status = 'pending' GROUP BY e.pack_id ORDER BY MIN(e.created_at)`
+        )
+        .all()
+    : [];
 
   return (
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
@@ -53,6 +61,32 @@ export default async function PacksPage() {
           surahs={ALL_SURAHS.map((s) => ({ number: s.number, name: s.name, ayahCount: s.ayahCount }))}
           canGenerate={aiCapabilities().summarise}
         />
+      )}
+
+      {canReview && pendingEdits.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 font-heading text-[17px] font-bold text-charcoal">
+            Teachers&rsquo; proposed changes
+            <span className="ml-2 text-[13px] font-normal text-charcoal-soft">
+              {pendingEdits.reduce((n, e) => n + e.n, 0)}
+            </span>
+          </h2>
+          <ul className="space-y-2">
+            {pendingEdits.map((e) => (
+              <li key={e.pack_id}>
+                <Link
+                  href={`/packs/${e.pack_id}`}
+                  className="flex items-center justify-between gap-3 rounded-card border-[0.5px] border-line bg-white px-4 py-3 text-[13px] hover:bg-paper-deep/40"
+                >
+                  <span className="font-semibold text-charcoal">{e.label}</span>
+                  <span className="rounded-pill bg-sand px-2.5 py-1 text-[11px] font-bold text-ink">
+                    {e.n} to review
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {canReview && drafts.length > 0 && (

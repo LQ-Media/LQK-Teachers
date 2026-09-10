@@ -97,6 +97,10 @@ const OWNED = [
   ["honours", "teacher_id"],
   ["nominations", "nominee_id"],
   ["nominations", "nominator_id"],
+  ["assessments", "teacher_id"],
+  ["assessment_reviews", "teacher_id"],
+  ["class_reports", "teacher_id"],
+  ["auth_identities", "profile_id"],
 ];
 
 // Rows that outlive the person and just lose the pointer. These have no
@@ -117,6 +121,11 @@ const DETACH = [
   ["lesson_packs", "created_by"],
   ["lesson_packs", "approved_by"],
   ["invites", "invited_by"],
+  ["assessments", "assessor_id"],
+  ["assessment_evidence", "uploaded_by"],
+  ["assessment_reviews", "reviewed_by"],
+  ["lesson_pack_edits", "proposer_id"],
+  ["lesson_pack_edits", "decided_by"],
 ];
 
 const db = getDb();
