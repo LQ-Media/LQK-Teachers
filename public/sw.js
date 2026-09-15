@@ -4,7 +4,7 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v5"; // bumped 2026-08-10 to add /qibla to the offline routes
+const VERSION = "lqk-v7"; // bumped 2026-09-15 to precache the positional forms
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
@@ -17,13 +17,33 @@ const PAGE_CACHE = `${VERSION}-pages`;
 // /qibla is safe because its city reference points are bundled in the JS: once
 // the page and its chunks are cached, picking a place and reading a bearing
 // needs no network at all.
-const OFFLINE_ROUTES = [/^\/quran(\/|$)/, /^\/dzikir(\/|$)/, /^\/qibla(\/|$)/];
+//
+// /games is safe for the same reason and needs it more than any of them: the
+// games are handed to a child in a classroom, which is exactly where the wifi
+// is worst, and they hold no personal data at all — the letter shapes, the
+// mascots and the sounds are the same for everyone and nothing is recorded.
+const OFFLINE_ROUTES = [
+  /^\/quran(\/|$)/,
+  /^\/dzikir(\/|$)/,
+  /^\/qibla(\/|$)/,
+  /^\/games(\/|$)/,
+];
 const PRECACHE = [
   "/offline.html",
   "/icon-192.png",
   "/icon-512.png",
   "/apple-icon.png",
   "/manifest.webmanifest",
+  // The Huruf games' own assets. The geometry is what every game draws from,
+  // so without it a cached game page would open to an empty box. These sit
+  // under /huruf/ rather than /games/ for two reasons: /games/<name> is a
+  // route, and proxy.js lets /huruf/ through the auth gate — precaching
+  // happens at install time, and behind the gate an expired session would
+  // cache the login page's HTML under the geometry's URL.
+  "/huruf/geometry.json",
+  "/huruf/forms.json",
+  "/huruf/mascot-ustaz.png",
+  "/huruf/mascot-ustazah.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -76,10 +96,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Immutable static assets (hashed JS/CSS, icons, fonts): cache-first.
+  // Everything under /huruf/ is static game content — letter geometry, the
+  // mascots and the letter sounds — and is cached the same way as a hashed
+  // asset so a classroom tablet keeps working without a network.
   const isStatic =
     url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/huruf/") ||
     PRECACHE.includes(url.pathname) ||
-    /\.(png|svg|ico|webp|woff2?)$/.test(url.pathname);
+    /\.(png|svg|ico|webp|woff2?|ttf|mp3)$/.test(url.pathname);
 
   if (isStatic) {
     event.respondWith(
