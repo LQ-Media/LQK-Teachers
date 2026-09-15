@@ -4,14 +4,42 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import { createNote } from "@/lib/actions/notes";
+import {
+  MAX_PART_SECONDS,
+  TARGET_SAMPLE_RATE,
+  decodeToPcm16,
+  encodeWav,
+  looksLikeAudio,
+  planParts,
+  providerAccepts,
+} from "@/lib/audio/prepare";
 
 const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 
 const MODES = [
   { key: "recording", label: "Record", icon: "mic", need: "transcribe" },
+  { key: "upload", label: "Upload", icon: "upload", need: "transcribe" },
   { key: "photo", label: "Photo", icon: "camera", need: "vision" },
   { key: "typed", label: "Type", icon: "type", need: null },
 ];
+
+// Four capture modes, three stored sources. A kuliah recorded in the app and
+// the same kuliah recorded on a phone and uploaded afterwards are one kind of
+// note once they are text, so both file as "recording".
+const SOURCE_FOR_MODE = {
+  recording: "recording",
+  upload: "recording",
+  photo: "photo",
+  typed: "typed",
+};
+
+// Deliberately wider than "audio/*". Phone file pickers classify some of their
+// own recordings as video (.3gp, .mp4) or as an unknown binary, and an
+// accept list that omits those hides the very file the teacher came to find.
+// Anything genuinely unusable is caught after the pick, with a sentence saying
+// what to do about it.
+const UPLOAD_ACCEPT =
+  "audio/*,video/mp4,video/webm,video/3gpp,.m4a,.mp3,.wav,.ogg,.oga,.opus,.aac,.amr,.3gp,.3gpp,.flac,.mp4,.webm,.wma,.caf";
 
 const LANGUAGES = [
   { code: "ms", label: "Malay" },
@@ -33,6 +61,28 @@ function extFor(mime) {
   return "webm";
 }
 
+/**
+ * What to tell a teacher when a recording can't be prepared for upload. Each
+ * one names the next thing to try rather than the thing that went wrong — none
+ * of these are anything they did.
+ */
+function prepareMessage(code) {
+  switch (code) {
+    case "no-decoder":
+      return "This browser can't convert audio. Try Chrome or Safari, or upload an MP3, M4A or WAV under 24MB.";
+    case "undecodable":
+      return "This browser couldn't read that recording. Save or export it as MP3, M4A or WAV and try again.";
+    case "empty":
+      return "There's no audio in that file.";
+    case "too-long":
+      return "That recording is over four hours long. Split it into shorter sittings and upload them one at a time.";
+    case "too-large":
+      return "That file is too big to prepare on this device. Upload a shorter recording, or one saved at a lower quality.";
+    default:
+      return "That recording couldn't be prepared. Try a different file, or record in the app instead.";
+  }
+}
+
 function clock(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -48,6 +98,11 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
   const [bytes, setBytes] = useState(0);
   const [error, setError] = useState(null);
   const [working, setWorking] = useState("");
+  // Two separate flags, because they stop being true at different moments: a
+  // teacher who has already asked to stop should not still see a Stop button,
+  // but the wait is still the long one until the part in flight comes back.
+  const [longRun, setLongRun] = useState(false); // a multi-part upload is under way
+  const [stoppable, setStoppable] = useState(false); // ...and can still be called off
 
   const [text, setText] = useState("");
   const [language, setLanguage] = useState("ms");
@@ -61,6 +116,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const tickRef = useRef(null);
+  const cancelRef = useRef(false);
 
   const releaseMic = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -170,6 +226,127 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
     await ingest(body);
   }
 
+  /**
+   * Transcribe a recording the teacher made somewhere else — a phone voice
+   * memo, a forwarded voice note, a file copied off a laptop.
+   *
+   * Most uploads go straight through. The conversion path below exists because
+   * the most ordinary upload there is breaks the direct one: an hour of iPhone
+   * Voice Memo is about 28MB against a 24MB ceiling, and a Samsung .amr is a
+   * format the transcriber refuses outright. Rather than sending a teacher off
+   * to find audio software, the browser decodes the file with the codecs it
+   * already has and re-encodes it as 16kHz mono WAV parts.
+   */
+  async function onUpload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // so picking the same file twice still fires
+    if (!file) return;
+    setError(null);
+
+    if (!file.size) {
+      setError("That file is empty. Check it plays on your device, then try again.");
+      return;
+    }
+    if (!looksLikeAudio(file)) {
+      setError(
+        "That doesn't look like a recording. Choose an audio file — to read a page from a kitab, use Photo instead."
+      );
+      return;
+    }
+
+    setPhase("working");
+
+    if (providerAccepts(file) && file.size <= MAX_AUDIO_BYTES) {
+      setWorking("Transcribing your recording…");
+      const body = new FormData();
+      body.set("kind", "audio");
+      body.set("language", language);
+      body.set("file", file, file.name || "kuliah.m4a");
+      await ingest(body);
+      return;
+    }
+
+    await convertAndTranscribe(file);
+  }
+
+  /** Decode in the browser, then send the parts one after another. */
+  async function convertAndTranscribe(file) {
+    cancelRef.current = false;
+    setLongRun(true);
+    setStoppable(true);
+    setWorking("Preparing your recording…");
+
+    let pcm;
+    try {
+      // Hand the browser a frame first. Decoding an hour of audio blocks long
+      // enough on a phone that without this the spinner never paints and the
+      // tap looks as though it did nothing.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      pcm = await decodeToPcm16(file);
+    } catch (err) {
+      setError(prepareMessage(err?.code));
+      setLongRun(false);
+      setStoppable(false);
+      setPhase("idle");
+      return;
+    }
+
+    const parts = planParts(pcm.length, TARGET_SAMPLE_RATE, MAX_PART_SECONDS);
+    const done = [];
+
+    for (let i = 0; i < parts.length; i++) {
+      if (cancelRef.current) break;
+      setWorking(
+        parts.length === 1
+          ? "Transcribing your recording…"
+          : `Transcribing part ${i + 1} of ${parts.length}…`
+      );
+
+      const body = new FormData();
+      body.set("kind", "audio");
+      body.set("language", language);
+      body.set(
+        "file",
+        encodeWav(pcm.subarray(parts[i].start, parts[i].end), TARGET_SAMPLE_RATE),
+        `kuliah-part-${i + 1}.wav`
+      );
+
+      const result = await requestText(body);
+      if (!result.ok) {
+        // Keep whatever already came back. Losing forty minutes of transcript
+        // because the last part timed out would be the worst outcome here.
+        setError(
+          done.length
+            ? `${result.error} The first ${done.length === 1 ? "part" : `${done.length} parts`} came through — the rest is missing from the text below.`
+            : result.error
+        );
+        break;
+      }
+      done.push(result.text);
+    }
+
+    setLongRun(false);
+    setStoppable(false);
+
+    if (done.length) {
+      appendText(done.join("\n\n"));
+      setPhase("review");
+      return;
+    }
+    setPhase("idle");
+  }
+
+  /**
+   * Stop after the part currently in flight. There is no way to un-send a
+   * request that is already with the transcriber, so this never pretends the
+   * stop is instant — the label says what is actually happening.
+   */
+  function stopConverting() {
+    cancelRef.current = true;
+    setStoppable(false);
+    setWorking("Stopping after this part…");
+  }
+
   async function onPhoto(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -183,23 +360,37 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
     await ingest(body);
   }
 
-  async function ingest(body) {
+  /** One round trip to the ingest route. Never throws — the caller decides. */
+  async function requestText(body) {
     try {
       const res = await fetch("/api/notebook/ingest", { method: "POST", body });
       const data = await res.json().catch(() => null);
       if (!data?.ok) {
-        setError(data?.error || "That didn't work. Please try again.");
-        setPhase("idle");
-        return;
+        return { ok: false, error: data?.error || "That didn't work. Please try again." };
       }
-      // Appending (not replacing) lets a teacher stack several photos of the
-      // same handout, or add a recording on top of notes they already typed.
-      setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${data.text}` : data.text));
-      setPhase("review");
+      return { ok: true, text: String(data.text || "") };
     } catch {
-      setError("The upload failed. Check your connection and try again.");
-      setPhase("idle");
+      return { ok: false, error: "The upload failed. Check your connection and try again." };
     }
+  }
+
+  // Appending (not replacing) lets a teacher stack several photos of the same
+  // handout, or add a recording on top of notes they already typed.
+  function appendText(chunk) {
+    const addition = String(chunk || "").trim();
+    if (!addition) return;
+    setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${addition}` : addition));
+  }
+
+  async function ingest(body) {
+    const result = await requestText(body);
+    if (!result.ok) {
+      setError(result.error);
+      setPhase("idle");
+      return;
+    }
+    appendText(result.text);
+    setPhase("review");
   }
 
   async function onSave(summarise) {
@@ -209,7 +400,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
 
     const fd = new FormData();
     fd.set("raw_text", text);
-    fd.set("source", mode);
+    fd.set("source", SOURCE_FOR_MODE[mode] || "typed");
     fd.set("title", title);
     fd.set("speaker", speaker);
     fd.set("venue", venue);
@@ -287,7 +478,18 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
       {/* Capture surface */}
       <div className="rounded-card border border-line bg-white p-6 shadow-[0_1px_3px_rgba(59,55,43,0.04)]">
         {phase === "working" ? (
-          <Working label={working} />
+          <Working
+            label={working}
+            // Only the upload path is cancellable, and it is also the only one
+            // that can legitimately run for several minutes — so the two travel
+            // together and the wait never contradicts what the spinner says.
+            detail={
+              longRun
+                ? "A long recording is sent in parts, so this can take a few minutes. Please keep this page open."
+                : "A long talk can take up to a minute. Please keep this page open."
+            }
+            onStop={stoppable ? stopConverting : null}
+          />
         ) : !modeAvailable(mode) ? (
           <UnavailablePane mode={mode} keyDiag={keyDiag} onUseTyping={() => setMode("typed")} />
         ) : mode === "recording" ? (
@@ -301,6 +503,14 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
             onStart={startRecording}
             onStop={stopRecording}
             onCancel={cancelRecording}
+            onUseUpload={() => setMode("upload")}
+          />
+        ) : mode === "upload" ? (
+          <UploadPane
+            onPick={onUpload}
+            language={language}
+            setLanguage={setLanguage}
+            hasText={canReview}
           />
         ) : mode === "photo" ? (
           <PhotoPane onPick={onPhoto} hasText={canReview} />
@@ -397,7 +607,7 @@ export default function NotebookApp({ capabilities, today, keyDiag = null }) {
   );
 }
 
-function RecordPane({ phase, elapsed, bytes, nearLimit, language, setLanguage, onStart, onStop, onCancel }) {
+function RecordPane({ phase, elapsed, bytes, nearLimit, language, setLanguage, onStart, onStop, onCancel, onUseUpload }) {
   const recording = phase === "recording";
   return (
     <div className="flex flex-col items-center py-4 text-center">
@@ -436,27 +646,104 @@ function RecordPane({ phase, elapsed, bytes, nearLimit, language, setLanguage, o
           Discard
         </button>
       ) : (
-        <div className="mt-6 flex items-center gap-2">
-          <span className="text-[12px] font-semibold text-charcoal-soft">Mainly spoken in</span>
-          {LANGUAGES.map((l) => (
-            <button
-              key={l.code}
-              type="button"
-              onClick={() => setLanguage(l.code)}
-              className={`rounded-pill px-3 py-1 text-[12px] font-semibold transition-colors ${
-                language === l.code ? "bg-ink text-paper" : "bg-paper-deep text-charcoal hover:bg-sand/50"
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <LanguagePicker language={language} setLanguage={setLanguage} className="mt-6" />
+
+          {/* Most teachers already recorded the kuliah on their own phone
+              before they open the portal, so this route out has to be visible
+              from the pane they land on rather than only from the chip above. */}
+          <button
+            type="button"
+            onClick={onUseUpload}
+            className="mt-5 flex items-center gap-1.5 rounded-control px-3 py-1.5 text-[12.5px] font-semibold text-charcoal-soft transition-colors hover:bg-paper-deep hover:text-charcoal"
+          >
+            <Icon name="upload" size={14} />
+            Already recorded it? Upload the file instead
+          </button>
+        </>
       )}
 
       <p className="mt-5 max-w-md text-[12px] leading-relaxed text-charcoal-soft">
         The audio is transcribed and then discarded — nothing is stored. Please record only for your own
         notes, and credit the speaker.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Pick the file, then get out of the way.
+ *
+ * The whole surface is the drop target as well as the picker: on a laptop a
+ * teacher will drag the voice memo straight out of Finder or File Explorer,
+ * and a dashed box that only responds to a click quietly loses that file.
+ */
+function UploadPane({ onPick, language, setLanguage, hasText }) {
+  const [dragging, setDragging] = useState(false);
+
+  const takeDrop = (event) => {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer?.files?.[0];
+    // Reuse the picker's handler by handing it the same shape it expects, so
+    // dragging and choosing can never drift into two different validations.
+    if (file) onPick({ target: { files: [file], value: "" } });
+  };
+
+  return (
+    <div className="flex flex-col items-center py-4 text-center">
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={takeDrop}
+        className={`flex w-full max-w-md cursor-pointer flex-col items-center gap-3 rounded-card border-2 border-dashed px-8 py-8 transition-colors ${
+          dragging ? "border-gold bg-gold-soft/40" : "border-line hover:border-gold hover:bg-paper"
+        }`}
+      >
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gold-soft text-ink">
+          <Icon name="upload" size={26} />
+        </span>
+        <span className="font-heading text-[15px] font-bold text-charcoal">
+          {hasText ? "Add another recording" : "Choose a recording"}
+        </span>
+        <span className="max-w-xs text-[12px] leading-relaxed text-charcoal-soft">
+          A voice memo from your phone, a voice note someone sent you, or any audio file. Drag it here
+          or tap to browse.
+        </span>
+        <input type="file" accept={UPLOAD_ACCEPT} onChange={onPick} className="sr-only" />
+      </label>
+
+      <LanguagePicker language={language} setLanguage={setLanguage} className="mt-6" />
+
+      <p className="mt-5 max-w-md text-[12px] leading-relaxed text-charcoal-soft">
+        Long recordings are prepared on this device and sent for transcription in parts, so an hour-long
+        kuliah is fine — it just takes a few minutes. The audio is transcribed and then discarded —
+        nothing is stored. Please upload only recordings you are allowed to keep, and credit the speaker.
+      </p>
+    </div>
+  );
+}
+
+/** Which language the talk is mainly in — the transcriber's strongest hint. */
+function LanguagePicker({ language, setLanguage, className = "" }) {
+  return (
+    <div className={`flex flex-wrap items-center justify-center gap-2 ${className}`}>
+      <span className="text-[12px] font-semibold text-charcoal-soft">Mainly spoken in</span>
+      {LANGUAGES.map((l) => (
+        <button
+          key={l.code}
+          type="button"
+          onClick={() => setLanguage(l.code)}
+          className={`rounded-pill px-3 py-1 text-[12px] font-semibold transition-colors ${
+            language === l.code ? "bg-ink text-paper" : "bg-paper-deep text-charcoal hover:bg-sand/50"
+          }`}
+        >
+          {l.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -489,11 +776,16 @@ function PhotoPane({ onPick, hasText }) {
  * and what to do instead, an admin needs the exact variable name.
  */
 function UnavailablePane({ mode, keyDiag, onUseTyping }) {
+  // Record and Upload lean on the same transcription key, so they fail
+  // together and say the same thing about how to fix it.
   const copy =
-    mode === "recording"
+    mode === "recording" || mode === "upload"
       ? {
-          icon: "mic",
-          title: "Recording isn't switched on yet",
+          icon: mode === "upload" ? "upload" : "mic",
+          title:
+            mode === "upload"
+              ? "Uploading recordings isn't switched on yet"
+              : "Recording isn't switched on yet",
           body: "This server has no transcription key, so recordings can't be turned into text.",
           envVar: "GROQ_API_KEY",
           where: "console.groq.com/keys",
@@ -589,14 +881,21 @@ function TypePane() {
   );
 }
 
-function Working({ label }) {
+function Working({ label, detail = "A long talk can take up to a minute. Please keep this page open.", onStop = null }) {
   return (
     <div className="flex flex-col items-center gap-4 py-12 text-center">
       <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-line border-t-gold" />
       <p className="font-heading text-[15px] font-bold text-charcoal">{label}</p>
-      <p className="max-w-xs text-[12px] text-charcoal-soft">
-        A long talk can take up to a minute. Please keep this page open.
-      </p>
+      <p className="max-w-xs text-[12px] text-charcoal-soft">{detail}</p>
+      {onStop && (
+        <button
+          type="button"
+          onClick={onStop}
+          className="rounded-control px-4 py-2 text-[13px] font-semibold text-charcoal-soft transition-colors hover:bg-paper-deep hover:text-charcoal"
+        >
+          Stop and keep what&apos;s done
+        </button>
+      )}
     </div>
   );
 }
