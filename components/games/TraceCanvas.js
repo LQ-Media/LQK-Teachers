@@ -1,0 +1,383 @@
+"use client";
+
+import { useCallback, useMemo, useRef, useState } from "react";
+
+import { advance, cumulative, fraction, hintAt, isComplete, levelFor } from "@/lib/games/trace";
+import { buzz, chime, fanfare, nudge, unlockAudio } from "@/lib/games/audio";
+
+/**
+ * The tracing surface: one letter, its strokes in order, then its dots.
+ *
+ * WHAT A CHILD EXPERIENCES
+ *
+ * The letter sits faint on the page with one stroke lit as a pale road, a dot
+ * where the finger goes and an arrow showing which way. As the finger travels
+ * the road fills with light behind it and ticks softly, about eight times per
+ * stroke — so the hand, the ear and the eye all report the same motion at the
+ * same moment, which is the whole point of doing this on a touch screen rather
+ * than on paper.
+ *
+ * Straying off the road stops the light where it was. Nothing flashes red,
+ * nothing is scored, and the arrow re-appears pointing the way: the letter
+ * simply stops moving, and every child understands that.
+ *
+ * When the last stroke and any dots are done the even-width trace cross-fades
+ * into the real Mirza letterform — the calligraphic shape from the printed
+ * flashcard — and the parent is told, via onComplete, to say the letter.
+ *
+ * ONE POINTER ONLY
+ *
+ * A tablet resting on a table collects a palm, a sleeve and a second child's
+ * finger. The surface locks onto the first pointer that goes down and ignores
+ * every other until it lifts, which is the cheapest palm rejection there is
+ * and the only one that works the same on every device.
+ *
+ * KEYED BY LETTER
+ *
+ * There is no "reset when the letter changes" logic here on purpose. Callers
+ * mount this with `key={letterId}`, so a new letter is a new component with
+ * fresh state — which is both less code and impossible to get half-right.
+ */
+
+// Progress ticks per stroke. Eight is enough to feel continuous under a moving
+// finger without turning into a buzz.
+const TICKS_PER_STROKE = 8;
+
+export default function TraceCanvas({
+  letter,
+  geometry,
+  level = "easy",
+  harakah = null,
+  onComplete,
+  onStrokeDone,
+  className = "",
+}) {
+  const rules = levelFor(level);
+  const svgRef = useRef(null);
+
+  const [strokeIndex, setStrokeIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [strayed, setStrayed] = useState(false);
+  const [dotsDone, setDotsDone] = useState([]);
+  const [done, setDone] = useState(false);
+  const [demo, setDemo] = useState(0);
+
+  const pointerId = useRef(null);
+  const started = useRef(false);
+  const ticked = useRef(0);
+
+  const strokes = useMemo(() => geometry?.strokes ?? [], [geometry]);
+  const dots = useMemo(() => geometry?.dots ?? [], [geometry]);
+
+  /* The polylines come from the geometry file already sampled — see the note in
+     scripts/huruf-geometry.py — so there is nothing to measure and no effect. */
+  const samples = useMemo(
+    () => strokes.map((s) => ({ points: s.points, cums: cumulative(s.points) })),
+    [strokes],
+  );
+
+  const current = samples[strokeIndex] ?? null;
+  const total = current ? current.cums[current.cums.length - 1] : 0;
+
+  const strokesDone = strokeIndex >= strokes.length;
+
+  const finish = useCallback(() => {
+    setDone(true);
+    fanfare();
+    buzz([24, 40, 24]);
+    onComplete?.();
+  }, [onComplete]);
+
+  /* ---------------------------------------------------------------- pointer */
+
+  /** Client coordinates → viewBox coordinates, via the SVG's own matrix. */
+  const toViewBox = useCallback((e) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const ctm = svg.getScreenCTM();
+    if (ctm) {
+      const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+      return [pt.x, pt.y];
+    }
+    // Fallback for the rare engine with no CTM: the viewBox is square and
+    // centred, so the letterboxed scale can be derived from the box itself.
+    const r = svg.getBoundingClientRect();
+    const side = Math.min(r.width, r.height);
+    return [
+      ((e.clientX - r.left - (r.width - side) / 2) / side) * 1000,
+      ((e.clientY - r.top - (r.height - side) / 2) / side) * 1000,
+    ];
+  }, []);
+
+  const sample = useCallback((e) => {
+    if (!current || done) return;
+    const p = toViewBox(e);
+    if (!p) return;
+
+    const res = advance({
+      points: current.points,
+      cums: current.cums,
+      pointer: p,
+      progress,
+      level: rules,
+      started: started.current,
+    });
+
+    if (res.state === "advanced") {
+      started.current = true;
+      setStrayed(false);
+
+      if (isComplete(res.progress, total, rules)) {
+        onStrokeDone?.(strokeIndex);
+        chime({ freq: 880, duration: 0.2, gain: 0.12 });
+        buzz(22);
+        ticked.current = 0;
+        started.current = false;
+        setProgress(0);
+        setStrokeIndex(strokeIndex + 1);
+        // The letter is finished here, in the gesture that finished it, rather
+        // than in an effect watching for it — so completion happens once, at a
+        // known moment, with the sound it belongs to.
+        if (strokeIndex + 1 >= strokes.length && dots.length === 0) finish();
+        return;
+      }
+
+      setProgress(res.progress);
+
+      // Tick on the way past each eighth of the stroke: the ear confirms the
+      // hand is still doing the right thing without waiting for the end.
+      const step = Math.floor(fraction(res.progress, total) * TICKS_PER_STROKE);
+      if (step > ticked.current) {
+        ticked.current = step;
+        chime({ freq: 520 + step * 45, duration: 0.07, gain: 0.07 });
+        buzz(8);
+      }
+      return;
+    }
+
+    if ((res.state === "off" || res.state === "wrongStart") && !strayed) {
+      setStrayed(true);
+      // Only nudge on a real stray mid-stroke; a child hunting for the start
+      // dot is not doing anything wrong.
+      if (res.state === "off" && progress > 0) nudge();
+    }
+  }, [current, done, toViewBox, progress, rules, total, strokeIndex, strokes.length,
+      dots.length, onStrokeDone, strayed, finish]);
+
+  function onPointerDown(e) {
+    if (pointerId.current !== null || done) return;
+    unlockAudio();
+    pointerId.current = e.pointerId;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    sample(e);
+  }
+
+  function onPointerMove(e) {
+    if (e.pointerId !== pointerId.current) return;
+    sample(e);
+  }
+
+  function onPointerUp(e) {
+    if (e.pointerId !== pointerId.current) return;
+    pointerId.current = null;
+    setStrayed(false);
+    // A stroke abandoned part-way keeps its glow: a child who lifts to
+    // reposition their hand has not lost their place.
+  }
+
+  function tapDot(i) {
+    if (!strokesDone || done || dotsDone.includes(i)) return;
+    unlockAudio();
+    chime({ freq: 990, duration: 0.12, gain: 0.12 });
+    buzz(14);
+    setDotsDone([...dotsDone, i]);
+    if (dotsDone.length + 1 >= dots.length) finish();
+  }
+
+  const hint = useMemo(
+    () => (current ? hintAt(current.points, current.cums, progress) : null),
+    [current, progress],
+  );
+
+  const startPoint = strokes[strokeIndex]?.start;
+
+  return (
+    <div className={`relative ${className}`}>
+      <svg
+        ref={svgRef}
+        viewBox={geometry?.viewBox ?? "0 0 1000 1000"}
+        className="h-full w-full touch-none select-none"
+        role="img"
+        aria-label={`Trace the letter ${letter?.name ?? ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <defs>
+          {/* The glow. Two blurs stacked — a tight one for the bright core and
+              a wide one for the halo — which reads as light rather than as a
+              fuzzy edge. */}
+          <filter id="lqk-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="9" result="near" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="26" result="far" />
+            <feMerge>
+              <feMergeNode in="far" />
+              <feMergeNode in="near" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {/* The letter's real shape, faint: the child can always see where they
+            are going, and it is the same silhouette that blooms at the end. */}
+        <path
+          d={geometry?.outline ?? ""}
+          className={`transition-opacity duration-700 ${done ? "opacity-0" : "opacity-[0.13]"}`}
+          fill="#3B372B"
+        />
+
+        {/* The road for the current stroke, and the lit trail of the ones
+            already done, so progress through a multi-stroke letter shows. */}
+        {strokes.map((s, i) => (
+          <path
+            key={`road-${i}`}
+            d={s.d}
+            fill="none"
+            stroke={i < strokeIndex ? "#F0A41F" : "#E0D2B4"}
+            strokeWidth={i < strokeIndex ? 46 : 58}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-opacity duration-300 ${
+              done ? "opacity-0" : i <= strokeIndex ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        ))}
+
+        {/* The light that follows the finger. pathLength pins the dash domain
+            to the sampled length, so the glow's end sits where the maths thinks
+            the finger has reached. */}
+        {current && !done && (
+          <path
+            d={strokes[strokeIndex].d}
+            fill="none"
+            stroke="#F0A41F"
+            strokeWidth="46"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter="url(#lqk-glow)"
+            pathLength={total}
+            strokeDasharray={total}
+            strokeDashoffset={total - progress}
+            style={{ transition: "stroke-dashoffset 70ms linear" }}
+          />
+        )}
+
+        {/* Where to begin, and which way. Both disappear the moment the child
+            is under way and come back if they lose the path. */}
+        {!done && startPoint && (progress === 0 || strayed) && (
+          <g>
+            <circle cx={startPoint[0]} cy={startPoint[1]} r="40" fill="#96681A" opacity="0.25">
+              <animate attributeName="r" values="34;52;34" dur="1.6s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={startPoint[0]} cy={startPoint[1]} r="24" fill="#96681A" />
+          </g>
+        )}
+        {!done && hint && progress > 0 && strayed && (
+          <g transform={`translate(${hint.x} ${hint.y}) rotate(${hint.angle})`} opacity="0.85">
+            <path d="M-22 -20 L22 0 L-22 20 Z" fill="#96681A" />
+          </g>
+        )}
+
+        {/* Dots: tapped, not traced. A dot is placed, and making a child drag a
+            two-pixel circle would be a dexterity test, not a reading lesson.
+            The hit area is never smaller than 34 units whatever the dot's own
+            size, which on a 10-inch tablet is comfortably a fingertip. */}
+        {dots.map((d, i) => {
+          const tapped = dotsDone.includes(i);
+          const live = strokesDone && !tapped && !done;
+          return (
+            <g key={`dot-${i}`}>
+              {live && (
+                <circle cx={d.cx} cy={d.cy} r={d.r * 2.1} fill="#96681A" opacity="0.18">
+                  <animate
+                    attributeName="opacity"
+                    values="0.08;0.3;0.08"
+                    dur="1.4s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+              )}
+              <circle
+                cx={d.cx}
+                cy={d.cy}
+                r={Math.max(d.r, 34)}
+                fill={tapped || done ? "#F0A41F" : "#E0D2B4"}
+                // An amber ring while it is waiting, so the dot reads as
+                // something to press rather than as part of the letter.
+                stroke={live ? "#96681A" : "none"}
+                strokeWidth={live ? 8 : 0}
+                strokeDasharray={live ? "18 12" : undefined}
+                filter={tapped && !done ? "url(#lqk-glow)" : undefined}
+                className={live ? "cursor-pointer" : undefined}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  tapDot(i);
+                }}
+              />
+            </g>
+          );
+        })}
+
+        {/* The bloom: the finished letter in its real calligraphic form. */}
+        <path
+          d={geometry?.outline ?? ""}
+          fill="#96681A"
+          filter={done ? "url(#lqk-glow)" : undefined}
+          className={`transition-all duration-700 ${done ? "opacity-100" : "opacity-0"}`}
+          style={{ transformOrigin: "center", transform: done ? "scale(1)" : "scale(0.94)" }}
+        />
+
+        {/* A harakah, if the caller wants one shown on the traced body. */}
+        {harakah && (
+          <text
+            x="500"
+            y={harakah.above ? 210 : 880}
+            textAnchor="middle"
+            className="font-mirza"
+            fontSize="300"
+            fill={done ? "#96681A" : "#3B372B"}
+            opacity={done ? 1 : 0.35}
+          >
+            {harakah.mark}
+          </text>
+        )}
+
+        {/* "Show me" — a marker walking the stroke the way it is written.
+            Remounted on each press so the animation replays. */}
+        {demo > 0 && current && !done && (
+          <circle key={`demo-${demo}`} r="30" fill="#96681A" opacity="0.9">
+            <animateMotion dur="2s" fill="freeze" path={strokes[strokeIndex].d} />
+          </circle>
+        )}
+      </svg>
+
+      {/* Deliberately outside the SVG: a real button, focusable, with a hit
+          area a teacher can reach without interrupting the child's hand. It is
+          also the only way through this screen without a pointer drag, so a
+          keyboard or switch user is not simply stuck. */}
+      {!done && (
+        <button
+          type="button"
+          onClick={() => {
+            unlockAudio();
+            setDemo((d) => d + 1);
+          }}
+          className="absolute bottom-1 left-1 rounded-pill bg-white/85 px-3 py-1.5 text-[12px] font-semibold text-charcoal shadow-sm hover:bg-white"
+        >
+          Show me
+        </button>
+      )}
+    </div>
+  );
+}

@@ -42,3 +42,6 @@ yarn-error.log*
 next-env.d.ts
 data/
 .env.local
+
+# python bytecode from the offline authoring scripts (scripts/huruf-geometry.py)
+__pycache__/
