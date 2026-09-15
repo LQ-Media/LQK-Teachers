@@ -7,9 +7,12 @@ import { createServerBookmarkService } from "@/lib/quran/bookmark-service";
 import { logLastReadFromReader } from "@/lib/actions/reading";
 import Icon from "@/components/Icon";
 import VerseCard from "./VerseCard";
+import PageView from "./PageView";
+import AyahSheet from "./AyahSheet";
 import BrowseSheet from "./BrowseSheet";
 import DisplaySheet from "./DisplaySheet";
 import MiniPlayer from "./MiniPlayer";
+import { PAGE_COUNT, clampPage, juzOfPage } from "@/lib/quran/pages";
 
 const BISMILLAH = "﷽"; // shown for every surah except 1 (it is ayah 1) and 9
 
@@ -42,6 +45,7 @@ export default function QuranReader({ initialBookmark = null }) {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
+  const [openAyah, setOpenAyah] = useState(null); // page mode: the tapped ayah
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -60,7 +64,8 @@ export default function QuranReader({ initialBookmark = null }) {
   // loaded. Instant scroll, plus one delayed re-scroll to absorb the layout
   // shift when the Amiri webfont finishes loading.
   useEffect(() => {
-    if (state.versesStatus === "ready" && state.focusVerseKey) {
+    const ready = state.layout === "page" ? state.pageStatus === "ready" : state.versesStatus === "ready";
+    if (ready && state.focusVerseKey) {
       const key = state.focusVerseKey;
       const jump = () => {
         const el = verseRefs.current.get(key);
@@ -71,7 +76,7 @@ export default function QuranReader({ initialBookmark = null }) {
       store.clearFocus();
       return () => clearTimeout(timer);
     }
-  }, [state.versesStatus, state.focusVerseKey, store]);
+  }, [state.layout, state.versesStatus, state.pageStatus, state.focusVerseKey, store]);
 
   // Keep the playing ayah in view during continuous playback — unless the
   // constant-speed auto-scroll is running, which owns the scroll position.
@@ -150,6 +155,17 @@ export default function QuranReader({ initialBookmark = null }) {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, [state.readingLoggedAt]);
 
+  // The page turned, or the layout changed, while an ayah sheet was open: it
+  // now describes an ayah that is no longer on screen. Derived during render —
+  // React's documented way — rather than in an effect, which would leave the
+  // stale sheet painted for a frame.
+  const sheetContext = `${state.layout}:${state.pageNumber}`;
+  const [sheetContextSeen, setSheetContextSeen] = useState(sheetContext);
+  if (sheetContextSeen !== sheetContext) {
+    setSheetContextSeen(sheetContext);
+    if (openAyah) setOpenAyah(null);
+  }
+
   const onWordTap = useCallback((word) => {
     if (!word.meaning) return;
     setToast(
@@ -198,11 +214,15 @@ export default function QuranReader({ initialBookmark = null }) {
     ? state.chapters.find((c) => c.id === Number(state.bookmark.chapterId))
     : null;
 
-  // The juz shown in the pinned toolbar: the first juz that contains the
-  // current surah (a long surah spans several — precise enough for jumping).
+  // The juz shown in the pinned toolbar. In page mode the page says which juz
+  // it is in, so use that; in ayah mode fall back to the first juz containing
+  // the current surah (a long surah spans several — precise enough to jump by,
+  // but it would contradict the page header if used there).
   const currentJuz =
+    (state.layout === "page" ? juzOfPage(state.pageVerses) : null) ??
     state.juzs.find((j) => Object.keys(j.verseMapping).map(Number).includes(Number(state.chapterId)))
-      ?.number ?? "";
+      ?.number ??
+    "";
 
   function goToJuz(number) {
     const juz = state.juzs.find((j) => j.number === Number(number));
@@ -256,30 +276,44 @@ export default function QuranReader({ initialBookmark = null }) {
           </ToolbarButton>
         </div>
 
-        {/* Surah tab strip — swipe through neighbouring surahs like NU Online */}
-        <div
-          ref={tabStripRef}
-          className="mx-auto flex max-w-[760px] overflow-x-auto px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {state.chapters.map((c) => {
-            const active = c.id === Number(state.chapterId);
-            return (
-              <button
-                key={c.id}
-                type="button"
-                data-chapter-tab={c.id}
-                onClick={() => store.goTo(c.id)}
-                aria-current={active ? "true" : undefined}
-                className={`flex-none whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1.5 text-[13.5px] transition-colors ${
-                  active
-                    ? "border-gold font-bold text-charcoal"
-                    : "border-transparent font-medium text-charcoal-soft hover:text-charcoal"
-                }`}
-              >
-                {c.nameSimple}
-              </button>
-            );
-          })}
+        {/* How to read: one ayah at a time, or the printed mushaf page.
+            Next to it, whichever navigation that layout calls for. */}
+        <div className="mx-auto flex max-w-[760px] items-center gap-2 px-2 pb-1">
+          <LayoutToggle layout={state.layout} onChange={(next) => store.setLayout(next)} />
+
+          {state.layout === "page" ? (
+            <PageNav
+              pageNumber={state.pageNumber}
+              onGo={(n) => store.goToPage(n)}
+              onPrev={() => store.prevPage()}
+              onNext={() => store.nextPage()}
+            />
+          ) : (
+            <div
+              ref={tabStripRef}
+              className="flex min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {state.chapters.map((c) => {
+                const active = c.id === Number(state.chapterId);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    data-chapter-tab={c.id}
+                    onClick={() => store.goTo(c.id)}
+                    aria-current={active ? "true" : undefined}
+                    className={`flex-none whitespace-nowrap border-b-2 px-3 pb-2 pt-1.5 text-[13.5px] transition-colors ${
+                      active
+                        ? "border-gold font-bold text-charcoal"
+                        : "border-transparent font-medium text-charcoal-soft hover:text-charcoal"
+                    }`}
+                  >
+                    {c.nameSimple}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </header>
 
@@ -313,6 +347,61 @@ export default function QuranReader({ initialBookmark = null }) {
 
       {/* Reading column (internal scroll — header and player stay pinned) */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {state.layout === "page" ? (
+          <div className="mx-auto max-w-[760px] px-3 py-5 sm:px-5 sm:py-6">
+            {state.pageStatus === "loading" && <InlineState>Loading page {state.pageNumber}…</InlineState>}
+
+            {state.pageStatus === "error" && (
+              <InlineState>
+                <p className="mb-4 text-[14px] text-charcoal">
+                  We could not load page {state.pageNumber}. Please try again.
+                </p>
+                <PrimaryButton onClick={() => store.retryPage()}>Try again</PrimaryButton>
+              </InlineState>
+            )}
+
+            {state.pageStatus === "ready" && (
+              <PageView
+                verses={state.pageVerses}
+                chapters={state.chapters}
+                pageNumber={state.pageNumber}
+                displayMode={state.displayMode}
+                settings={state.settings}
+                playingVerseKey={state.playback.verseKey}
+                wordIndex={state.playback.wordIndex}
+                bookmarkVerseKey={state.bookmark ? state.bookmark.verseKey : null}
+                onWordTap={onWordTap}
+                onAyahTap={setOpenAyah}
+                verseRef={registerCard}
+              />
+            )}
+
+            {/* Turning the page from the foot of it, where the eye already is */}
+            {state.pageStatus === "ready" && (
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <PageStepButton
+                  label="Previous page"
+                  disabled={state.pageNumber <= 1}
+                  onClick={() => store.prevPage()}
+                >
+                  <Icon name="chevron-left" size={15} />
+                  Previous
+                </PageStepButton>
+                <span className="text-[12px] tabular-nums text-charcoal-soft">
+                  Page {state.pageNumber} of {PAGE_COUNT}
+                </span>
+                <PageStepButton
+                  label="Next page"
+                  disabled={state.pageNumber >= PAGE_COUNT}
+                  onClick={() => store.nextPage()}
+                >
+                  Next
+                  <Icon name="chevron-right" size={15} />
+                </PageStepButton>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="mx-auto max-w-[760px] px-5 py-6">
           {chapter && (
             <div className="mb-5 text-center">
@@ -364,6 +453,7 @@ export default function QuranReader({ initialBookmark = null }) {
               );
             })}
         </div>
+        )}
       </div>
 
       <MiniPlayer state={state} store={store} />
@@ -377,11 +467,147 @@ export default function QuranReader({ initialBookmark = null }) {
         </div>
       )}
 
+      {openAyah && (
+        <AyahSheet
+          verse={openAyah}
+          chapter={store.chapterById(openAyah.chapterId)}
+          state={state}
+          store={store}
+          onClose={() => setOpenAyah(null)}
+        />
+      )}
       {sheetOpen && (
         <BrowseSheet state={state} store={store} autoFocusSearch onClose={() => setSheetOpen(false)} />
       )}
       {displayOpen && <DisplaySheet state={state} store={store} onClose={() => setDisplayOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * Ayah by ayah, or the mushaf page.
+ *
+ * Given its own labelled control rather than being buried in the display sheet:
+ * a teacher who wants to recite a page should not have to go looking for the
+ * setting that lets them, and the two names say plainly what each one gives.
+ */
+function LayoutToggle({ layout, onChange }) {
+  return (
+    <div className="flex flex-none rounded-pill bg-paper-deep p-0.5" role="group" aria-label="Reading layout">
+      {[
+        { key: "ayah", label: "Ayah", icon: "scroll-text", title: "Read one ayah at a time, with meaning" },
+        { key: "page", label: "Page", icon: "book-open", title: "Read the printed mushaf page" },
+      ].map((option) => {
+        const active = layout === option.key;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={active}
+            title={option.title}
+            onClick={() => onChange(option.key)}
+            className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
+              active ? "bg-ink text-paper shadow-sm" : "text-charcoal-soft hover:text-charcoal"
+            }`}
+          >
+            <Icon name={option.icon} size={13} />
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Page navigation, in the row the surah tabs use in the other layout. */
+function PageNav({ pageNumber, onGo, onPrev, onNext }) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 pb-1">
+      <NavArrow label="Previous page" disabled={pageNumber <= 1} onClick={onPrev}>
+        <Icon name="chevron-left" size={15} />
+      </NavArrow>
+      <PageNumberJump pageNumber={pageNumber} onGo={onGo} />
+      <span className="flex-none whitespace-nowrap text-[12px] tabular-nums text-charcoal-soft">
+        of {PAGE_COUNT}
+      </span>
+      <NavArrow label="Next page" disabled={pageNumber >= PAGE_COUNT} onClick={onNext}>
+        <Icon name="chevron-right" size={15} />
+      </NavArrow>
+    </div>
+  );
+}
+
+function NavArrow({ label, disabled, onClick, children }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-8 w-8 flex-none items-center justify-center rounded-control border-[0.5px] border-line bg-white text-charcoal transition-[background-color,transform] duration-150 ease-out hover:bg-paper-deep active:scale-95 disabled:opacity-35 disabled:hover:bg-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Type a page number, 1–604. Same draft-then-commit behaviour as the surah box
+ * beside it: typing "2" on the way to "250" must not turn to page 2 first.
+ */
+function PageNumberJump({ pageNumber, onGo }) {
+  const [draft, setDraft] = useState(String(pageNumber));
+
+  const [prevPage, setPrevPage] = useState(pageNumber);
+  if (prevPage !== pageNumber) {
+    setPrevPage(pageNumber);
+    setDraft(String(pageNumber));
+  }
+
+  function commit() {
+    const n = Number(draft);
+    if (!Number.isInteger(n) || n < 1 || n > PAGE_COUNT) {
+      setDraft(String(pageNumber)); // out of range — snap back, don't navigate
+      return;
+    }
+    if (n !== Number(pageNumber)) onGo(clampPage(n));
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      aria-label="Go to page number"
+      title={`Page number (1–${PAGE_COUNT})`}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 3))}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.currentTarget.blur();
+          commit();
+        }
+      }}
+      onBlur={commit}
+      onFocus={(e) => e.currentTarget.select()}
+      className="h-8 w-[52px] flex-none rounded-control border-[0.5px] border-line bg-white text-center text-[13px] font-semibold text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink"
+    />
+  );
+}
+
+/** The wide prev/next pair under the page itself. */
+function PageStepButton({ label, disabled, onClick, children }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex items-center gap-1 rounded-control border-[0.5px] border-line bg-white px-4 py-2 text-[13px] font-semibold text-charcoal transition-[background-color,transform] duration-150 ease-out hover:bg-paper-deep active:scale-[0.98] disabled:opacity-35 disabled:hover:bg-white"
+    >
+      {children}
+    </button>
   );
 }
 
