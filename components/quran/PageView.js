@@ -22,6 +22,10 @@ import {
  * line for line needs its per-page fonts; here the LINE breaks are the
  * browser's, while the PAGE breaks are the mushaf's real ones. That is the
  * boundary that matters for "read up to page 25".
+ *
+ * Because the line breaks are the browser's, the left edge is left ragged.
+ * Forcing it flush is the one thing that would make this look LESS like the
+ * mushaf, not more — see the note on the verse paragraph below.
  */
 export default function PageView({
   verses,
@@ -67,7 +71,13 @@ export default function PageView({
           ) : (
             <p
               key={`v${block.chapterId}-${block.verses[0].verseKey}`}
-              className="font-arabic text-justify"
+              // NOT text-align: justify. CSS justifies by stretching the
+              // SPACES between words, which pulls an Arabic line apart into
+              // scattered words — the mushaf reaches both margins by stretching
+              // the letters themselves (kashida), which CSS cannot do. Natural
+              // spacing with a ragged edge reads far closer to print than
+              // evenly-spaced gaps do.
+              className="font-arabic"
               style={{
                 fontSize: `${settings.arabicSize}px`,
                 lineHeight: 2.15,
