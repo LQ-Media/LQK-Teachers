@@ -71,6 +71,24 @@ export default function DisplaySheet({ state, store, onClose }) {
             </select>
           </Section>
 
+          {/* Mushaf page font — only meaningful in page mode, so only shown there */}
+          {state.layout === "page" && (
+            <Section title="Mushaf page">
+              <Switch
+                label="Use the printed mushaf font"
+                checked={state.mushafFont}
+                onChange={() => store.toggleMushafFont()}
+              />
+              <p className="mt-2 text-[12px] leading-relaxed text-charcoal-soft">
+                Draws each page in its own font from the printed mushaf, so the lines break
+                where they do on paper and the text fills the page as it does in print — which
+                means the Arabic size below does not apply to it. It fetches one small font
+                file per page, so turn it off on a slow connection or when you are reading
+                offline; the page then shows the same ayahs, reflowed and sized by that slider.
+              </p>
+            </Section>
+          )}
+
           {/* Show / hide layers */}
           <Section title="Show">
             <div className="space-y-2.5">
