@@ -4,11 +4,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Icon from "@/components/Icon";
-import { hasMusic, startMusic, stopMusic, unlockAudio } from "@/lib/games/audio";
+import {
+  SAY_RATES,
+  getSayRate,
+  hasMusic,
+  setSayRate,
+  startMusic,
+  stopMusic,
+  unlockAudio,
+} from "@/lib/games/audio";
 
 /**
  * The frame every game runs inside: kiosk cover, hold-to-exit, level switch,
- * music toggle.
+ * voice speed, music toggle.
+ *
+ * The speed control lives here rather than in any one game so that all five
+ * share it and a teacher sets it once. It drives lib/games/audio.js directly,
+ * which is what every game speaks through.
  *
  * WHY IT COVERS THE PORTAL RATHER THAN LIVING OUTSIDE IT
  *
@@ -33,6 +45,7 @@ const HOLD_MS = 750;
 export default function GameShell({ title, subtitle, level, onLevelChange, children }) {
   const router = useRouter();
   const [holding, setHolding] = useState(0);
+  const [rate, setRate] = useState(SAY_RATES[2]);
   const [musicAvailable, setMusicAvailable] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
   const holdFrom = useRef(null);
@@ -49,6 +62,25 @@ export default function GameShell({ title, subtitle, level, onLevelChange, child
   }, []);
 
   useEffect(() => () => stopMusic(), []);
+
+  /* The stored speed is read after mount, not during render: localStorage does
+     not exist on the server, and a mismatch there is a hydration error. */
+  useEffect(() => {
+    const saved = getSayRate();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved !== rate) setRate(saved);
+    // Once only — afterwards this component owns the value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Cycles 1x -> 0.8x -> 0.65x -> 0.5x -> 1x. */
+  const cycleRate = useCallback(() => {
+    unlockAudio();
+    setRate((current) => {
+      const next = SAY_RATES[(SAY_RATES.indexOf(current) + 1) % SAY_RATES.length];
+      return setSayRate(next);
+    });
+  }, []);
 
   const toggleMusic = useCallback(() => {
     unlockAudio();
@@ -165,6 +197,21 @@ export default function GameShell({ title, subtitle, level, onLevelChange, child
             ))}
           </div>
         )}
+
+        {/* Voice speed. A cycling chip rather than a slider: it has to be
+            readable and hittable on a phone header that already holds four
+            controls, and a teacher wants "slower" in one tap, not a drag. */}
+        <button
+          type="button"
+          onClick={cycleRate}
+          title={`Voice speed — ${rate}x (tap to change)`}
+          aria-label={`Voice speed ${rate} times. Tap to change.`}
+          className={`flex h-10 flex-shrink-0 items-center justify-center rounded-control px-2 font-heading text-[13px] font-bold tabular-nums transition-colors ${
+            rate === 1 ? "text-charcoal-soft hover:bg-paper-deep" : "bg-sand text-ink"
+          }`}
+        >
+          {rate}&times;
+        </button>
 
         <button
           type="button"

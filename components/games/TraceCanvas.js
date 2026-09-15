@@ -66,6 +66,20 @@ export default function TraceCanvas({
   const started = useRef(false);
   const ticked = useRef(0);
 
+  /* "Again" rather than forcing a child to leave the letter and come back.
+     Asking for the same letter twice is the single most common thing a small
+     child does, and until this existed the only way to repeat one was to
+     navigate away — which also meant the letter never spoke a second time. */
+  const again = useCallback(() => {
+    setStrokeIndex(0);
+    setProgress(0);
+    setStrayed(false);
+    setDotsDone([]);
+    setDone(false);
+    started.current = false;
+    ticked.current = 0;
+  }, []);
+
   const strokes = useMemo(() => geometry?.strokes ?? [], [geometry]);
   const dots = useMemo(() => geometry?.dots ?? [], [geometry]);
 
@@ -387,18 +401,17 @@ export default function TraceCanvas({
           area a teacher can reach without interrupting the child's hand. It is
           also the only way through this screen without a pointer drag, so a
           keyboard or switch user is not simply stuck. */}
-      {!done && (
-        <button
-          type="button"
-          onClick={() => {
-            unlockAudio();
-            setDemo((d) => d + 1);
-          }}
-          className="absolute bottom-1 left-1 rounded-pill bg-white/85 px-3 py-1.5 text-[12px] font-semibold text-charcoal shadow-sm hover:bg-white"
-        >
-          Show me
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => {
+          unlockAudio();
+          if (done) again();
+          else setDemo((d) => d + 1);
+        }}
+        className="absolute bottom-1 left-1 rounded-pill bg-white/85 px-3 py-1.5 text-[12px] font-semibold text-charcoal shadow-sm hover:bg-white"
+      >
+        {done ? "Again" : "Show me"}
+      </button>
     </div>
   );
 }
