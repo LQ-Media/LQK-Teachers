@@ -4,7 +4,7 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v6"; // bumped 2026-09-15 to take the Huruf games offline
+const VERSION = "lqk-v7"; // bumped 2026-09-15 to precache the positional forms
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
@@ -41,6 +41,7 @@ const PRECACHE = [
   // happens at install time, and behind the gate an expired session would
   // cache the login page's HTML under the geometry's URL.
   "/huruf/geometry.json",
+  "/huruf/forms.json",
   "/huruf/mascot-ustaz.png",
   "/huruf/mascot-ustazah.png",
 ];

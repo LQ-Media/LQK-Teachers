@@ -235,6 +235,7 @@ export default function TraceCanvas({
           d={geometry?.outline ?? ""}
           className={`transition-opacity duration-700 ${done ? "opacity-0" : "opacity-[0.13]"}`}
           fill="#3B372B"
+          pointerEvents="none"
         />
 
         {/* The road for the current stroke, and the lit trail of the ones
@@ -248,6 +249,7 @@ export default function TraceCanvas({
             strokeWidth={i < strokeIndex ? 46 : 58}
             strokeLinecap="round"
             strokeLinejoin="round"
+            pointerEvents="none"
             className={`transition-opacity duration-300 ${
               done ? "opacity-0" : i <= strokeIndex ? "opacity-100" : "opacity-0"
             }`}
@@ -266,6 +268,7 @@ export default function TraceCanvas({
             strokeLinecap="round"
             strokeLinejoin="round"
             filter="url(#lqk-glow)"
+            pointerEvents="none"
             pathLength={total}
             strokeDasharray={total}
             strokeDashoffset={total - progress}
@@ -276,7 +279,7 @@ export default function TraceCanvas({
         {/* Where to begin, and which way. Both disappear the moment the child
             is under way and come back if they lose the path. */}
         {!done && startPoint && (progress === 0 || strayed) && (
-          <g>
+          <g pointerEvents="none">
             <circle cx={startPoint[0]} cy={startPoint[1]} r="40" fill="#96681A" opacity="0.25">
               <animate attributeName="r" values="34;52;34" dur="1.6s" repeatCount="indefinite" />
             </circle>
@@ -284,7 +287,11 @@ export default function TraceCanvas({
           </g>
         )}
         {!done && hint && progress > 0 && strayed && (
-          <g transform={`translate(${hint.x} ${hint.y}) rotate(${hint.angle})`} opacity="0.85">
+          <g
+            transform={`translate(${hint.x} ${hint.y}) rotate(${hint.angle})`}
+            opacity="0.85"
+            pointerEvents="none"
+          >
             <path d="M-22 -20 L22 0 L-22 20 Z" fill="#96681A" />
           </g>
         )}
@@ -299,7 +306,14 @@ export default function TraceCanvas({
           return (
             <g key={`dot-${i}`}>
               {live && (
-                <circle cx={d.cx} cy={d.cy} r={d.r * 2.1} fill="#96681A" opacity="0.18">
+                <circle
+                  cx={d.cx}
+                  cy={d.cy}
+                  r={d.r * 2.1}
+                  fill="#96681A"
+                  opacity="0.18"
+                  pointerEvents="none"
+                >
                   <animate
                     attributeName="opacity"
                     values="0.08;0.3;0.08"
@@ -329,10 +343,16 @@ export default function TraceCanvas({
           );
         })}
 
-        {/* The bloom: the finished letter in its real calligraphic form. */}
+        {/* The bloom: the finished letter in its real calligraphic form.
+            pointerEvents is not optional here. This path is painted over the
+            whole letter, and an element at opacity 0 is invisible but still
+            hit-testable — so before this was set, it silently swallowed every
+            tap aimed at a dot, and no dotted letter (15 of the 28) could ever
+            be finished. */}
         <path
           d={geometry?.outline ?? ""}
           fill="#96681A"
+          pointerEvents="none"
           filter={done ? "url(#lqk-glow)" : undefined}
           className={`transition-all duration-700 ${done ? "opacity-100" : "opacity-0"}`}
           style={{ transformOrigin: "center", transform: done ? "scale(1)" : "scale(0.94)" }}
@@ -345,6 +365,7 @@ export default function TraceCanvas({
             y={harakah.above ? 210 : 880}
             textAnchor="middle"
             className="font-mirza"
+            pointerEvents="none"
             fontSize="300"
             fill={done ? "#96681A" : "#3B372B"}
             opacity={done ? 1 : 0.35}
@@ -356,7 +377,7 @@ export default function TraceCanvas({
         {/* "Show me" — a marker walking the stroke the way it is written.
             Remounted on each press so the animation replays. */}
         {demo > 0 && current && !done && (
-          <circle key={`demo-${demo}`} r="30" fill="#96681A" opacity="0.9">
+          <circle key={`demo-${demo}`} r="30" fill="#96681A" opacity="0.9" pointerEvents="none">
             <animateMotion dur="2s" fill="freeze" path={strokes[strokeIndex].d} />
           </circle>
         )}

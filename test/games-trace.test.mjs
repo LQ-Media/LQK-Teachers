@@ -319,3 +319,109 @@ test("every letter's geometry is generated, with strokes and the right dots", as
   // ك carries its inner mark as a second stroke.
   assert.equal(geometry.letters.kaf.strokes.length, 2);
 });
+
+test("an upright stroke is written downwards, not upwards", async () => {
+  // ط and ظ are bowl-then-stem, and the stem is drawn from the top down. This
+  // failed silently once: the direction check ran after the right-to-left flip
+  // had already replaced the chain with a new list, so it never matched and
+  // every stem was generated bottom-up. Nothing else in the pipeline notices,
+  // which is exactly why it is pinned here.
+  const geometry = JSON.parse(
+    await readFile(new URL("../public/huruf/geometry.json", import.meta.url), "utf8"),
+  );
+  const forms = JSON.parse(
+    await readFile(new URL("../public/huruf/forms.json", import.meta.url), "utf8"),
+  );
+
+  const uprights = [
+    ["tho isolated", geometry.letters.tho],
+    ["zho isolated", geometry.letters.zho],
+    ...["init", "medi", "fina"].flatMap((f) => [
+      [`tho ${f}`, forms.forms.tho[f]],
+      [`zho ${f}`, forms.forms.zho[f]],
+    ]),
+  ];
+
+  for (const [label, shape] of uprights) {
+    assert.equal(shape.strokes.length, 2, `${label} should be bowl plus upright`);
+    const stem = shape.strokes[1];
+    assert.ok(
+      stem.start[1] < stem.end[1],
+      `${label}: the upright starts at y=${stem.start[1]} and ends at y=${stem.end[1]} — it is drawn upwards`,
+    );
+  }
+});
+
+test("every letter has all three positional forms generated", async () => {
+  const forms = JSON.parse(
+    await readFile(new URL("../public/huruf/forms.json", import.meta.url), "utf8"),
+  );
+  // Wider than the isolated letters: a letter plus its connector is a wide
+  // shape, and squeezing it into a square would halve the size a child traces.
+  assert.equal(forms.viewBox, "0 0 1000 560");
+
+  for (const h of HURUF) {
+    const set = forms.forms[h.id];
+    assert.ok(set, `no forms for ${h.id}`);
+    for (const form of ["init", "medi", "fina"]) {
+      const g = set[form];
+      assert.ok(g, `${h.id} has no ${form} form`);
+      assert.ok(g.outline.length > 40, `${h.id} ${form} has no outline`);
+      assert.ok(g.strokes.length >= 1, `${h.id} ${form} has no traceable stroke`);
+      for (const stroke of g.strokes) {
+        assert.ok(stroke.points.length >= 2, `${h.id} ${form} stroke has no polyline`);
+        // Nothing may escape the box, or a child would be asked to trace off
+        // the edge of the screen.
+        for (const [x, y] of stroke.points) {
+          assert.ok(x >= 0 && x <= 1000, `${h.id} ${form} x=${x} outside the box`);
+          assert.ok(y >= 0 && y <= 560, `${h.id} ${form} y=${y} outside the box`);
+        }
+      }
+    }
+  }
+});
+
+test("a letter's dots do not change with its position", async () => {
+  // Joining a letter changes its body, never how many dots it carries. This is
+  // the check that catches a shaped run picking up a stray glyph — a detached
+  // connector reads as a small blob and would land in the dot list.
+  const forms = JSON.parse(
+    await readFile(new URL("../public/huruf/forms.json", import.meta.url), "utf8"),
+  );
+  const geometry = JSON.parse(
+    await readFile(new URL("../public/huruf/geometry.json", import.meta.url), "utf8"),
+  );
+
+  for (const h of HURUF) {
+    const expected = geometry.letters[h.id].dots.length;
+    for (const form of ["init", "medi", "fina"]) {
+      assert.equal(
+        forms.forms[h.id][form].dots.length,
+        expected,
+        `${h.id} ${form} has ${forms.forms[h.id][form].dots.length} dots, isolated has ${expected}`,
+      );
+    }
+  }
+});
+
+test("the six non-joining letters have no distinct initial form", async () => {
+  // ا د ذ ر ز و join on the right only. Their initial form is the bare letter
+  // and their medial is the same as their final — which is exactly how the deck
+  // prints them (د / ـد / ـد). If shaping ever starts inventing a left-joining
+  // د, these three shapes stop being two.
+  const forms = JSON.parse(
+    await readFile(new URL("../public/huruf/forms.json", import.meta.url), "utf8"),
+  );
+  for (const id of ["alif", "dal", "dzal", "ro", "zay", "wau"]) {
+    const { init, medi, fina } = forms.forms[id];
+    assert.equal(medi.outline, fina.outline, `${id}: medial and final should be the same shape`);
+    assert.notEqual(init.outline, fina.outline, `${id}: initial should be the bare letter`);
+  }
+
+  // A letter that joins both sides must differ in all three.
+  for (const id of ["ba", "sin", "kaf"]) {
+    const { init, medi, fina } = forms.forms[id];
+    assert.notEqual(init.outline, medi.outline, `${id}: initial and medial should differ`);
+    assert.notEqual(medi.outline, fina.outline, `${id}: medial and final should differ`);
+  }
+});

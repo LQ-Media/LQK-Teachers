@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import HarakahLab from "@/components/games/HarakahLab";
 import HearTouch from "@/components/games/HearTouch";
+import ThreePlaces from "@/components/games/ThreePlaces";
 import TraceSay from "@/components/games/TraceSay";
 import WordBlend from "@/components/games/WordBlend";
 import { requireSession } from "@/lib/dal";
@@ -11,6 +12,7 @@ const COMPONENTS = {
   "trace-say": TraceSay,
   "harakah-lab": HarakahLab,
   "hear-touch": HearTouch,
+  "three-places": ThreePlaces,
   "word-blend": WordBlend,
 };
 
