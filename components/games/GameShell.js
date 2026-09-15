@@ -46,6 +46,7 @@ export default function GameShell({ title, subtitle, level, onLevelChange, child
   const router = useRouter();
   const [holding, setHolding] = useState(0);
   const [rate, setRate] = useState(SAY_RATES[2]);
+  const [rateOpen, setRateOpen] = useState(false);
   const [musicAvailable, setMusicAvailable] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
   const holdFrom = useRef(null);
@@ -73,14 +74,28 @@ export default function GameShell({ title, subtitle, level, onLevelChange, child
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Cycles 1x -> 0.8x -> 0.65x -> 0.5x -> 1x. */
-  const cycleRate = useCallback(() => {
+  /* A menu rather than a tap-cycle. With six speeds, cycling means up to five
+     taps to reach the one you want and no way to go back — fine for two or
+     three values, not for six. */
+  const chooseRate = useCallback((next) => {
     unlockAudio();
-    setRate((current) => {
-      const next = SAY_RATES[(SAY_RATES.indexOf(current) + 1) % SAY_RATES.length];
-      return setSayRate(next);
-    });
+    setRate(setSayRate(next));
+    setRateOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (!rateOpen) return undefined;
+    const close = (e) => {
+      if (e.key === undefined || e.key === "Escape") setRateOpen(false);
+    };
+    // Any touch outside, or Escape, puts it away.
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [rateOpen]);
 
   const toggleMusic = useCallback(() => {
     unlockAudio();
@@ -198,20 +213,48 @@ export default function GameShell({ title, subtitle, level, onLevelChange, child
           </div>
         )}
 
-        {/* Voice speed. A cycling chip rather than a slider: it has to be
-            readable and hittable on a phone header that already holds four
-            controls, and a teacher wants "slower" in one tap, not a drag. */}
-        <button
-          type="button"
-          onClick={cycleRate}
-          title={`Voice speed — ${rate}x (tap to change)`}
-          aria-label={`Voice speed ${rate} times. Tap to change.`}
-          className={`flex h-10 flex-shrink-0 items-center justify-center rounded-control px-2 font-heading text-[13px] font-bold tabular-nums transition-colors ${
-            rate === 1 ? "text-charcoal-soft hover:bg-paper-deep" : "bg-sand text-ink"
-          }`}
-        >
-          {rate}&times;
-        </button>
+        {/* Voice speed: a chip showing the current one, opening a short list.
+            Compact enough for a phone header that already holds three other
+            controls, and two taps to any speed instead of up to five. */}
+        <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setRateOpen((o) => !o)}
+            title={`Voice speed — ${rate}x`}
+            aria-label={`Voice speed ${rate} times. Tap to change.`}
+            aria-expanded={rateOpen}
+            className={`flex h-10 items-center justify-center rounded-control px-2 font-heading text-[13px] font-bold tabular-nums transition-colors ${
+              rate === 1 ? "text-charcoal-soft hover:bg-paper-deep" : "bg-sand text-ink"
+            }`}
+          >
+            {rate}&times;
+          </button>
+
+          {rateOpen && (
+            <div
+              role="group"
+              aria-label="Voice speed"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="lqk-pop-in absolute right-0 top-full z-10 mt-1 w-24 overflow-hidden rounded-control border border-line bg-white shadow-[0_8px_24px_rgba(59,55,43,0.16)]"
+            >
+              {SAY_RATES.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => chooseRate(r)}
+                  aria-pressed={r === rate}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left font-heading text-[13px] font-bold tabular-nums transition-colors ${
+                    r === rate ? "bg-gold-soft text-ink" : "text-charcoal hover:bg-paper-deep"
+                  }`}
+                >
+                  <span>{r}&times;</span>
+                  {r === rate && <Icon name="check" size={13} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <button
           type="button"
