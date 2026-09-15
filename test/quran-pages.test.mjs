@@ -20,6 +20,9 @@ import {
   chaptersOnPage,
   clampPage,
   firstVerseOfPage,
+  fontPageOf,
+  groupGlyphLines,
+  hasMushafGlyphs,
   juzOfPage,
   pageOfVerse,
 } from "../lib/quran/pages.js";
@@ -176,5 +179,100 @@ describe("Arabic-Indic digits", () => {
     assert.equal(arabicDigits(1), "١");
     assert.equal(arabicDigits(255), "٢٥٥");
     assert.equal(arabicDigits(604), "٦٠٤");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mushaf facsimile: rebuilding the printed page from its own glyphs.
+// ---------------------------------------------------------------------------
+
+/** A verse as the data source hands it over in mushaf-glyph form. */
+function g(verseKey, glyphs, fontPage = 604) {
+  const [chapterId, number] = verseKey.split(":").map(Number);
+  return {
+    verseKey,
+    chapterId,
+    number,
+    fontPage,
+    glyphs: glyphs.map(([code, line, type = "word"]) => ({ code, line, type, text: code, meaning: "" })),
+  };
+}
+
+describe("rebuilding the printed lines", () => {
+  test("words are grouped by the line they are printed on, not by ayah", () => {
+    // One line carrying the end of ayah 1 and the start of ayah 2 is the norm
+    // in print; grouping by verse would break the line in the wrong place.
+    const lines = groupGlyphLines([
+      g("114:1", [["", 1], ["", 1], ["", 2]]),
+      g("114:2", [["", 2], ["", 2]]),
+    ]);
+
+    assert.deepEqual(lines.map((l) => l.line), [1, 2]);
+    assert.deepEqual(lines[0].items.map((i) => i.code), ["", ""]);
+    assert.deepEqual(lines[1].items.map((i) => i.code), ["", "", ""]);
+  });
+
+  test("lines come back in reading order however the verses arrived", () => {
+    const lines = groupGlyphLines([
+      g("2:5", [["", 7]]),
+      g("2:6", [["", 3]]),
+      g("2:7", [["", 15]]),
+    ]);
+    assert.deepEqual(lines.map((l) => l.line), [3, 7, 15]);
+  });
+
+  test("each glyph remembers its ayah, so a tap still knows what it touched", () => {
+    const [line] = groupGlyphLines([g("114:1", [["", 1]])]);
+    assert.equal(line.items[0].verse.verseKey, "114:1");
+  });
+
+  test("the ayah-end marker stays on the line it occupies in print", () => {
+    // Dropping it would leave every line a marker's width short.
+    const [line] = groupGlyphLines([g("114:1", [["", 1], ["", 1, "end"]])]);
+    assert.equal(line.items.length, 2);
+    assert.equal(line.items[1].type, "end");
+  });
+
+  test("a glyph with no line number is left out rather than piled onto line 0", () => {
+    const lines = groupGlyphLines([g("114:1", [["", 1], ["", 0], ["", null]])]);
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].items.length, 1);
+  });
+
+  test("nothing to draw is not a crash", () => {
+    assert.deepEqual(groupGlyphLines([]), []);
+    assert.deepEqual(groupGlyphLines(null), []);
+    assert.deepEqual(groupGlyphLines([{ verseKey: "1:1" }]), []);
+  });
+});
+
+describe("deciding whether the page can be drawn as print", () => {
+  test("yes when every verse carries glyphs and line numbers", () => {
+    assert.equal(hasMushafGlyphs([g("114:1", [["", 1]]), g("114:2", [["", 1]])]), true);
+  });
+
+  test("no when one verse is missing them — the page falls back as a whole", () => {
+    // Half a page in mushaf glyphs and half in ordinary text reads worse than
+    // either one alone.
+    assert.equal(hasMushafGlyphs([g("114:1", [["", 1]]), { verseKey: "114:2", glyphs: [] }]), false);
+    assert.equal(hasMushafGlyphs([g("114:1", [["", null]])]), false);
+    assert.equal(hasMushafGlyphs([{ verseKey: "114:1" }]), false);
+  });
+
+  test("no when there is nothing on the page at all", () => {
+    assert.equal(hasMushafGlyphs([]), false);
+    assert.equal(hasMushafGlyphs(null), false);
+  });
+});
+
+describe("choosing the page font", () => {
+  test("the API's font page wins", () => {
+    assert.equal(fontPageOf([g("114:1", [["", 1]], 604)], 1), 604);
+  });
+
+  test("falls back to the page being shown when none is given", () => {
+    assert.equal(fontPageOf([{ verseKey: "2:6" }], 3), 3);
+    assert.equal(fontPageOf([], 3), 3);
+    assert.equal(fontPageOf([], null), null);
   });
 });

@@ -373,6 +373,7 @@ export default function QuranReader({ initialBookmark = null }) {
                 onWordTap={onWordTap}
                 onAyahTap={setOpenAyah}
                 verseRef={registerCard}
+                mushafFont={state.mushafFont}
               />
             )}
 
