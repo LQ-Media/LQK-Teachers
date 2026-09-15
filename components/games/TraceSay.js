@@ -23,6 +23,11 @@ import { letterGeometry, useGeometry } from "@/lib/games/useGeometry";
  * this sitting so a teacher can see where they are, and that is all — a child
  * who traces Alif eleven times has not failed at anything.
  */
+/* Who is on screen. Used for the mascot AND for the default reciting voice,
+   from one place so the chip in the header can never disagree with the face
+   in the corner. */
+const MASCOT = "ustaz";
+
 export default function TraceSay() {
   const { data: geometry, error } = useGeometry();
   const [level, setLevel] = useLevel();
@@ -56,6 +61,7 @@ export default function TraceSay() {
   return (
     <GameShell
       title="Trace &amp; Say"
+      mascot={MASCOT}
       subtitle={`${letter.name} — trace the glowing road, then hear it`}
       level={level}
       onLevelChange={setLevel}
@@ -84,7 +90,7 @@ export default function TraceSay() {
           )}
 
           <Mascot
-            who="ustaz"
+            who={MASCOT}
             mood={complete ? "cheer" : "idle"}
             beat={beat}
             className="absolute bottom-2 right-2 h-[16%] max-h-32 w-auto opacity-90 sm:h-[22%]"

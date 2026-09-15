@@ -52,6 +52,11 @@ function readUnit(unit) {
   };
 }
 
+/* Who is on screen. Used for the mascot AND for the default reciting voice,
+   from one place so the chip in the header can never disagree with the face
+   in the corner. */
+const MASCOT = "ustaz";
+
 export default function WordBlend() {
   const [setId, setSetId] = useState(CARD_SETS[0].id);
   const [cardIndex, setCardIndex] = useState(0);
@@ -157,6 +162,7 @@ export default function WordBlend() {
   return (
     <GameShell
       title="Word Blending"
+      mascot={MASCOT}
       subtitle={`${card.title} — ${cardIndex + 1} of ${set.cards.length}`}
     >
       <div className="flex h-full flex-col">
@@ -253,7 +259,7 @@ export default function WordBlend() {
             </p>
           )}
           <Mascot
-            who="ustaz"
+            who={MASCOT}
             mood={complete ? "cheer" : wrong ? "oops" : "idle"}
             beat={beat}
             className="absolute bottom-0 right-3 h-24 w-auto opacity-90"

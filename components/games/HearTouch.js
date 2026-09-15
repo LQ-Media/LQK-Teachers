@@ -93,6 +93,11 @@ function buildRound(previousAnswerKey) {
   return { answer, options: shuffle(options) };
 }
 
+/* Who is on screen. Used for the mascot AND for the default reciting voice,
+   from one place so the chip in the header can never disagree with the face
+   in the corner. */
+const MASCOT = "ustazah";
+
 export default function HearTouch() {
   const [round, setRound] = useState(null);
   const [picked, setPicked] = useState(null);
@@ -152,6 +157,7 @@ export default function HearTouch() {
   return (
     <GameShell
       title="Hear &amp; Touch"
+      mascot={MASCOT}
       subtitle={
         score.asked > 0 ? `${score.right} of ${score.asked} heard right` : "Listen, then touch"
       }
@@ -222,7 +228,7 @@ export default function HearTouch() {
             cropped at the knees. Overlaid, the cards get the whole area and she
             cannot affect the layout at all. */}
         <Mascot
-          who="ustazah"
+          who={MASCOT}
           mood={picked ? (picked.correct ? "cheer" : "oops") : "idle"}
           beat={beat}
           className="absolute bottom-1 left-1 z-10 h-20 w-auto opacity-90"
