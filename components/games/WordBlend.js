@@ -7,7 +7,7 @@ import Glyph from "@/components/games/Glyph";
 import Mascot from "@/components/games/Mascot";
 import Icon from "@/components/Icon";
 import { HARAKAT, HURUF, sayFor } from "@/lib/games/huruf";
-import { WORD_CARDS, syllables } from "@/lib/games/words";
+import { WORD_CARDS, meaningOf, syllables } from "@/lib/games/words";
 import { buzz, chime, fanfare, sayLetter, speakArabic, unlockAudio } from "@/lib/games/audio";
 
 /**
@@ -50,6 +50,7 @@ export default function WordBlend() {
 
   const card = WORD_CARDS[cardIndex];
   const word = card.words[wordIndex];
+  const meaning = meaningOf(word);
   const units = useMemo(() => syllables(word), [word]);
   const complete = reached >= units.length;
 
@@ -172,14 +173,25 @@ export default function WordBlend() {
                 unlockAudio();
                 speakArabic(word);
               }}
-              className="lqk-bloom flex items-center gap-3 rounded-pill bg-gold-soft px-6 py-2.5 text-ink"
+              className="lqk-bloom flex max-w-full items-center gap-3 rounded-pill bg-gold-soft px-6 py-2 text-ink"
             >
               <Icon name="volume-2" size={22} />
               <span dir="rtl" className="font-mirza text-[34px] leading-none">
                 {word}
               </span>
-              <span className="font-heading text-[17px] font-bold">
-                {units.map((u) => readUnit(u).say).join("-")}
+              {/* Transliteration above, meaning below: the child reads the
+                  first and the ustazah reads the second. The meaning is only
+                  here when word-meanings.json has one — several of these cards
+                  are nonsense drills by design and have none. */}
+              <span className="flex min-w-0 flex-col items-start leading-tight">
+                <span className="font-heading text-[17px] font-bold">
+                  {units.map((u) => readUnit(u).say).join("-")}
+                </span>
+                {meaning && (
+                  <span className="truncate text-[12px] font-semibold text-charcoal-soft">
+                    {meaning}
+                  </span>
+                )}
               </span>
             </button>
           ) : (
