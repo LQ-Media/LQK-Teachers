@@ -21,6 +21,7 @@ import {
   clampPage,
   firstVerseOfPage,
   fontPageOf,
+  glyphsAllowedFor,
   groupGlyphLines,
   hasMushafGlyphs,
   juzOfPage,
@@ -274,5 +275,20 @@ describe("choosing the page font", () => {
     assert.equal(fontPageOf([{ verseKey: "2:6" }], 3), 3);
     assert.equal(fontPageOf([], 3), 3);
     assert.equal(fontPageOf([], null), null);
+  });
+});
+
+describe("tajweed and makhraj on a page", () => {
+  test("plain is the only script mode the mushaf glyphs can draw", () => {
+    // A glyph is a whole word in one codepoint — there is no letter inside it
+    // to tint, so colouring and the printed font cannot both be on.
+    assert.equal(glyphsAllowedFor("plain"), true);
+    assert.equal(glyphsAllowedFor("tajweed"), false);
+    assert.equal(glyphsAllowedFor("makhraj"), false);
+  });
+
+  test("an unknown mode does not quietly enable the glyphs", () => {
+    assert.equal(glyphsAllowedFor(undefined), false);
+    assert.equal(glyphsAllowedFor(""), false);
   });
 });

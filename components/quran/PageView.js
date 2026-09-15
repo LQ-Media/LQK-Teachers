@@ -8,10 +8,12 @@ import {
   buildPageBlocks,
   chaptersOnPage,
   fontPageOf,
+  glyphsAllowedFor,
   groupGlyphLines,
   hasMushafGlyphs,
   juzOfPage,
 } from "@/lib/quran/pages";
+import { DEFAULT_SETTINGS } from "@/lib/quran/store";
 import { fontFamilyFor, loadMushafFont } from "@/lib/quran/mushaf-font";
 
 /**
@@ -64,7 +66,10 @@ export default function PageView({
   // Draw as print only once the page's own font is in the document. Rendering
   // the glyphs a moment early would show a page of empty boxes, so the font is
   // proved first and never assumed.
-  const glyphsReady = mushafFont && hasMushafGlyphs(verses);
+  // Tajweed and makhraj cannot be drawn in mushaf glyphs — see glyphsAllowedFor
+  // — so choosing either sends the page back to reflowed text, which colours
+  // correctly. The page boundaries are unaffected either way.
+  const glyphsReady = mushafFont && glyphsAllowedFor(displayMode) && hasMushafGlyphs(verses);
   const fontPage = fontPageOf(verses, pageNumber);
   const [fontLoaded, setFontLoaded] = useState(false);
 
@@ -177,9 +182,9 @@ export default function PageView({
  * A run of verses drawn as the mushaf prints them: line by line, in the page's
  * own font, each glyph the shape it has on paper.
  *
- * The text size is the page's to decide, not the slider's: a printed page
- * fills its column, so the size is whatever makes it do that. The Arabic size
- * setting still governs the ayah layout and the plain fallback.
+ * The page is fitted to its column — a printed page fills the measure it was
+ * set to — and the Arabic size setting then reads as a zoom around that fit,
+ * because a pixel size means nothing here but "bigger than standard" does.
  *
  * The lines are NOT stretched to the margins. That was the first instinct and
  * it is the same mistake as text-align: justify — any line whose glyphs do not
@@ -230,22 +235,39 @@ function PrintedLines({
       // Bounded in absolute pixels, not as a ratio: the only thing that should
       // ever produce an absurd size here is a font that half-loaded, and a
       // hard floor and ceiling catch that without capping a legitimate fit.
-      const size = Math.min(120, Math.max(12, REFERENCE_PX * (column / widest)));
-      el.style.fontSize = `${size}px`;
+      const fitted = REFERENCE_PX * (column / widest);
+      // The teacher's Arabic size, read as a zoom rather than as pixels: on a
+      // printed page a pixel size means nothing (the page fills its column),
+      // but "a bit bigger than standard" means exactly what it does anywhere
+      // else. Past 100% the lines outgrow the column and the page scrolls
+      // sideways, which is the only honest way to enlarge a fixed layout.
+      const zoom = (settings.arabicSize || DEFAULT_SETTINGS.arabicSize) / DEFAULT_SETTINGS.arabicSize;
+      el.style.fontSize = `${Math.min(160, Math.max(10, fitted * zoom))}px`;
     };
 
     fit();
-    // Web font metrics settle a beat after the face is added.
+    // Measure again once the browser has actually laid the page out with the
+    // page font. document.fonts.ready can already be settled by the time we
+    // get here, so it alone is not enough — the frame callback is what makes
+    // the fitted size the same whether the font arrived instantly from cache
+    // or a moment ago over the network.
+    const frame = requestAnimationFrame(fit);
     document.fonts?.ready.then(fit).catch(() => {});
     const observer = new ResizeObserver(fit);
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [lines, family]);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [lines, family, settings.arabicSize]);
 
   return (
     <div
       ref={wrapRef}
-      className="mushaf-lines"
+      // Scrolls sideways when the text is sized past the column. The scrollbar
+      // is hidden so it never takes width from the column that the fit above
+      // measures — a bar appearing would shrink the column, refit, and oscillate.
+      className="mushaf-lines overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={{
         fontFamily: `${family}, var(--font-arabic, serif)`,
         color: settings.arabicColor,

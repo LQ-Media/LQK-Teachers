@@ -81,10 +81,11 @@ export default function DisplaySheet({ state, store, onClose }) {
               />
               <p className="mt-2 text-[12px] leading-relaxed text-charcoal-soft">
                 Draws each page in its own font from the printed mushaf, so the lines break
-                where they do on paper and the text fills the page as it does in print — which
-                means the Arabic size below does not apply to it. It fetches one small font
-                file per page, so turn it off on a slow connection or when you are reading
-                offline; the page then shows the same ayahs, reflowed and sized by that slider.
+                where they do on paper. It fetches one small font file per page, so turn it off
+                on a slow connection or when you are reading offline — the page then shows the
+                same ayahs, reflowed. Tajweed and Makhraj colouring always reflows the page:
+                the mushaf font draws each word as one shape, with no letters inside it to
+                colour.
               </p>
             </Section>
           )}
@@ -140,10 +141,12 @@ export default function DisplaySheet({ state, store, onClose }) {
               ))}
             </div>
             {displayMode !== "plain" && (
-              <p className="mt-2 text-[12px] text-charcoal-soft">
+              <p className="mt-2 text-[12px] leading-relaxed text-charcoal-soft">
                 {displayMode === "tajweed"
                   ? "Colour-coded tajweed rules. Word tap-to-translate pauses in this mode."
                   : "Letters coloured by articulation point (makhraj). و and ي join the cavity group when used for prolongation."}
+                {state.layout === "page" &&
+                  " On a page, the colouring reflows the text: the printed mushaf font draws each word as a single shape, so there are no letters inside it to colour. Switch back to Plain for the printed page."}
               </p>
             )}
             {legend.length > 0 && (
@@ -164,6 +167,13 @@ export default function DisplaySheet({ state, store, onClose }) {
 
           {/* Text size */}
           <Section title="Text size">
+            {state.layout === "page" && (
+              <p className="mb-2.5 text-[12px] leading-relaxed text-charcoal-soft">
+                On a mushaf page the Arabic size works as a zoom: the page is sized to fill its
+                width, and this makes it larger or smaller around that. Past the standard size
+                the page scrolls sideways.
+              </p>
+            )}
             <div className="space-y-3.5">
               {Object.entries(SIZE_RANGE).map(([key, cfg]) => (
                 <label key={key} className="block">
