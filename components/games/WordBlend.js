@@ -1,17 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import GameShell from "@/components/games/GameShell";
 import Glyph from "@/components/games/Glyph";
 import Mascot from "@/components/games/Mascot";
 import Icon from "@/components/Icon";
 import { HARAKAT, HURUF, sayFor } from "@/lib/games/huruf";
-import { WORD_CARDS, meaningOf, syllables } from "@/lib/games/words";
+import { CARD_SETS, ayahOf, cardSet, meaningOf, syllables } from "@/lib/games/words";
 import { buzz, chime, fanfare, sayLetter, speakArabic, unlockAudio } from "@/lib/games/audio";
 
 /**
- * Word Blending — the 12 combination cards from the back of the deck.
+ * Word Blending — joining letters into a word.
  *
  * This is the step where children stall. They know ba, they know na, they know
  * ta, and بَنَتَ still defeats them, because reading a word is not three
@@ -22,7 +22,18 @@ import { buzz, chime, fanfare, sayLetter, speakArabic, unlockAudio } from "@/lib
  *
  * Touch order is enforced. Tapping the middle unit first does nothing, because
  * a child who reads بَنَتَ as "na-ba-ta" has not read it.
+ *
+ * TWO SETS
+ *
+ * The deck's 12 printed combination cards, and 20 cards of three-letter words
+ * mined from the Quran. The printed cards drill the letters children confuse
+ * and are half nonsense on purpose; the Quran cards drill the same joining with
+ * words that mean something, and show the meaning and the ayah when the word
+ * is finished. A teacher picks between them in one tap, because which one she
+ * wants depends on whether today is about decoding or about vocabulary.
  */
+
+const SET_KEY = "lqk_games_wordset";
 
 // Reverse-lookup from an Arabic letter to its deck entry, so a unit pulled out
 // of a word can find its own name, harakah and audio clip.
@@ -42,26 +53,59 @@ function readUnit(unit) {
 }
 
 export default function WordBlend() {
+  const [setId, setSetId] = useState(CARD_SETS[0].id);
   const [cardIndex, setCardIndex] = useState(0);
   const [wordIndex, setWordIndex] = useState(0);
   const [reached, setReached] = useState(0);
   const [beat, setBeat] = useState(0);
   const [wrong, setWrong] = useState(false);
 
-  const card = WORD_CARDS[cardIndex];
-  const word = card.words[wordIndex];
+  const set = cardSet(setId);
+  const card = set.cards[cardIndex] ?? set.cards[0];
+  const word = card.words[wordIndex] ?? card.words[0];
   const meaning = meaningOf(word);
-  const units = useMemo(() => syllables(word), [word]);
+  const ayah = ayahOf(word);
+  // Not memoised: splitting a six-character string is cheaper than the compare
+  // that would guard it, and wrapping it made the React compiler give up on
+  // memoising this component at all.
+  const units = syllables(word);
   const complete = reached >= units.length;
+
+  /* Read after mount, not during render: localStorage does not exist on the
+     server and a mismatch there is a hydration error. */
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SET_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved && CARD_SETS.some((s) => s.id === saved)) setSetId(saved);
+    } catch {
+      // private mode — the deck is the default
+    }
+  }, []);
 
   const reset = useCallback(() => {
     setReached(0);
     setWrong(false);
   }, []);
 
+  const chooseSet = useCallback(
+    (id) => {
+      setSetId(id);
+      setCardIndex(0);
+      setWordIndex(0);
+      reset();
+      try {
+        localStorage.setItem(SET_KEY, id);
+      } catch {
+        // ignore — the choice still holds for this session
+      }
+    },
+    [reset],
+  );
+
   function goWord(delta) {
     const flat = cardIndex * 4 + wordIndex + delta;
-    const total = WORD_CARDS.length * 4;
+    const total = set.cards.length * 4;
     const at = (flat + total) % total;
     setCardIndex(Math.floor(at / 4));
     setWordIndex(at % 4);
@@ -113,7 +157,7 @@ export default function WordBlend() {
   return (
     <GameShell
       title="Word Blending"
-      subtitle={`Card ${card.id} of ${WORD_CARDS.length} — touch each letter in order`}
+      subtitle={`${card.title} — ${cardIndex + 1} of ${set.cards.length}`}
     >
       <div className="flex h-full flex-col">
         {/* The word. Right to left, one box per readable unit, each lighting as
@@ -181,15 +225,24 @@ export default function WordBlend() {
               </span>
               {/* Transliteration above, meaning below: the child reads the
                   first and the ustazah reads the second. The meaning is only
-                  here when word-meanings.json has one — several of these cards
-                  are nonsense drills by design and have none. */}
+                  here when there is one — the printed deck is half nonsense
+                  drills by design, and those are left unglossed rather than
+                  guessed at. The ayah rides alongside it so an ustazah can
+                  check the word against the mushaf without leaving the game. */}
               <span className="flex min-w-0 flex-col items-start leading-tight">
                 <span className="font-heading text-[17px] font-bold">
                   {units.map((u) => readUnit(u).say).join("-")}
                 </span>
                 {meaning && (
-                  <span className="truncate text-[12px] font-semibold text-charcoal-soft">
-                    {meaning}
+                  <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="truncate text-[12px] font-semibold text-charcoal-soft">
+                      {meaning}
+                    </span>
+                    {ayah && (
+                      <span className="flex-shrink-0 rounded-pill bg-white/70 px-1.5 text-[10px] font-bold tabular-nums text-charcoal-soft">
+                        {ayah}
+                      </span>
+                    )}
                   </span>
                 )}
               </span>
@@ -207,7 +260,36 @@ export default function WordBlend() {
           />
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-2 border-t border-line bg-white px-3 py-2">
+        {/* Which set of cards. Two taps from "drill the confusable letters" to
+            "learn some words", because that is the choice an ustazah actually
+            makes when she picks this game up. */}
+        <div className="flex flex-shrink-0 items-center gap-2 border-t border-line bg-white px-3 pt-2">
+          <div
+            className="flex flex-shrink-0 rounded-pill bg-paper-deep p-0.5"
+            role="group"
+            aria-label="Word set"
+          >
+            {CARD_SETS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => chooseSet(s.id)}
+                aria-pressed={s.id === setId}
+                title={s.hint}
+                className={`rounded-pill px-3 py-1.5 text-[12px] font-bold transition-colors ${
+                  s.id === setId ? "bg-white text-ink shadow-sm" : "text-charcoal-soft"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <p className="min-w-0 flex-1 truncate text-right text-[11px] text-charcoal-soft">
+            {set.hint}
+          </p>
+        </div>
+
+        <div className="flex flex-shrink-0 items-center gap-2 bg-white px-3 py-2">
           <button
             type="button"
             onClick={() => goWord(-1)}
@@ -222,7 +304,7 @@ export default function WordBlend() {
           <div dir="rtl" className="flex flex-1 gap-1.5">
             {card.words.map((w, i) => (
               <button
-                key={w}
+                key={`${w}-${i}`}
                 type="button"
                 onClick={() => {
                   setWordIndex(i);
