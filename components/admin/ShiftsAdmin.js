@@ -20,8 +20,11 @@ import {
   missedShifts,
   resolveMissed,
   syncHolidays,
+  attendanceExceptions,
+  splitShift,
 } from "@/lib/actions/shifts";
-import { OT_REASONS, formatHM, sgClock, sgDate, sgToday, addSgDays } from "@/lib/hours/rates";
+import { adjustClockIn } from "@/lib/actions/hours";
+import { OT_REASONS, formatHM, sgClock, sgDate, sgTime24, sgToday, addSgDays, isoFromSg } from "@/lib/hours/rates";
 
 const field =
   "w-full bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
@@ -48,22 +51,29 @@ const DAYS = [
 
 export default function ShiftsAdmin({ teachers, locations, initial }) {
   const router = useRouter();
-  const [view, setView] = useState("roster"); // roster | missed
+  const [view, setView] = useState("roster"); // roster | attendance | missed
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [shifts, setShifts] = useState(initial.shifts);
   const [missed, setMissed] = useState(initial.missed);
+  const [exceptions, setExceptions] = useState(initial.exceptions || []);
   const [notice, setNotice] = useState(null);
   const [modal, setModal] = useState(null); // "one" | "bulk" | "holiday"
+  const [splitting, setSplitting] = useState(null);
   const [busy, startTransition] = useTransition();
 
   function reload(nextFrom = from, nextTo = to) {
     startTransition(async () => {
-      const [r, m] = await Promise.all([shiftsForRange(nextFrom, nextTo), missedShifts()]);
+      const [r, m, x] = await Promise.all([
+        shiftsForRange(nextFrom, nextTo),
+        missedShifts(),
+        attendanceExceptions(),
+      ]);
       setFrom(r.from);
       setTo(r.to);
       setShifts(r.shifts);
       setMissed(m.missed);
+      setExceptions(x.exceptions);
       router.refresh();
     });
   }
@@ -109,6 +119,9 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
         <div className="flex gap-1 rounded-control bg-paper-deep p-1">
           <Seg active={view === "roster"} onClick={() => setView("roster")}>
             Roster
+          </Seg>
+          <Seg active={view === "attendance"} onClick={() => setView("attendance")}>
+            Attendance{exceptions.length ? ` (${exceptions.length})` : ""}
           </Seg>
           <Seg active={view === "missed"} onClick={() => setView("missed")}>
             Missed clock-ins{missed.length ? ` (${missed.length})` : ""}
@@ -171,6 +184,8 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
                   date={d}
                   shifts={byDate[d]}
                   busy={busy}
+                  teachers={teachers}
+                  onSplit={(shift) => setSplitting(shift)}
                   onCancel={(id, reason) =>
                     startTransition(async () => {
                       const r = await cancelShift(id, reason);
@@ -183,6 +198,21 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
             </div>
           )}
         </>
+      ) : view === "attendance" ? (
+        <AttendanceList
+          rows={exceptions}
+          busy={busy}
+          onAdjust={(sessionId, clockInIso, reason) =>
+            startTransition(async () => {
+              const r = await adjustClockIn(sessionId, clockInIso, reason);
+              if (r?.error) setNotice(r.error);
+              else {
+                setNotice(`Clock-in moved. That shift now pays ${formatHM(r.minutes)}.`);
+                reload();
+              }
+            })
+          }
+        />
       ) : (
         <MissedList
           missed={missed}
@@ -197,6 +227,26 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
               }
             })
           }
+        />
+      )}
+
+      {splitting && (
+        <SplitModal
+          shift={splitting}
+          teachers={teachers}
+          busy={busy}
+          onClose={() => setSplitting(null)}
+          onSave={(at, first, second) => {
+            startTransition(async () => {
+              const r = await splitShift(splitting.id, at, first, second);
+              if (r?.error) setNotice(r.error);
+              else {
+                setNotice(`Split at ${r.at}. Both halves are on the roster.`);
+                setSplitting(null);
+                reload();
+              }
+            });
+          }}
         />
       )}
 
@@ -239,7 +289,7 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
   );
 }
 
-function DayGroup({ date, shifts, busy, onCancel }) {
+function DayGroup({ date, shifts, busy, teachers, onCancel, onSplit }) {
   const ph = shifts.find((s) => s.phName)?.phName;
   return (
     <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
@@ -284,22 +334,276 @@ function DayGroup({ date, shifts, busy, onCancel }) {
             </div>
           </div>
           {s.status === "planned" && !s.sessionId && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                const reason = prompt("Cancel this shift. Reason?", "cancelled");
-                if (reason === null) return;
-                onCancel(s.id, reason);
-              }}
-              className="rounded-control border-[0.5px] border-line bg-white px-3 py-1.5 text-[12px] font-semibold text-charcoal transition-colors hover:bg-rust-soft hover:text-rust disabled:opacity-40"
-            >
-              Cancel
-            </button>
+            <div className="flex shrink-0 gap-2">
+              {/* Only worth offering on a shift long enough to hold two classes.
+                  A 90-minute shift is one class and splitting it is a mistake
+                  waiting to be made. */}
+              {s.minutes >= 180 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onSplit(s)}
+                  className="rounded-control border-[0.5px] border-line bg-white px-3 py-1.5 text-[12px] font-semibold text-charcoal transition-colors hover:bg-paper-deep disabled:opacity-40"
+                >
+                  Split
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const reason = prompt("Cancel this shift. Reason?", "cancelled");
+                  if (reason === null) return;
+                  onCancel(s.id, reason);
+                }}
+                className="rounded-control border-[0.5px] border-line bg-white px-3 py-1.5 text-[12px] font-semibold text-charcoal transition-colors hover:bg-rust-soft hover:text-rust disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
           )}
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * The weekly chase, as a screen.
+ *
+ * Every shift where the clock-in did not go to plan: nobody tapped, or they
+ * tapped 15 minutes or more late. Both cost the teacher money, so both show
+ * what the shift now pays alongside what it was rostered for — an IT Head
+ * should not have to work out the consequence in their head before deciding
+ * whether to move it.
+ *
+ * Adjusting is the one sanctioned way pay changes after the fact, so the reason
+ * is required rather than optional, and it is shown back on the row afterwards:
+ * the next person to look at this shift should see the decision, not re-chase
+ * it.
+ */
+function AttendanceList({ rows, busy, onAdjust }) {
+  const [adjusting, setAdjusting] = useState(null);
+
+  if (!rows.length) {
+    return (
+      <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+        Nothing to chase — every shift in the last fortnight was clocked in on time.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+        {rows.map((s) => {
+          const missing = s.attendance.state === "missing";
+          const paid = missing ? 0 : Math.max(0, s.minutes - s.attendance.lateMinutes);
+          return (
+            <div key={s.id} className="border-b-[0.5px] border-line px-4 py-3 last:border-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-semibold text-charcoal">{s.teacherName}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        missing ? "bg-rust-soft text-rust" : "bg-gold-soft text-gold"
+                      }`}
+                    >
+                      {missing ? "No clock-in" : `${s.attendance.lateMinutes} min late`}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[12px] text-charcoal-soft">
+                    {sgDate(s.startsAt)} · rostered {sgClock(s.startsAt)}–{sgClock(s.endsAt)}
+                    {s.branch ? ` · ${s.branch}` : ""}
+                  </div>
+                  <div className="mt-1 text-[12px] text-charcoal-soft">
+                    {s.clockInAt ? `Tapped ${sgClock(s.clockInAt)} · ` : ""}
+                    pays {formatHM(paid)} of {formatHM(s.minutes)}
+                  </div>
+                  {s.adjustReason ? (
+                    <div className="mt-1.5 rounded-control bg-paper-deep px-3 py-2 text-[12px] text-charcoal">
+                      Adjusted: “{s.adjustReason}”
+                    </div>
+                  ) : s.note ? (
+                    <div className="mt-1.5 rounded-control bg-paper-deep px-3 py-2 text-[12px] text-charcoal whitespace-pre-line">
+                      {s.note}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {s.sessionId ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setAdjusting(s)}
+                      className="rounded-control border-[0.5px] border-line bg-white px-3 py-2 text-[12px] font-semibold text-charcoal transition-colors hover:bg-paper-deep disabled:opacity-40"
+                    >
+                      Adjust clock-in
+                    </button>
+                  ) : (
+                    <span className="max-w-[11rem] text-right text-[11px] text-charcoal-soft">
+                      Nothing was clocked in — use Missed clock-ins to pay or void it.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {adjusting && (
+        <AdjustModal
+          shift={adjusting}
+          busy={busy}
+          onClose={() => setAdjusting(null)}
+          onSave={(iso, reason) => {
+            onAdjust(adjusting.sessionId, iso, reason);
+            setAdjusting(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Move a clock-in, with the reason that justifies it.
+ *
+ * The time is entered as SG wall clock on the shift's own date — an IT Head is
+ * reading "she was actually here at 3", not an instant. It is converted here so
+ * the action never has to guess a timezone.
+ */
+function AdjustModal({ shift, busy, onClose, onSave }) {
+  const [time, setTime] = useState(sgTime24(shift.startsAt));
+  const [reason, setReason] = useState("");
+  const iso = isoFromSg(shift.date, time);
+  const ready = !!iso && reason.trim().length >= 3;
+
+  return (
+    <Modal title="Adjust clock-in" onClose={onClose}>
+      <div className="text-[12px] text-charcoal-soft">
+        {shift.teacherName} · {sgDate(shift.startsAt)} · rostered {sgClock(shift.startsAt)}–{sgClock(shift.endsAt)}
+      </div>
+      {shift.clockInOriginalAt && (
+        <div className="mt-1 text-[12px] text-charcoal-soft">
+          Actually tapped at {sgClock(shift.clockInOriginalAt)}. That never changes — this only moves what pays.
+        </div>
+      )}
+
+      <label className="mt-4 block text-[12px] font-semibold text-charcoal">Clock-in time</label>
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={`${field} mt-1.5`} />
+
+      <label className="mt-3 block text-[12px] font-semibold text-charcoal">Reason</label>
+      <textarea
+        rows={2}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Phone died, MH confirmed she was there from 3."
+        className={`${field} mt-1.5`}
+      />
+      <p className="mt-1.5 text-[11px] text-charcoal-soft">
+        Goes on the shift, so it shows in the payroll export.
+      </p>
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-control border-[0.5px] border-line bg-white px-4 py-2 text-[13px] font-semibold text-charcoal"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!ready || busy}
+          onClick={() => onSave(iso, reason.trim())}
+          className="rounded-control bg-ink px-4 py-2 text-[13px] font-semibold text-paper disabled:opacity-40"
+        >
+          Save
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Split a shift in two and hand each half to somebody.
+ *
+ * The case this exists for: a teacher's shift covers two classes, they give it
+ * away whole, and two different reliefs take one each. The roster then needs to
+ * be two rows, and no amount of reassigning one row achieves that.
+ *
+ * Defaults to the midpoint because that is usually where the class boundary is,
+ * and leaves both halves with the original teacher until somebody is chosen —
+ * splitting and reassigning are separate decisions and pretending otherwise
+ * would silently move a shift nobody asked to move.
+ */
+function SplitModal({ shift, teachers, busy, onClose, onSave }) {
+  const mid = new Date((Date.parse(shift.startsAt) + Date.parse(shift.endsAt)) / 2).toISOString();
+  const [at, setAt] = useState(sgTime24(mid));
+  const [first, setFirst] = useState("");
+  const [second, setSecond] = useState("");
+
+  const cutIso = isoFromSg(shift.date, at);
+  const inside =
+    !!cutIso && Date.parse(cutIso) > Date.parse(shift.startsAt) && Date.parse(cutIso) < Date.parse(shift.endsAt);
+
+  return (
+    <Modal title="Split this shift" onClose={onClose}>
+      <div className="text-[12px] text-charcoal-soft">
+        {shift.teacherName} · {sgDate(shift.startsAt)} · {sgClock(shift.startsAt)}–{sgClock(shift.endsAt)}
+      </div>
+
+      <label className="mt-4 block text-[12px] font-semibold text-charcoal">Split at</label>
+      <input type="time" value={at} onChange={(e) => setAt(e.target.value)} className={`${field} mt-1.5`} />
+      {!inside && (
+        <p className="mt-1.5 text-[11px] text-rust">The split has to fall inside the shift, not at either end.</p>
+      )}
+
+      <label className="mt-3 block text-[12px] font-semibold text-charcoal">
+        First half {inside ? `(${sgClock(shift.startsAt)}–${at})` : ""}
+      </label>
+      <select value={first} onChange={(e) => setFirst(e.target.value)} className={`${field} mt-1.5`}>
+        <option value="">Keep {shift.teacherName}</option>
+        {teachers.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.fullName}
+          </option>
+        ))}
+      </select>
+
+      <label className="mt-3 block text-[12px] font-semibold text-charcoal">
+        Second half {inside ? `(${at}–${sgClock(shift.endsAt)})` : ""}
+      </label>
+      <select value={second} onChange={(e) => setSecond(e.target.value)} className={`${field} mt-1.5`}>
+        <option value="">Keep {shift.teacherName}</option>
+        {teachers.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.fullName}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-control border-[0.5px] border-line bg-white px-4 py-2 text-[13px] font-semibold text-charcoal"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!inside || busy}
+          onClick={() => onSave(at, first, second)}
+          className="rounded-control bg-ink px-4 py-2 text-[13px] font-semibold text-paper disabled:opacity-40"
+        >
+          Split
+        </button>
+      </div>
+    </Modal>
   );
 }
 
