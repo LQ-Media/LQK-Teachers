@@ -21,13 +21,16 @@ const { randomUUID } = await import("node:crypto");
 
 const FULL = ["Nur Abdul Karim", "Siti Suaidah", "Nurul Iman Fatimah", "Siti Malia"];
 
+// Four of these are the full names Karim confirmed on 16 Sep 2026. The other
+// three are the short forms he gave; the matcher below handles them, and it
+// reports rather than guesses if one turns out to be ambiguous.
 const CENTRE = [
-  ["Zafirah", ["Woods Square"]],
-  ["Sabrina", ["Primz Bizhub"]],
+  ["ZAFIRAH BINTE ZANUDIN", ["Woods Square"]],
+  ["NUR SABRINA BINTE RAHIM", ["Primz Bizhub"]],
   ["Khairunnisa", ["Tampines Blk 462", "Tampines Junction"]],
-  ["Zulaiha", ["Primz Bizhub"]],
+  ["SITI ZULAIHA BINTE SAMSUKAMAR", ["Primz Bizhub"]],
   ["Aisyah Dahlan", ["Tampines Blk 462", "Tampines Junction"]],
-  ["Mellisha", ["Woods Square"]],
+  ["MELLISHA BINTE ERWAN", ["Woods Square"]],
   ["Nadiah Salam", ["Woods Square"]],
 ];
 

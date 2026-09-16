@@ -221,7 +221,6 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
         <MissedList
           missed={missed}
           busy={busy}
-          canResolve={fullAdmin}
           onResolve={(id, accept, note) =>
             startTransition(async () => {
               const r = await resolveMissed(id, accept, note);
@@ -612,7 +611,7 @@ function SplitModal({ shift, teachers, busy, onClose, onSave }) {
   );
 }
 
-function MissedList({ missed, busy, canResolve, onResolve }) {
+function MissedList({ missed, busy, onResolve }) {
   if (!missed.length) {
     return (
       <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
@@ -639,7 +638,7 @@ function MissedList({ missed, busy, canResolve, onResolve }) {
                 <div className="mt-1.5 text-[12px] text-charcoal-soft">No explanation given yet.</div>
               )}
             </div>
-            <div className={`flex shrink-0 gap-2 ${canResolve ? "" : "hidden"}`}>
+            <div className="flex shrink-0 gap-2">
               <button
                 type="button"
                 disabled={busy}
