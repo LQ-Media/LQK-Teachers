@@ -20,6 +20,7 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import HoursAdmin from "@/components/admin/HoursAdmin";
 import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
+import PayrollReport from "@/components/admin/PayrollReport";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -96,7 +97,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts }) {
+export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts, initialPayroll }) {
   const [tab, setTab] = useState("users");
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [staffModal, setStaffModal] = useState(null); // {mode, student?}
@@ -158,6 +159,9 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
         <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
           Work hours{pendingHours ? ` (${pendingHours})` : ""}
         </Tab>
+        <Tab active={tab === "payroll"} onClick={() => setTab("payroll")} icon="download">
+          Payroll report
+        </Tab>
       </div>
 
       {tab === "users" && (
@@ -169,6 +173,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
         <ShiftsAdmin teachers={teacherOptions} locations={locations} initial={initialShifts} />
       )}
       {tab === "hours" && <HoursAdmin initial={initialHours} />}
+      {tab === "payroll" && <PayrollReport initial={initialPayroll} />}
 
       {userModal && (
         <UserModal
