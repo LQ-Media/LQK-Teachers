@@ -206,7 +206,6 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
         <AttendanceList
           rows={exceptions}
           busy={busy}
-          canAdjust={fullAdmin}
           onAdjust={(sessionId, clockInIso, reason) =>
             startTransition(async () => {
               const r = await adjustClockIn(sessionId, clockInIso, reason);
@@ -388,7 +387,7 @@ function DayGroup({ date, shifts, busy, teachers, onCancel, onSplit }) {
  * the next person to look at this shift should see the decision, not re-chase
  * it.
  */
-function AttendanceList({ rows, busy, canAdjust, onAdjust }) {
+function AttendanceList({ rows, busy, onAdjust }) {
   const [adjusting, setAdjusting] = useState(null);
 
   if (!rows.length) {
@@ -438,11 +437,7 @@ function AttendanceList({ rows, busy, canAdjust, onAdjust }) {
                   ) : null}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {!canAdjust ? (
-                    <span className="max-w-[13rem] text-right text-[11px] text-charcoal-soft">
-                      Add the reason to the shift’s note. A full admin decides whether the clock-in moves.
-                    </span>
-                  ) : s.sessionId ? (
+                  {s.sessionId ? (
                     <button
                       type="button"
                       disabled={busy}

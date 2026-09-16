@@ -129,6 +129,17 @@ describe("branch scoping", () => {
     assert.equal(canManage("zafirah", null), false);
   });
 
+  test("an IT Head may adjust a clock-in at their own centre, not elsewhere", () => {
+    // Karim, 16 Sep 2026: adjusting is a centre IT Head's job too. The guard in
+    // adjustClockIn checks the SHIFT's branch, not the teacher's — a teacher can
+    // be rostered across centres, and it is the shift that gets paid.
+    assert.equal(canManage("zafirah", "Woods Square"), true);
+    assert.equal(canManage("zafirah", "Tampines Junction"), false);
+    assert.equal(canManage("khai", "Tampines Junction"), true);
+    // A full admin is never blocked by it.
+    assert.equal(canManage("karim", "Woods Square"), true);
+  });
+
   test("every assigned branch is a real one", () => {
     const used = db.prepare("SELECT DISTINCT branch FROM manager_branches").all().map((r) => r.branch);
     for (const b of used) assert.ok(LOCATIONS.includes(b), `${b} is not a known branch`);
