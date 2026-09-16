@@ -6,7 +6,7 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import EmptyArt from "@/components/EmptyArt";
 import LocationTag, { LocationLine } from "@/components/hours/LocationTag";
-import { clockIn, clockOut, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
+import { clockIn, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
 import { explainMissed } from "@/lib/actions/shifts";
 import {
   OT_REASONS,
@@ -219,7 +219,7 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
 
   // An unscheduled session is the only thing left genuinely running — nobody
   // knows when it ends, so the teacher can close it themselves.
-  if (running) return <OpenCard running={running} pending={pending} onNotice={onNotice} />;
+  if (running) return <OpenCard running={running} />;
 
   if (onShift) return <OnShiftCard session={onShift} />;
 
@@ -346,24 +346,19 @@ function OnShiftCard({ session }) {
   );
 }
 
-// An unscheduled tap: no roster to say when it ends, so the system never
-// guesses. The teacher can close it, or an admin sets the end time.
-function OpenCard({ running, pending, onNotice }) {
+// A session left open under the old rules, before unscheduled clock-ins were
+// blocked. No new one can be created, and the teacher cannot close it: pay runs
+// to the scheduled end and ending your own shift is editing your own pay
+// (Karim, 16 Sep 2026). An admin closes it with the time it really ended.
+function OpenCard({ running }) {
+  // Still needed for the location tag below: tagging where they were is the one
+  // thing a teacher can usefully do with a legacy open session.
   const router = useRouter();
-  const [busy, startTransition] = useTransition();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-
-  function doClose() {
-    startTransition(async () => {
-      const r = await clockOut();
-      if (r?.error) onNotice(r.error);
-      else router.refresh();
-    });
-  }
 
   return (
     <div className="rounded-card border-[0.5px] border-gold bg-gold-soft/30 p-5">
@@ -377,15 +372,9 @@ function OpenCard({ running, pending, onNotice }) {
             {running.branch ? `${running.branch} · ` : ""}since {sgClock(running.startedAt)}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={doClose}
-          disabled={pending || busy}
-          className="flex items-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
-        >
-          <Icon name="square" size={15} filled />
-          {busy ? "Saving…" : "Clock out"}
-        </button>
+        <div className="max-w-[15rem] text-right text-[12px] text-charcoal-soft">
+          An admin will close this off with the time it actually ended.
+        </div>
       </div>
       <div className="mt-3 rounded-control bg-white/70 p-3">
         <span className="mb-1.5 block text-[11px] font-semibold text-charcoal-soft">Location</span>
