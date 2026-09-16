@@ -49,7 +49,7 @@ const DAYS = [
   { n: 0, label: "Sun" },
 ];
 
-export default function ShiftsAdmin({ teachers, locations, initial }) {
+export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = true, managedBranches = null }) {
   const router = useRouter();
   const [view, setView] = useState("roster"); // roster | attendance | missed
   const [from, setFrom] = useState(initial.from);
@@ -60,6 +60,10 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
   const [notice, setNotice] = useState(null);
   const [modal, setModal] = useState(null); // "one" | "bulk" | "holiday"
   const [splitting, setSplitting] = useState(null);
+  // A centre admin only ever rosters at their own centres, so the pickers only
+  // offer those. The server refuses the rest regardless — this just keeps the
+  // form from inviting an error it will then reject.
+  const myLocations = managedBranches ? locations.filter((l) => managedBranches.includes(l)) : locations;
   const [busy, startTransition] = useTransition();
 
   function reload(nextFrom = from, nextTo = to) {
@@ -202,6 +206,7 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
         <AttendanceList
           rows={exceptions}
           busy={busy}
+          canAdjust={fullAdmin}
           onAdjust={(sessionId, clockInIso, reason) =>
             startTransition(async () => {
               const r = await adjustClockIn(sessionId, clockInIso, reason);
@@ -217,6 +222,7 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
         <MissedList
           missed={missed}
           busy={busy}
+          canResolve={fullAdmin}
           onResolve={(id, accept, note) =>
             startTransition(async () => {
               const r = await resolveMissed(id, accept, note);
@@ -253,7 +259,7 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
       {modal === "one" && (
         <OneOffModal
           teachers={teachers}
-          locations={locations}
+          locations={myLocations}
           onClose={() => setModal(null)}
           onSaved={(msg) => {
             setModal(null);
@@ -265,7 +271,7 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
       {modal === "bulk" && (
         <BulkModal
           teachers={teachers}
-          locations={locations}
+          locations={myLocations}
           onClose={() => setModal(null)}
           onSaved={(msg) => {
             setModal(null);
@@ -276,7 +282,7 @@ export default function ShiftsAdmin({ teachers, locations, initial }) {
       )}
       {modal === "holiday" && (
         <CancelDateModal
-          locations={locations}
+          locations={myLocations}
           onClose={() => setModal(null)}
           onSaved={(msg) => {
             setModal(null);
@@ -382,7 +388,7 @@ function DayGroup({ date, shifts, busy, teachers, onCancel, onSplit }) {
  * the next person to look at this shift should see the decision, not re-chase
  * it.
  */
-function AttendanceList({ rows, busy, onAdjust }) {
+function AttendanceList({ rows, busy, canAdjust, onAdjust }) {
   const [adjusting, setAdjusting] = useState(null);
 
   if (!rows.length) {
@@ -432,7 +438,11 @@ function AttendanceList({ rows, busy, onAdjust }) {
                   ) : null}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {s.sessionId ? (
+                  {!canAdjust ? (
+                    <span className="max-w-[13rem] text-right text-[11px] text-charcoal-soft">
+                      Add the reason to the shift’s note. A full admin decides whether the clock-in moves.
+                    </span>
+                  ) : s.sessionId ? (
                     <button
                       type="button"
                       disabled={busy}
@@ -607,7 +617,7 @@ function SplitModal({ shift, teachers, busy, onClose, onSave }) {
   );
 }
 
-function MissedList({ missed, busy, onResolve }) {
+function MissedList({ missed, busy, canResolve, onResolve }) {
   if (!missed.length) {
     return (
       <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
@@ -634,7 +644,7 @@ function MissedList({ missed, busy, onResolve }) {
                 <div className="mt-1.5 text-[12px] text-charcoal-soft">No explanation given yet.</div>
               )}
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className={`flex shrink-0 gap-2 ${canResolve ? "" : "hidden"}`}>
               <button
                 type="button"
                 disabled={busy}

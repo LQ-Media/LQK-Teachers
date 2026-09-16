@@ -13,10 +13,22 @@ import { sgToday } from "@/lib/hours/rates";
 // lib/hours/periods.js. August pay covers 27 July to 23 August.
 //
 // `/api` is not behind the page proxy, so this gates on the session directly.
+// Payroll is FULL-ADMIN ONLY. A centre IT Head also holds role='admin', so the
+// role check alone lets them through — the scope has to be read as well, and
+// from the DATABASE rather than the JWT, so revoking it takes effect at once.
+//
+// This is an /api route, outside the page proxy and outside requireFullAdmin's
+// redirect, so the check is written out here rather than imported.
+function isFullAdmin(userId) {
+  if (!userId) return false;
+  const row = getDb().prepare("SELECT role, admin_scope FROM profiles WHERE id = ?").get(userId);
+  return !!row && row.role === "admin" && row.admin_scope === "full";
+}
+
 export async function GET(request) {
   const session = await getSession();
   if (!session?.userId) return new Response("Unauthorized", { status: 401 });
-  if (session.role !== "admin") return new Response("Forbidden", { status: 403 });
+  if (!isFullAdmin(session.userId)) return new Response("Forbidden", { status: 403 });
 
   const key = request.nextUrl.searchParams.get("period") || "";
   const period = periodByKey(key) || periodFor(sgToday());

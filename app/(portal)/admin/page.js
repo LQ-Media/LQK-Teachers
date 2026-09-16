@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/dal";
+import { requireAdmin, managedBranches } from "@/lib/dal";
 import { getDb, LOCATIONS, TRACKER_CLASSES } from "@/lib/db";
 import { avatarSrc } from "@/lib/avatar";
 import { hoursAdminData } from "@/lib/actions/hours";
@@ -10,13 +10,21 @@ import AdminApp from "@/components/admin/AdminApp";
 export const metadata = { title: "Admin · LQK Teachers Portal" };
 
 export default async function AdminPage() {
-  const session = await requireRole(["admin"]);
+  const session = await requireAdmin();
+  const fullAdmin = session.adminScope === "full";
+  const branches = managedBranches(session.userId);
   const db = getDb();
 
   const profiles = db
-    .prepare("SELECT id, full_name, email, role, primary_location, position, photo, pay_tier FROM profiles ORDER BY full_name")
+    .prepare("SELECT id, full_name, email, role, admin_scope, primary_location, position, photo, pay_tier FROM profiles ORDER BY full_name")
     .all();
   const locRows = db.prepare("SELECT teacher_id, location, is_primary FROM teacher_locations").all();
+  const mgrRows = db.prepare("SELECT manager_id, branch FROM manager_branches").all();
+  const managedBy = new Map();
+  for (const r of mgrRows) {
+    if (!managedBy.has(r.manager_id)) managedBy.set(r.manager_id, []);
+    managedBy.get(r.manager_id).push(r.branch);
+  }
   const byTeacher = new Map();
   for (const r of locRows) {
     if (!byTeacher.has(r.teacher_id)) byTeacher.set(r.teacher_id, []);
@@ -27,6 +35,8 @@ export default async function AdminPage() {
     full_name: p.full_name,
     email: p.email,
     role: p.role,
+    admin_scope: p.admin_scope || "",
+    managed_branches: managedBy.get(p.id) || [],
     primary_location: p.primary_location || "",
     position: p.position || "",
     pay_tier: p.pay_tier || "",
@@ -62,14 +72,18 @@ export default async function AdminPage() {
     pay_tier: i.pay_tier || "",
   }));
 
-  const initialHours = await hoursAdminData(sgMonthNow());
+  // Payroll and approvals are loaded ONLY for a full admin. They are not just
+  // hidden in the UI: requireFullAdmin REDIRECTS, so eagerly calling them here
+  // would bounce a centre IT Head out of the Admin area entirely rather than
+  // showing them the roster they do have.
+  const initialHours = fullAdmin ? await hoursAdminData(sgMonthNow()) : null;
   // The roster tab opens on the fortnight ahead, plus whatever is outstanding
   // from the past week — the two things an admin actually acts on.
   const [range, missedList, exceptionList, payroll] = await Promise.all([
     shiftsForRange(),
     missedShifts(),
     attendanceExceptions(),
-    payrollReport(),
+    fullAdmin ? payrollReport() : Promise.resolve(null),
   ]);
   const initialShifts = { ...range, missed: missedList.missed, exceptions: exceptionList.exceptions };
 
@@ -83,6 +97,8 @@ export default async function AdminPage() {
       initialHours={initialHours}
       initialShifts={initialShifts}
       initialPayroll={payroll}
+      fullAdmin={fullAdmin}
+      managedBranches={branches}
     />
   );
 }
