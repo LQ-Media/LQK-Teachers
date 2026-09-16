@@ -55,31 +55,6 @@ function at(date, time) {
   return isoFromSgSpanning(date, time, time).startsAt;
 }
 
-// ---- rounding ----------------------------------------------------------
-
-describe("payroll hour rounding", () => {
-  test("Karim's own examples: under 30 down, over 30 up", () => {
-    assert.equal(payrollHours(5 * 60 + 20), 5);
-    assert.equal(payrollHours(5 * 60 + 45), 6);
-  });
-
-  test("exactly thirty rounds up, and zero stays zero", () => {
-    assert.equal(payrollHours(30), 1);
-    assert.equal(payrollHours(29), 0);
-    assert.equal(payrollHours(0), 0);
-  });
-
-  test("rounds the total, so a month of short shifts cannot drift", () => {
-    // Twenty 2h55m shifts. Rounding each one down first loses nearly an hour.
-    const minutes = 20 * 175;
-    assert.equal(payrollHours(minutes), 58);
-    assert.notEqual(
-      payrollHours(minutes),
-      Array.from({ length: 20 }, () => payrollHours(175)).reduce((a, b) => a + b, 0)
-    );
-  });
-});
-
 // ---- rates -------------------------------------------------------------
 
 describe("rates", () => {
@@ -194,11 +169,15 @@ describe("attendance", () => {
     assert.equal(big.flagged, true);
   });
 
-  test("the threshold itself flags", () => {
+  test("the threshold itself flags, and a minute under it does not", () => {
     const s = shift("2026-08-01", "12:00", "15:00");
-    const a = attendanceOf(s, at("2026-08-01", "12:10"));
+    const a = attendanceOf(s, at("2026-08-01", "12:15"));
     assert.equal(a.lateMinutes, LATE_FLAG_MIN);
     assert.equal(a.flagged, true);
+
+    const under = attendanceOf(s, at("2026-08-01", "12:10"));
+    assert.equal(under.lateMinutes, 10);
+    assert.equal(under.flagged, false, "10 minutes is late for pay but not worth a chase");
   });
 
   test("early is recorded and never flagged", () => {
@@ -263,7 +242,7 @@ describe("monthly report", () => {
   test("OT is rostered time and excludes the tracked-only teams", () => {
     const [block] = monthlyReport(shifts, "2026-08");
     assert.equal(block.otMinutes, 90);
-    assert.equal(block.otHours, 2);
+    assert.equal(block.otHours, 1.5);
     assert.equal(block.trackedMinutes, 120);
     assert.equal(block.trackedHours, 2);
   });
@@ -281,17 +260,13 @@ describe("monthly report", () => {
     assert.ok(block.rows.every((r) => r.differenceMinutes <= 0));
   });
 
-  test("both the missing tap and the ten-minutes-late one reach the exception list", () => {
+  test("only the missing tap is chased; ten minutes late is not", () => {
     const blocks = monthlyReport(shifts, "2026-08");
-    const flagged = exceptions(blocks);
-    // Aug 16 was 7:40 for a 7:30 shift — exactly LATE_FLAG_MIN, so it counts.
+    // Aug 16 was 7:40 for a 7:30 shift — 10 minutes, under LATE_FLAG_MIN.
     // Aug 22 was never tapped at all.
     assert.deepEqual(
-      flagged.map((f) => [f.date, f.attendance]),
-      [
-        ["2026-08-16", "late"],
-        ["2026-08-22", "missing"],
-      ]
+      exceptions(blocks).map((f) => [f.date, f.attendance]),
+      [["2026-08-22", "missing"]]
     );
   });
 
@@ -354,7 +329,7 @@ describe("CSV export", () => {
     const csv = reportCsv(blocks);
     const [header, subtotal, row] = csv.split("\n");
     assert.match(header, /TOTAL OT HOURS \(hr\),TOTAL TEACHING HOURS \(hr\)/);
-    assert.match(subtotal, /^AINUL BINA ABDUL LATHEEF,,,,,,7h 25min,,,0,7,/);
+    assert.match(subtotal, /^AINUL BINA ABDUL LATHEEF,,,,,,7h 25min,,,0,7.5,/);
     assert.match(row, /2026-08-02/);
   });
 
