@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
-import { previewAdminScopes, applyAdminScopes } from "@/lib/actions/admin-scopes";
+import SearchSelect from "@/components/SearchSelect";
+import {
+  previewAdminScopes,
+  applyAdminScopes,
+  accessRoster,
+  setAdminScope,
+  accessLog,
+} from "@/lib/actions/admin-scopes";
 
 // Admin → Access. Who holds which tier of admin, and one button to set it.
 //
@@ -22,6 +29,38 @@ export default function AccessPanel({ initial }) {
   const [notice, setNotice] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
+  // Two halves of one screen. The LIST is the standing roster from the code —
+  // useful for setting everybody at once. The PEOPLE table is per-person, which
+  // is what Karim asked for so he can change one person without a deploy.
+  const [tab, setTab] = useState("people"); // people | list | log
+  const [roster, setRoster] = useState(null);
+  const [log, setLog] = useState(null);
+
+  function loadRoster() {
+    startTransition(async () => {
+      const r = await accessRoster();
+      if (r?.error) setNotice(r.error);
+      else setRoster(r);
+    });
+  }
+
+  function loadLog() {
+    startTransition(async () => {
+      const r = await accessLog();
+      if (r?.error) setNotice(r.error);
+      else setLog(r.entries);
+    });
+  }
+
+  // Loaded on demand, in an effect rather than during render: a fetch started
+  // while rendering is a side effect React will either warn about or loop on,
+  // and these read every profile so they are not free enough to do eagerly.
+  useEffect(() => {
+    if (tab === "people" && !roster) loadRoster();
+    if (tab === "log" && !log) loadLog();
+    // loadRoster/loadLog are stable for this component's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   function refresh() {
     startTransition(async () => {
@@ -73,6 +112,53 @@ export default function AccessPanel({ initial }) {
         </div>
       )}
 
+      <div className="mb-4 flex gap-1 rounded-control bg-paper-deep p-1 w-fit">
+        {[
+          ["people", "Who has access"],
+          ["list", "Apply the standing list"],
+          ["log", "History"],
+        ].map(([k, lbl]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={`rounded-[7px] px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+              tab === k ? "bg-white text-charcoal shadow-sm" : "text-charcoal-soft hover:text-charcoal"
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab === "people" && (
+        <PeopleAccess
+          roster={roster}
+          pending={pending}
+          onSet={(id, scope, branches) =>
+            startTransition(async () => {
+              const r = await setAdminScope(id, scope, branches);
+              if (r?.error) setNotice(r.error);
+              else {
+                setNotice(
+                  `${r.name}: ${SCOPE_LABEL[r.was]} → ${SCOPE_LABEL[r.scope]}` +
+                    (r.branches?.length ? ` (${r.branches.join(" + ")})` : "") +
+                    "."
+                );
+                const next = await accessRoster();
+                if (!next?.error) setRoster(next);
+                setLog(null);
+                router.refresh();
+              }
+            })
+          }
+        />
+      )}
+
+      {tab === "log" && <AccessLog entries={log} pending={pending} />}
+
+      {tab === "list" && (
+      <>
       <div className="mb-5 rounded-card border-[0.5px] border-line bg-white p-5">
         <h3 className="font-heading text-[15px] font-semibold text-charcoal">Admin access</h3>
         <p className="mt-1 text-[13px] text-charcoal-soft">
@@ -220,6 +306,243 @@ export default function AccessPanel({ initial }) {
           </div>
         )}
       </div>
+      </>
+      )}
+    </div>
+  );
+}
+
+const SCOPE_LABEL = { full: "Full access", centre: "Centre access", none: "No admin" };
+
+/**
+ * Who has access, one row per person, with the three buttons Karim asked for.
+ *
+ * Searchable, because this is every account — 77 of them — and the question is
+ * always about one person you already have in mind.
+ *
+ * Admins sort first so the screen opens on the rows that matter. A teacher with
+ * no admin is the default state of almost everybody and belongs below.
+ */
+function PeopleAccess({ roster, pending, onSet }) {
+  const [query, setQuery] = useState("");
+  const [onlyAdmins, setOnlyAdmins] = useState(true);
+  const [editing, setEditing] = useState(null); // { id, branches }
+
+  if (!roster) {
+    return (
+      <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+        Loading accounts…
+      </div>
+    );
+  }
+
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const people = roster.people.filter((p) => {
+    // "Admins only" is for BROWSING. The moment somebody types a name they are
+    // looking for one person, and hiding them because they are not an admin yet
+    // is exactly backwards — promoting a teacher is the main reason to search.
+    if (onlyAdmins && !words.length && p.scope === "none") return false;
+    if (!words.length) return true;
+    const hay = `${p.name} ${p.email} ${p.position || ""}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+
+  const counts = roster.people.reduce(
+    (acc, p) => ({ ...acc, [p.scope]: (acc[p.scope] || 0) + 1 }),
+    {}
+  );
+
+  return (
+    <div>
+      <div className="mb-3 rounded-card border-[0.5px] border-line bg-white p-4">
+        <p className="text-[13px] text-charcoal-soft">
+          <strong className="font-semibold text-charcoal">Full</strong> sees payroll and every centre.{" "}
+          <strong className="font-semibold text-charcoal">Centre</strong> edits its own centres&rsquo; shifts,
+          clock-ins and relief, and no payroll.{" "}
+          <strong className="font-semibold text-charcoal">None</strong> is an ordinary teacher account.
+        </p>
+        <p className="mt-1.5 text-[12px] text-charcoal-soft">
+          {counts.full || 0} full · {counts.centre || 0} centre · {counts.none || 0} no admin
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Type a name"
+            aria-label="Search people"
+            className="w-[220px] rounded-control border-[0.5px] border-line bg-paper px-2.5 py-2 text-[12px] text-charcoal outline-none focus:border-ink"
+          />
+          <label className="flex items-center gap-1.5 text-[12px] text-charcoal-soft">
+            <input
+              type="checkbox"
+              checked={onlyAdmins}
+              onChange={(e) => setOnlyAdmins(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[color:var(--ink,#4A3340)]"
+            />
+            Admins only
+          </label>
+          {onlyAdmins && !words.length && (
+            <span className="text-[11px] text-charcoal-soft">— search to include teachers</span>
+          )}
+          <span className="text-[12px] text-charcoal-soft">
+            {people.length} shown
+          </span>
+        </div>
+      </div>
+
+      {people.length === 0 ? (
+        <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+          {query ? `Nobody matches “${query}”.` : "Nobody to show."}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+          {people.map((p) => {
+            const open = editing?.id === p.id;
+            return (
+              <div key={p.id} className="border-b-[0.5px] border-line px-4 py-3 last:border-0">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-charcoal">{p.name}</div>
+                    <div className="mt-0.5 text-[12px] text-charcoal-soft">
+                      {p.email}
+                      {p.position ? ` · ${p.position}` : ""}
+                      {p.scope === "centre" &&
+                        (p.branches.length
+                          ? ` · ${p.branches.join(" + ")}`
+                          : " · no centres — sees nothing")}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 gap-1 rounded-control bg-paper-deep p-1">
+                    {[
+                      ["full", "Full"],
+                      ["centre", "Centre"],
+                      ["none", "None"],
+                    ].map(([k, lbl]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        disabled={pending}
+                        onClick={() => {
+                          // Centre needs branches, so it opens a picker rather
+                          // than applying an empty set the server would refuse.
+                          if (k === "centre") {
+                            setEditing({ id: p.id, branches: p.branches.length ? p.branches : [] });
+                            return;
+                          }
+                          setEditing(null);
+                          onSet(p.id, k, []);
+                        }}
+                        className={`rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
+                          p.scope === k
+                            ? "bg-white text-charcoal shadow-sm"
+                            : "text-charcoal-soft hover:text-charcoal"
+                        }`}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {open && (
+                  <div className="mt-3 rounded-control bg-paper p-3">
+                    <span className="mb-1.5 block text-[11px] font-semibold text-charcoal-soft">
+                      Which centres?
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {roster.locations.map((loc) => {
+                        const on = editing.branches.includes(loc);
+                        return (
+                          <button
+                            key={loc}
+                            type="button"
+                            onClick={() =>
+                              setEditing((e) => ({
+                                ...e,
+                                branches: on
+                                  ? e.branches.filter((b) => b !== loc)
+                                  : [...e.branches, loc],
+                              }))
+                            }
+                            className={`rounded-pill border-[0.5px] px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+                              on ? "border-ink bg-ink text-paper" : "border-line text-charcoal-soft hover:border-ink"
+                            }`}
+                          >
+                            {loc}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={pending || !editing.branches.length}
+                        onClick={() => {
+                          onSet(p.id, "centre", editing.branches);
+                          setEditing(null);
+                        }}
+                        className="rounded-control bg-ink px-3 py-2 text-[12px] font-semibold text-paper hover:bg-ink-deep disabled:opacity-50"
+                      >
+                        {pending ? "Saving…" : "Give centre access"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(null)}
+                        className="rounded-control border-[0.5px] border-line px-3 py-2 text-[12px] font-semibold text-charcoal-soft hover:border-ink"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {!editing.branches.length && (
+                      <p className="mt-1.5 text-[11px] text-charcoal-soft">
+                        Pick at least one — a centre admin with none assigned sees nothing.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Every access change, newest first. A permission change with no record is the
+ *  one kind of change nobody can audit and everybody denies. */
+function AccessLog({ entries, pending }) {
+  if (!entries) {
+    return (
+      <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+        {pending ? "Loading…" : "No history yet."}
+      </div>
+    );
+  }
+  if (!entries.length) {
+    return (
+      <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+        Nobody&rsquo;s access has been changed from this screen yet.
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+      {entries.map((e) => (
+        <div key={e.id} className="border-b-[0.5px] border-line px-4 py-3 last:border-0">
+          <div className="text-[13px] text-charcoal">
+            <span className="font-semibold">{e.subject}</span>{" "}
+            <span className="text-charcoal-soft">
+              {SCOPE_LABEL[e.from] || e.from} → {SCOPE_LABEL[e.to] || e.to}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[12px] text-charcoal-soft">
+            by {e.by} · {new Date(e.at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })}
+            {e.toBranches ? ` · ${e.toBranches}` : ""}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
