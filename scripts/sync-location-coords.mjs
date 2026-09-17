@@ -10,6 +10,19 @@
 // the Singapore Land Authority's own service) is consulted occasionally and the
 // answer is written to the database. Nothing at clock-in time ever calls out.
 //
+// THIS SCRIPT IS NO LONGER THE ONLY WAY. Everything below is also on the
+// screen, at Admin -> Access -> Clock-in location: resolve the coordinates,
+// read the distances real taps have recorded, and throw the switch. The script
+// stays because it is the right tool during a deploy and it works without a
+// browser, but nothing about the fence REQUIRES a terminal any more — least of
+// all turning it off in a hurry when it is wrongly refusing somebody at 7:25 in
+// the morning. See lib/actions/geofence.js.
+//
+// Both paths write the same two things (location_coords and the
+// geofence_enabled key) through the same guard, so they cannot disagree. Only
+// the screen records WHO threw the switch, in geofence_log — a script run has
+// no session to attribute it to.
+//
 // THE FENCE IS OFF UNTIL --enable IS PASSED, and --enable refuses while any
 // centre is unresolved. Combined with "no clock-in means no pay", a fence
 // switched on before its coordinates existed would refuse every clock-in at
