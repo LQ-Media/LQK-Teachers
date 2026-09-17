@@ -8,6 +8,8 @@ import { payrollReport } from "@/lib/actions/payroll";
 import { reliefBoard } from "@/lib/actions/relief";
 import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
 import { geofenceEnabled } from "@/lib/hours/geocode";
+import { signupRow } from "@/lib/admin/signup";
+import { mailConfigured } from "@/lib/events/mail";
 import { sgMonthNow } from "@/lib/hours/rates";
 import AdminApp from "@/components/admin/AdminApp";
 
@@ -19,8 +21,17 @@ export default async function AdminPage() {
   const branches = managedBranches(session.userId);
   const db = getDb();
 
+  // last_login_at and must_change_password come along so the Login accounts
+  // table can show who has actually signed up without a second round trip, and
+  // the reminder subqueries so it can show who has already been chased.
   const profiles = db
-    .prepare("SELECT id, full_name, email, role, admin_scope, primary_location, position, photo, pay_tier FROM profiles ORDER BY full_name")
+    .prepare(
+      `SELECT p.id, p.full_name, p.email, p.role, p.admin_scope, p.primary_location, p.position,
+              p.photo, p.pay_tier, p.must_change_password, p.last_login_at, p.created_at,
+              (SELECT MAX(r.at) FROM signup_reminders r WHERE r.subject_id = p.id AND r.ok = 1) AS reminded_at,
+              (SELECT COUNT(*) FROM signup_reminders r WHERE r.subject_id = p.id AND r.ok = 1) AS reminder_count
+       FROM profiles p ORDER BY p.full_name`
+    )
     .all();
   const locRows = db.prepare("SELECT teacher_id, location, is_primary FROM teacher_locations").all();
   const mgrRows = db.prepare("SELECT manager_id, branch FROM manager_branches").all();
@@ -47,6 +58,9 @@ export default async function AdminPage() {
     branches: byTeacher.get(p.id) || (p.primary_location ? [p.primary_location] : []),
     avatar: avatarSrc(p.id, p.photo),
     isSelf: p.id === session.userId,
+    // Shaped by the same pure module the reminder action uses, so the screen
+    // and the send can never disagree about who has signed up.
+    signup: signupRow(p),
   }));
 
   // The tracked-staff roster (the `students` table) is no longer read here.
@@ -109,6 +123,9 @@ export default async function AdminPage() {
       // is live. A centre IT Head may read that; only a full admin may change
       // it, which is why the panel that changes it lives behind Settings.
       fenceOn={geofenceEnabled()}
+      // So the Send-reminder button can say why it is disabled rather than
+      // failing silently when RESEND_API_KEY is not set on this server.
+      mailReady={mailConfigured()}
     />
   );
 }
