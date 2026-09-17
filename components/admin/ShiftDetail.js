@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Icon from "@/components/Icon";
 import SearchSelect from "@/components/SearchSelect";
 import { sgClock, formatHM, sgDate } from "@/lib/hours/rates";
-import { shiftDetail, editShift, duplicateShift, cancelShift } from "@/lib/actions/shifts";
+import { shiftDetail, editShift, duplicateShift, cancelShift, setShiftPublished } from "@/lib/actions/shifts";
 import { SHIFT_LOCATIONS } from "@/lib/hours/locations";
 
 // Shift details, laid out the way Sling lays it out.
@@ -132,7 +132,15 @@ export default function ShiftDetail({ shiftId, teachers = [], locations = SHIFT_
           )}
 
           {shift && panel === "details" && (
-            <Details shift={shift} coworkers={data.coworkers} />
+            <>
+              {shift.published === false && (
+                <div className="mx-4 mt-4 rounded-control border-[0.5px] border-gold bg-gold-soft/40 px-3 py-2 text-[13px] text-charcoal">
+                  <strong className="font-semibold">Draft.</strong> Nobody has been told about this shift — the
+                  teacher can’t see it and no reminder will be sent until it’s published.
+                </div>
+              )}
+              <Details shift={shift} coworkers={data.coworkers} />
+            </>
           )}
           {shift && panel === "history" && <History history={data.history} />}
           {shift && panel === "edit" && (
@@ -203,8 +211,36 @@ export default function ShiftDetail({ shiftId, teachers = [], locations = SHIFT_
               {shift.status !== "cancelled" && (
                 <button
                   type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const r = await setShiftPublished(shift.id, shift.published === false);
+                      if (r?.error) setError(r.error);
+                      else {
+                        setError(null);
+                        load();
+                        onChanged?.();
+                      }
+                    })
+                  }
+                  className={`rounded-control border-[0.5px] px-4 py-2 text-[13px] font-semibold disabled:opacity-50 ${
+                    shift.published === false
+                      ? "border-ink bg-ink text-paper hover:bg-ink-deep"
+                      : "border-line text-charcoal-soft hover:border-ink"
+                  }`}
+                >
+                  {shift.published === false ? "Publish" : "Unpublish"}
+                </button>
+              )}
+              {shift.status !== "cancelled" && (
+                <button
+                  type="button"
                   onClick={() => setPanel("edit")}
-                  className="rounded-control bg-ink px-4 py-2 text-[13px] font-semibold text-paper hover:bg-ink-deep"
+                  className={`rounded-control px-4 py-2 text-[13px] font-semibold ${
+                    shift.published === false
+                      ? "border-[0.5px] border-line text-charcoal-soft hover:border-ink"
+                      : "bg-ink text-paper hover:bg-ink-deep"
+                  }`}
                 >
                   Edit shift
                 </button>
@@ -257,7 +293,9 @@ function Details({ shift, coworkers }) {
         {shift.branch || <span className="text-charcoal-soft">No centre set</span>}
       </Row>
       <Row label="Position" icon="clipboard-check">
-        {shift.position || (shift.category === "ot" ? shift.otReason || "Ad-hoc / OT" : "Class teaching")}
+        {shift.position ||
+          shift.teacherPosition ||
+          (shift.category === "ot" ? shift.otReason || "Ad-hoc / OT" : "Class teaching")}
       </Row>
       <Row label="Coworkers" icon="users">
         {coworkers.length === 0 ? (
@@ -352,7 +390,10 @@ function History({ history }) {
         <div key={h.id} className="px-5 py-3.5">
           <div className="text-[13px] font-semibold text-ink">{h.actor}</div>
           <div className="mt-0.5 text-[13px] text-charcoal">{sentence(h)}</div>
-          {h.from != null && h.to != null && (
+          {/* The from/to line is skipped where the sentence already carries it:
+              "Published the shift" followed by "From draft to published" says
+              the same thing twice. */}
+          {h.from != null && h.to != null && h.action !== "published" && h.action !== "unpublished" && (
             <div className="mt-0.5 text-[13px]">
               <span className="text-charcoal-soft">From </span>
               <span className="text-rust">{clockOf(h.from)}</span>
@@ -377,7 +418,12 @@ function History({ history }) {
 }
 
 function sentence(h) {
-  if (h.action === "created") return h.field === "copied from" ? "Copied the shift" : "Created the shift";
+  if (h.action === "created") {
+    if (h.field === "copied from") return "Copied the shift";
+    return h.to === "draft" ? "Created the shift as a draft" : "Created the shift";
+  }
+  if (h.action === "published") return "Published the shift";
+  if (h.action === "unpublished") return "Put the shift back to a draft";
   if (h.action === "cancelled") return "Cancelled the shift";
   if (h.action === "reassigned") return "Moved the shift to somebody else";
   if (h.action === "split") return "Split the shift";

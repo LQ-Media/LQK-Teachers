@@ -140,9 +140,12 @@ export default async function HoursPage() {
   // fortnight to catch anything they didn't clock in for.
   const shiftRows = db
     .prepare(
+      // published = 1 is Sling's PUBLISH toggle. An unpublished shift is a
+      // draft an admin is still arranging, and the whole promise of the toggle
+      // is that the teacher does not see it yet.
       `SELECT s.*, w.id AS session_id
        FROM shifts s LEFT JOIN work_sessions w ON w.shift_id = s.id
-       WHERE s.teacher_id = ? AND s.date BETWEEN ? AND ?
+       WHERE s.teacher_id = ? AND s.published = 1 AND s.date BETWEEN ? AND ?
        ORDER BY s.starts_at ASC`
     )
     .all(uid, addSgDays(today, -14), addSgDays(today, 14))
@@ -176,6 +179,7 @@ export default async function HoursPage() {
        LEFT JOIN profiles f ON f.id = s.offer_from
        WHERE s.offered_at IS NOT NULL
          AND s.status = 'planned'
+         AND s.published = 1
          AND s.starts_at > ?
          AND s.teacher_id != ?
          AND NOT EXISTS (

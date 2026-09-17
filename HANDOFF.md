@@ -98,7 +98,34 @@ Built from staff feedback: teachers were never meant to clock out or enter their
 
 **The rule that keeps the money right:** a rostered session carries a **future `ended_at`** for the whole shift, so `ended_at IS NOT NULL` no longer means "this happened". Every payroll reader tests **`ended_at <= now`** — `lib/actions/hours.js` (queue, totals, and a hard guard in `approveSession`), both portal pages, and the CSV route. Miss it in a new reader and you will pay for classes that haven't been taught.
 
-**Public holidays** come from MOM's official dataset on data.gov.sg, imported by `scripts/sync-public-holidays.mjs` (re-runnable, dry-run by default). Run it when MOM publishes a new year. Shifts on those dates are stamped and pay the multiplier; the bulk generator can skip them.
+**Public holidays** come from MOM's official dataset on data.gov.sg, imported by `scripts/sync-public-holidays.mjs` (re-runnable, dry-run by default). Run it when MOM publishes a new year. Shifts on those dates are stamped and pay the multiplier; the New shift form can skip them.
+
+### 4b. One form for every shift (2026-09-17)
+
+Karim: *"remove the generate roster button / the add shift button change to as attached, it will be for teaching and OT shift making, all fields the same"*, with Sling's **New shift** panel as the spec.
+
+So **Add shift** is now the only way an admin creates anything, and `components/admin/NewShiftModal.js` is Sling's panel: DATE, TIME, REPEAT, LOCATION, POSITION, EMPLOYEE(s), NOTES, PUBLISH. **Generate roster** and both actions behind it (`createShift`, `generateShifts`) are gone.
+
+**Why the generator had to go rather than sit alongside it.** It was a second recurrence engine. Two engines is how the grid and the generator end up disagreeing about what a fortnight contains, and the one that is wrong is the one nobody is looking at. There is now exactly one: `expandDates` in `lib/hours/shifts.js`, reached through `createShifts`.
+
+**POSITION decides teaching vs OT.** `lib/hours/positions.js` is the single list, shared by the form and the action so neither can drift. Picking *Events Team* makes an OT shift with `ot_role='events'`; picking *Lead Teacher* makes a teaching one. `positionMeaning()` returns **null** for anything off the list and the action refuses — it never falls back to teaching, because that fallback would be a guess about money.
+
+**"Every N weeks" counts CALENDAR weeks** from the Monday of the start date's week, not seven-day blocks from the start date. Starting on a Wednesday with *Mon + Wed, every 2 weeks*, blocks would put that Wednesday and the following Monday in one fortnight and then skip a Monday — a pattern nobody chose. Covered by `test/positions.test.mjs`.
+
+**PUBLISH is real, and that is the part to be careful with.** `shifts.published` (INTEGER NOT NULL DEFAULT 1 — the default is what keeps every existing shift visible through the migration). A draft is invisible to the teacher AND unpayable. **Four readers filter `published = 1`, and a fifth thing depends on it:**
+
+| Reader | File |
+|---|---|
+| The teacher's roster and their relief offers | `app/(portal)/hours/page.js` |
+| Clock-in (`clockIn`) | `lib/actions/hours.js` |
+| Reminders and no-clock-in chases | `lib/hours/notify-scheduler.js` |
+| The relief board (`availableShifts`), offering, and the claim UPDATE | `lib/actions/relief.js` |
+
+Add a new teacher-facing reader and you must filter it too, or the toggle starts lying. A draft still **occupies the slot** for clash checks — deliberately, because rostering somebody else over it would mean publishing produced a clash nobody was shown.
+
+Publishing is `setShiftPublished` in `lib/actions/shifts.js`, on the **Publish / Unpublish** button in the shift-details footer. Without it the toggle would be a trap door: you could save a draft and nothing in the portal could ever publish it. Unpublishing is refused once anybody has clocked in.
+
+**`shifts.position` vs `profiles.position`.** Both exist and they mean different things — the shift's own position is what it was WORKED in (a lead teacher covering an assistant's class), the profile's is the person's job title from the imported Sheet. The old `SELECT` aliased `p.position AS position`, which silently beat `s.*`; it is now `AS teacher_position`, and `roleOf()` reads the shift first and the profile as a fallback. Anything new that colours or labels by position must do the same.
 
 | Concern | File |
 |---|---|
@@ -169,7 +196,9 @@ Three things to know:
 
 The tests assert *rules*, not current output, and each says which rule it protects. If one goes red, the fix is almost never to update the expectation.
 
-**Verified locally for rostered shifts (2026-08-10)**: one tap creating two sessions for a back-to-back block, each carrying the rostered window and the real arrival time; the payable guard keeping an in-progress shift out of the CSV, the queue and the totals; a public holiday paying $80 where an identical ordinary shift paid $40, with the multiplier snapshotted at approval; the bulk generator creating 3 shifts and skipping Deepavali; the full missed-clock-in loop (teacher explains → admin pays it → session created); and bulk approve taking only the clean rostered shift while leaving the holiday and missed-accepted ones for a human.
+**Verified in a browser for the New shift form (2026-09-17)**, against a seeded scratch DB: **Generate roster** gone and **Add shift** the only button; the REPEAT menu matching Sling item for item; the day toggles and the end date appearing only once something repeats, and *This week* naming its own Sunday instead of asking; *Mon + Wed, every 2 weeks* for three teachers writing 21 shifts on 2/4, 16/18, 30 Nov, 2 and 14 Dec; a second attempt reporting **"1 shift added for 1 person. NURAISHAH … already has a shift on 2026-11-02"** rather than silently dropping one; a draft hidden from the teacher's `/hours`, then visible the moment it was published, with both steps in the shift history; and a shift created as *Intern* colouring as an intern even though the teacher's profile says assistant teacher.
+
+**Verified locally for rostered shifts (2026-08-10)**: one tap creating two sessions for a back-to-back block, each carrying the rostered window and the real arrival time; the payable guard keeping an in-progress shift out of the CSV, the queue and the totals; a public holiday paying $80 where an identical ordinary shift paid $40, with the multiplier snapshotted at approval; the roster generator of the day creating 3 shifts and skipping Deepavali; the full missed-clock-in loop (teacher explains → admin pays it → session created); and bulk approve taking only the clean rostered shift while leaving the holiday and missed-accepted ones for a human.
 
 **Verified in production**: deploy succeeded, container healthy, `/login` 200, `/hours` redirects to login, the CSV route returns 401 rather than 500 for an unauthenticated caller.
 

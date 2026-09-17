@@ -171,7 +171,11 @@ describe("the audit trail", () => {
     logChange("teacher", "suaidah", "Suaidah", "centre", "full", "Woods Square", null);
     logChange("teacher", "karim", "Karim", "full", "none", null, null);
     const rows = db
-      .prepare("SELECT from_scope, to_scope FROM admin_scope_log WHERE subject_id='teacher' ORDER BY changed_at ASC")
+      .prepare(
+        // rowid, as accessLog does: all three rows land in the same
+        // millisecond, so changed_at alone is not a total order.
+        "SELECT from_scope, to_scope FROM admin_scope_log WHERE subject_id='teacher' ORDER BY changed_at ASC, rowid ASC"
+      )
       .all();
     assert.equal(rows.length, 3);
     assert.deepEqual(rows.map((r) => `${r.from_scope}->${r.to_scope}`), [

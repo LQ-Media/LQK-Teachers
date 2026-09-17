@@ -299,6 +299,9 @@ function ShiftBlock({ shift, onOpen }) {
   const role = roleOf(shift);
   const c = ROLE_COLOURS[role];
   const cancelled = shift.status === "cancelled";
+  // A draft is on the roster but NOT on the teacher's phone, so it has to look
+  // different here or the grid quietly lies about who has been told.
+  const draft = shift.published === false;
   const needsClockIn =
     !cancelled && shift.category !== "ot" && !shift.clockInAt && new Date(shift.endsAt) < new Date();
 
@@ -308,10 +311,12 @@ function ShiftBlock({ shift, onOpen }) {
       onClick={() => onOpen?.(shift)}
       title={`${sgClock(shift.startsAt)}–${sgClock(shift.endsAt)} · ${shift.teacherName || ""}${
         shift.branch ? ` · ${shift.branch}` : ""
-      }${shift.position ? ` · ${shift.position}` : ""}${cancelled ? " · CANCELLED" : ""}`}
+      }${shift.position || shift.teacherPosition ? ` · ${shift.position || shift.teacherPosition}` : ""}${
+        cancelled ? " · CANCELLED" : ""
+      }${draft ? " · DRAFT — not published" : ""}`}
       className={`block w-full rounded-[5px] px-1.5 py-1 text-left transition-opacity hover:opacity-85 ${c.bg} ${c.text} ${
         cancelled ? "line-through opacity-60" : ""
-      }`}
+      } ${draft ? "opacity-70 ring-[1.5px] ring-inset ring-white/70" : ""}`}
     >
       <div className="flex items-center gap-1 text-[10px] font-semibold leading-tight">
         <span className="truncate">
@@ -325,6 +330,14 @@ function ShiftBlock({ shift, onOpen }) {
         {shift.phName && (
           <span title={shift.phName} className="shrink-0 rounded-full bg-white/90 px-1 text-[9px] font-bold text-sage">
             PH
+          </span>
+        )}
+        {draft && (
+          <span
+            title="Draft — teachers can’t see this yet"
+            className="shrink-0 rounded-full bg-white/90 px-1 text-[9px] font-bold text-charcoal"
+          >
+            DRAFT
           </span>
         )}
       </div>
