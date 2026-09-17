@@ -35,6 +35,11 @@ import { formGeometry, useForms } from "@/lib/games/useGeometry";
 
 const FORMS = ["init", "medi", "fina"];
 
+/* Who is on screen. Used for the mascot AND for the default reciting voice,
+   from one place so the chip in the header can never disagree with the face
+   in the corner. */
+const MASCOT = "ustaz";
+
 export default function ThreePlaces() {
   const { data: forms, error } = useForms();
   const [level, setLevel] = useLevel();
@@ -67,6 +72,7 @@ export default function ThreePlaces() {
   return (
     <GameShell
       title="Three Places"
+      mascot={MASCOT}
       subtitle={`${letter.name} — the same letter, at the start, middle and end of a word`}
       level={level}
       onLevelChange={setLevel}
@@ -136,7 +142,7 @@ export default function ThreePlaces() {
         </div>
 
         <Mascot
-          who="ustaz"
+          who={MASCOT}
           mood={letterDone ? "cheer" : "idle"}
           beat={beat}
           className="pointer-events-none absolute bottom-16 right-2 h-[15%] max-h-24 w-auto opacity-90"

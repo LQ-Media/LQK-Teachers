@@ -1,8 +1,16 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { advance, cumulative, fraction, hintAt, isComplete, levelFor } from "@/lib/games/trace";
+import {
+  advance,
+  cumulative,
+  fraction,
+  hintAt,
+  isComplete,
+  levelFor,
+  scaleFor,
+} from "@/lib/games/trace";
 import { buzz, chime, fanfare, nudge, unlockAudio } from "@/lib/games/audio";
 
 /**
@@ -43,6 +51,19 @@ import { buzz, chime, fanfare, nudge, unlockAudio } from "@/lib/games/audio";
 // finger without turning into a buzz.
 const TICKS_PER_STROKE = 8;
 
+/* Sizes a finger cares about, in CSS pixels, converted to viewBox units at the
+   size actually rendered. Everything here used to be a bare unit count, which
+   silently shrank to half a fingertip on a phone — see the table in
+   lib/games/trace.js. As with the tolerances, these are floors: a large screen
+   keeps the width it already had.
+
+   ROAD is the pale path being followed; 30px is about two-thirds of a
+   fingertip, wide enough to aim at without hiding the letter underneath. TAP
+   is the radius of a dot's hit area — 22px makes a 44px target, which is the
+   smallest thing a small hand can reliably hit. */
+const ROAD_PX = 30;
+const TAP_PX = 22;
+
 export default function TraceCanvas({
   letter,
   geometry,
@@ -52,8 +73,8 @@ export default function TraceCanvas({
   onStrokeDone,
   className = "",
 }) {
-  const rules = levelFor(level);
   const svgRef = useRef(null);
+  const glowRef = useRef(null);
 
   const [strokeIndex, setStrokeIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -61,10 +82,36 @@ export default function TraceCanvas({
   const [dotsDone, setDotsDone] = useState([]);
   const [done, setDone] = useState(false);
   const [demo, setDemo] = useState(0);
+  const [unitsPerPx, setUnitsPerPx] = useState(1);
 
   const pointerId = useRef(null);
   const started = useRef(false);
   const ticked = useRef(0);
+
+  /* Progress lives in a ref as well as in state, and the ref is the one the
+     maths reads.
+
+     It has to, because several pointer samples can arrive before React
+     re-renders — a phone with a busy main thread delivers them in bursts, and
+     a single event can carry several coalesced samples. The old code read
+     `progress` from state inside the sampler, so every sample in a burst
+     advanced from the same stale value and only the furthest one survived.
+     Under a fast finger that quietly threw away most of the movement, which is
+     part of why the trace felt like it kept catching. */
+  const progressRef = useRef(0);
+  const strokeRef = useRef(0);
+  const frame = useRef(null);
+
+  /* The client→viewBox transform, taken once per gesture instead of once per
+     sample. getScreenCTM() forces the browser to flush style and layout, and
+     calling it inside every pointermove — up to a couple of hundred times per
+     stroke — is work a phone cannot spare. Layout cannot change mid-drag here:
+     the game is a fixed, non-scrolling surface. */
+  const inverse = useRef(null);
+
+  const rules = useMemo(() => scaleFor(levelFor(level), unitsPerPx), [level, unitsPerPx]);
+  const roadWidth = Math.max(58, ROAD_PX * unitsPerPx);
+  const tapRadius = TAP_PX * unitsPerPx;
 
   /* "Again" rather than forcing a child to leave the letter and come back.
      Asking for the same letter twice is the single most common thing a small
@@ -78,6 +125,32 @@ export default function TraceCanvas({
     setDone(false);
     started.current = false;
     ticked.current = 0;
+    progressRef.current = 0;
+    strokeRef.current = 0;
+  }, []);
+
+  /* How big the letter actually is, which is what makes the finger-sized
+     tolerances above possible. The viewBox is centred and scaled to fit
+     (preserveAspectRatio defaults to xMidYMid meet), so the scale is whichever
+     axis is the tighter fit. */
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return undefined;
+    const read = () => {
+      const box = svg.getBoundingClientRect();
+      const vb = svg.viewBox?.baseVal;
+      const vbW = vb?.width || 1000;
+      const vbH = vb?.height || 1000;
+      if (!box.width || !box.height) return;
+      const pxPerUnit = Math.min(box.width / vbW, box.height / vbH);
+      if (pxPerUnit > 0) setUnitsPerPx(1 / pxPerUnit);
+    };
+    read();
+    // Rotating a tablet changes this, and so does the browser chrome sliding
+    // away on a phone.
+    const observer = new ResizeObserver(read);
+    observer.observe(svg);
+    return () => observer.disconnect();
   }, []);
 
   const strokes = useMemo(() => geometry?.strokes ?? [], [geometry]);
@@ -104,35 +177,79 @@ export default function TraceCanvas({
 
   /* ---------------------------------------------------------------- pointer */
 
-  /** Client coordinates → viewBox coordinates, via the SVG's own matrix. */
-  const toViewBox = useCallback((e) => {
+  /** Take the transform once, at the start of a gesture. */
+  const readTransform = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const ctm = svg.getScreenCTM();
+    inverse.current = ctm ? ctm.inverse() : null;
+  }, []);
+
+  /** Client coordinates → viewBox coordinates, using the cached matrix. */
+  const toViewBox = useCallback((clientX, clientY) => {
     const svg = svgRef.current;
     if (!svg) return null;
-    const ctm = svg.getScreenCTM();
-    if (ctm) {
-      const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    if (inverse.current) {
+      const pt = new DOMPoint(clientX, clientY).matrixTransform(inverse.current);
       return [pt.x, pt.y];
     }
-    // Fallback for the rare engine with no CTM: the viewBox is square and
-    // centred, so the letterboxed scale can be derived from the box itself.
-    const r = svg.getBoundingClientRect();
-    const side = Math.min(r.width, r.height);
+    // Fallback for the rare engine with no CTM: the viewBox is centred and
+    // scaled to fit, so the letterboxing can be derived from the box itself.
+    const box = svg.getBoundingClientRect();
+    const vb = svg.viewBox?.baseVal;
+    const vbW = vb?.width || 1000;
+    const vbH = vb?.height || 1000;
+    const s = Math.min(box.width / vbW, box.height / vbH) || 1;
     return [
-      ((e.clientX - r.left - (r.width - side) / 2) / side) * 1000,
-      ((e.clientY - r.top - (r.height - side) / 2) / side) * 1000,
+      (clientX - box.left - (box.width - vbW * s) / 2) / s,
+      (clientY - box.top - (box.height - vbH * s) / 2) / s,
     ];
   }, []);
 
-  const sample = useCallback((e) => {
-    if (!current || done) return;
-    const p = toViewBox(e);
-    if (!p) return;
+  /* The glow is moved by writing the dash offset straight onto the node, once
+     per animation frame, rather than by re-rendering the SVG on every pointer
+     sample. Re-rendering meant React reconciling thirty-odd elements — and
+     re-rasterising the blur filter — as often as the samples arrived, which on
+     a phone is more often than it can paint. The state update still happens,
+     so the arrow and the start dot stay right; it just no longer gates how
+     promptly the light follows the finger. */
+  const paint = useCallback(() => {
+    frame.current = null;
+    const node = glowRef.current;
+    const stroke = samples[strokeRef.current];
+    if (node && stroke) {
+      const len = stroke.cums[stroke.cums.length - 1];
+      node.setAttribute("stroke-dashoffset", String(len - progressRef.current));
+    }
+    setProgress(progressRef.current);
+  }, [samples]);
+
+  const schedule = useCallback(() => {
+    if (frame.current === null) frame.current = requestAnimationFrame(paint);
+  }, [paint]);
+
+  useEffect(() => () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+  }, []);
+
+  /**
+   * One pointer position against the current stroke.
+   *
+   * Reads and writes progressRef so that a burst of samples chains correctly,
+   * and completes a stroke synchronously — completion speaks the letter, and
+   * iOS only starts speech inside the gesture that asked for it, so that part
+   * must never be deferred to a frame callback.
+   */
+  const sampleAt = useCallback((p) => {
+    const stroke = samples[strokeRef.current];
+    if (!stroke || done) return;
+    const total = stroke.cums[stroke.cums.length - 1];
 
     const res = advance({
-      points: current.points,
-      cums: current.cums,
+      points: stroke.points,
+      cums: stroke.cums,
       pointer: p,
-      progress,
+      progress: progressRef.current,
       level: rules,
       started: started.current,
     });
@@ -142,21 +259,25 @@ export default function TraceCanvas({
       setStrayed(false);
 
       if (isComplete(res.progress, total, rules)) {
-        onStrokeDone?.(strokeIndex);
+        const finished = strokeRef.current;
+        onStrokeDone?.(finished);
         chime({ freq: 880, duration: 0.2, gain: 0.12 });
         buzz(22);
         ticked.current = 0;
         started.current = false;
+        progressRef.current = 0;
+        strokeRef.current = finished + 1;
         setProgress(0);
-        setStrokeIndex(strokeIndex + 1);
+        setStrokeIndex(finished + 1);
         // The letter is finished here, in the gesture that finished it, rather
         // than in an effect watching for it — so completion happens once, at a
         // known moment, with the sound it belongs to.
-        if (strokeIndex + 1 >= strokes.length && dots.length === 0) finish();
+        if (finished + 1 >= strokes.length && dots.length === 0) finish();
         return;
       }
 
-      setProgress(res.progress);
+      progressRef.current = res.progress;
+      schedule();
 
       // Tick on the way past each eighth of the stroke: the ear confirms the
       // hand is still doing the right thing without waiting for the end.
@@ -173,22 +294,42 @@ export default function TraceCanvas({
       setStrayed(true);
       // Only nudge on a real stray mid-stroke; a child hunting for the start
       // dot is not doing anything wrong.
-      if (res.state === "off" && progress > 0) nudge();
+      if (res.state === "off" && progressRef.current > 0) nudge();
     }
-  }, [current, done, toViewBox, progress, rules, total, strokeIndex, strokes.length,
-      dots.length, onStrokeDone, strayed, finish]);
+  }, [samples, done, rules, strokes.length, dots.length, onStrokeDone, strayed, finish, schedule]);
+
+  /**
+   * Every position the event carries, not just the latest.
+   *
+   * A browser under load merges the touch samples it took since the last frame
+   * into one pointermove and hands the intermediate ones to
+   * getCoalescedEvents(). Using only the event's own position throws those
+   * away, so a quick stroke arrives as a few long jumps instead of a smooth
+   * path — and a jump longer than the level's lookAhead reads as leaving the
+   * road, which stops the glow on a trace that was perfectly good.
+   */
+  const sampleEvent = useCallback((e) => {
+    const parts = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    const list = parts && parts.length ? parts : [e];
+    for (const part of list) {
+      const p = toViewBox(part.clientX, part.clientY);
+      if (p) sampleAt(p);
+    }
+  }, [toViewBox, sampleAt]);
 
   function onPointerDown(e) {
     if (pointerId.current !== null || done) return;
     unlockAudio();
     pointerId.current = e.pointerId;
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    sample(e);
+    readTransform();
+    const p = toViewBox(e.clientX, e.clientY);
+    if (p) sampleAt(p);
   }
 
   function onPointerMove(e) {
     if (e.pointerId !== pointerId.current) return;
-    sample(e);
+    sampleEvent(e);
   }
 
   function onPointerUp(e) {
@@ -260,7 +401,7 @@ export default function TraceCanvas({
             d={s.d}
             fill="none"
             stroke={i < strokeIndex ? "#F0A41F" : "#E0D2B4"}
-            strokeWidth={i < strokeIndex ? 46 : 58}
+            strokeWidth={i < strokeIndex ? roadWidth * 0.8 : roadWidth}
             strokeLinecap="round"
             strokeLinejoin="round"
             pointerEvents="none"
@@ -275,10 +416,14 @@ export default function TraceCanvas({
             the finger has reached. */}
         {current && !done && (
           <path
+            ref={glowRef}
+            // Keyed so a new stroke gets a fresh node rather than inheriting
+            // the previous stroke's dash offset for a frame.
+            key={`glow-${strokeIndex}`}
             d={strokes[strokeIndex].d}
             fill="none"
             stroke="#F0A41F"
-            strokeWidth="46"
+            strokeWidth={roadWidth * 0.8}
             strokeLinecap="round"
             strokeLinejoin="round"
             filter="url(#lqk-glow)"
@@ -286,7 +431,10 @@ export default function TraceCanvas({
             pathLength={total}
             strokeDasharray={total}
             strokeDashoffset={total - progress}
-            style={{ transition: "stroke-dashoffset 70ms linear" }}
+            /* No CSS transition. The offset is now written every animation
+               frame, so a transition would only make the light trail the
+               finger by its own duration — which is the lag it was originally
+               added to hide, back when updates arrived irregularly. */
           />
         )}
 
@@ -312,8 +460,9 @@ export default function TraceCanvas({
 
         {/* Dots: tapped, not traced. A dot is placed, and making a child drag a
             two-pixel circle would be a dexterity test, not a reading lesson.
-            The hit area is never smaller than 34 units whatever the dot's own
-            size, which on a 10-inch tablet is comfortably a fingertip. */}
+            The hit area is sized in fingertips rather than viewBox units — at
+            34 units it was a comfortable target on a tablet and a 25px one on
+            a phone, which is well under what a small hand can hit. */}
         {dots.map((d, i) => {
           const tapped = dotsDone.includes(i);
           const live = strokesDone && !tapped && !done;
@@ -339,7 +488,7 @@ export default function TraceCanvas({
               <circle
                 cx={d.cx}
                 cy={d.cy}
-                r={Math.max(d.r, 34)}
+                r={Math.max(d.r, 34, tapRadius)}
                 fill={tapped || done ? "#F0A41F" : "#E0D2B4"}
                 // An amber ring while it is waiting, so the dot reads as
                 // something to press rather than as part of the letter.

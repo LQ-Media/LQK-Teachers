@@ -37,6 +37,11 @@ import { buzz, preload, sayLetter, unlockAudio } from "@/lib/games/audio";
  * The transliteration shown is the deck's own — Qo, not Qa, for ق — so the
  * screen and the flashcard never disagree.
  */
+/* Who is on screen. Used for the mascot AND for the default reciting voice,
+   from one place so the chip in the header can never disagree with the face
+   in the corner. */
+const MASCOT = "ustazah";
+
 export default function HarakahLab() {
   const [letterId, setLetterId] = useState(HURUF[1].id); // Ba: alif is a poor first demo
   const [picked, setPicked] = useState(null);
@@ -65,7 +70,11 @@ export default function HarakahLab() {
   }
 
   return (
-    <GameShell title="Harakah Lab" subtitle={`${letter.name} — tap a harakah and hear what it does`}>
+    <GameShell
+      title="Harakah Lab"
+      subtitle={`${letter.name} — tap a harakah and hear what it does`}
+      mascot={MASCOT}
+    >
       <div className="flex h-full flex-col">
         <LetterRail selectedId={letterId} onSelect={setLetterId} />
 
@@ -91,7 +100,7 @@ export default function HarakahLab() {
           </div>
 
           <Mascot
-            who="ustazah"
+            who={MASCOT}
             mood={harakah ? "cheer" : "idle"}
             beat={beat}
             className="absolute bottom-0 right-2 h-[26%] max-h-28 w-auto opacity-90"

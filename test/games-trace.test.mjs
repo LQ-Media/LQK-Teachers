@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  LEVELS, levelFor, cumulative, nearestWithin, advance, fraction, isComplete, hintAt,
+  LEVELS, levelFor, scaleFor, cumulative, nearestWithin, advance, fraction, isComplete, hintAt,
 } from "../lib/games/trace.js";
 import { syllables, WORD_CARDS, allWords } from "../lib/games/words.js";
 import { HURUF, HARAKAT, huruf, withHarakah, sayFor, audioKey } from "../lib/games/huruf.js";
@@ -424,4 +424,118 @@ test("the six non-joining letters have no distinct initial form", async () => {
     assert.notEqual(init.outline, medi.outline, `${id}: initial and medial should differ`);
     assert.notEqual(medi.outline, fina.outline, `${id}: medial and final should differ`);
   }
+});
+
+/* ------------------------------------------------- finger-sized tolerances */
+
+test("scaleFor leaves a large screen exactly as it was", () => {
+  // The physical floors are stated for a 10-inch tablet, so at that size and
+  // anywhere roomier nothing may change: the big-screen feel is the one that
+  // was reported as good, and this fix must not touch it.
+  for (const name of ["easy", "proper"]) {
+    const base = levelFor(name);
+    const tablet = scaleFor(base, 1.43);
+    assert.equal(Math.round(tablet.tolerance), base.tolerance);
+    assert.equal(Math.round(tablet.lookAhead), base.lookAhead);
+
+    const tv = scaleFor(base, 1.14);
+    assert.equal(tv.tolerance, base.tolerance, "a TV must not get stricter");
+    assert.equal(tv.lookAhead, base.lookAhead);
+  }
+});
+
+test("scaleFor is never stricter than the unit baseline, at any size", () => {
+  // The whole fix is a floor, not a replacement. If this ever went the other
+  // way, some device would silently become harder to trace on.
+  for (const name of ["easy", "proper"]) {
+    const base = levelFor(name);
+    for (const u of [0.2, 0.5, 1, 1.14, 1.43, 2, 2.67, 4]) {
+      const s = scaleFor(base, u);
+      assert.ok(s.tolerance >= base.tolerance, `${name} tolerance shrank at ${u}`);
+      assert.ok(s.lookAhead >= base.lookAhead, `${name} lookAhead shrank at ${u}`);
+    }
+  }
+});
+
+test("scaleFor loosens meaningfully on a phone", () => {
+  // 2.67 units per CSS pixel is a 390px-wide phone, measured in the browser.
+  const easy = scaleFor(levelFor("easy"), 2.67);
+  const proper = scaleFor(levelFor("proper"), 2.67);
+  assert.ok(easy.tolerance > 180, `easy band only ${easy.tolerance} units`);
+  assert.ok(proper.tolerance > 100, `proper band only ${proper.tolerance} units`);
+  // In physical terms both bands must now clear a fingertip (~40px across, so
+  // ~20px either side of the path).
+  assert.ok(easy.tolerance / 2.67 >= 40);
+  assert.ok(proper.tolerance / 2.67 >= 20);
+});
+
+test("scaleFor passes the level's other rules through untouched", () => {
+  const proper = scaleFor(levelFor("proper"), 2.67);
+  assert.equal(proper.requireStart, true);
+  assert.equal(proper.completeAt, 0.94);
+  assert.equal(scaleFor(levelFor("easy"), 2.67).requireStart, false);
+});
+
+test("scaleFor survives a nonsense scale rather than breaking the trace", () => {
+  // unitsPerPx comes from a measured bounding box, which is 0 for one render
+  // before layout settles, and NaN if the element is detached. Neither may
+  // produce a tolerance of 0 — that would make the letter untraceable.
+  const base = levelFor("easy");
+  for (const bad of [0, -1, NaN, Infinity, undefined, null]) {
+    const s = scaleFor(base, bad);
+    assert.equal(s.tolerance, base.tolerance, `broke on ${String(bad)}`);
+    assert.equal(s.lookAhead, base.lookAhead);
+  }
+});
+
+test("A FINGERTIP WOBBLE STAYS ON THE ROAD ON A PHONE", () => {
+  // The regression this fix exists for, end to end.
+  //
+  // A straight stroke and a finger some CSS pixels off the centre line. The
+  // wobble chosen for each level is one that the old unit-only band rejected
+  // at phone size but that is still within a fingertip of the path — i.e. a
+  // child tracing correctly, whose glow used to stop anyway.
+  //
+  // Proper is where this bit hardest: its band was 23 CSS px on a phone,
+  // narrower than the finger tracing it.
+  const points = [[500, 100], [500, 900]];
+  const cums = cumulative(points);
+  const phone = 2.67;
+
+  for (const [name, wobblePx] of [["proper", 30], ["easy", 45]]) {
+    const off = wobblePx * phone; // CSS px → viewBox units on a phone
+    const at = { points, cums, pointer: [500 + off, 300], progress: 150, started: true };
+
+    const before = advance({ ...at, level: levelFor(name) });
+    assert.equal(before.state, "off", `${name}: the old band accepted ${wobblePx}px after all`);
+
+    const after = advance({ ...at, level: scaleFor(levelFor(name), phone) });
+    assert.equal(after.state, "advanced", `${name}: a ${wobblePx}px wobble must stay on the road`);
+    assert.ok(after.progress > 150);
+  }
+});
+
+test("a phone's wider band still refuses a genuine stray", () => {
+  // Loosening must not turn into "anywhere near the letter counts". Two
+  // fingertips off the path is someone not tracing.
+  const points = [[500, 100], [500, 900]];
+  const cums = cumulative(points);
+  const rules = scaleFor(levelFor("easy"), 2.67);
+  const far = advance({
+    points, cums, pointer: [500 + 90 * 2.67, 300],
+    progress: 150, level: rules, started: true,
+  });
+  assert.equal(far.state, "off");
+});
+
+test("a phone's wider lookAhead still refuses a skip to the end", () => {
+  // lookAhead grew too, so check the no-skip guarantee survives it.
+  const points = [[500, 100], [500, 900]];
+  const cums = cumulative(points);
+  const rules = scaleFor(levelFor("easy"), 2.67);
+  const skip = advance({
+    points, cums, pointer: [500, 880],
+    progress: 20, level: rules, started: true,
+  });
+  assert.equal(skip.state, "off", "touching the end at 20 must not jump there");
 });
