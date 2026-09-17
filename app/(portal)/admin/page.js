@@ -6,6 +6,7 @@ import { hoursAdminData } from "@/lib/actions/hours";
 import { shiftsForRange, missedShifts, attendanceExceptions } from "@/lib/actions/shifts";
 import { payrollReport } from "@/lib/actions/payroll";
 import { reliefBoard } from "@/lib/actions/relief";
+import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
 import { sgMonthNow } from "@/lib/hours/rates";
 import AdminApp from "@/components/admin/AdminApp";
 
@@ -79,10 +80,12 @@ export default async function AdminPage() {
   // would bounce a centre IT Head out of the Admin area entirely rather than
   // showing them the roster they do have.
   const initialHours = fullAdmin ? await hoursAdminData(sgMonthNow()) : null;
-  // The roster tab opens on the fortnight ahead, plus whatever is outstanding
-  // from the past week — the two things an admin actually acts on.
+  const monthRange = rangeFor("month", todayAnchor());
   const [range, missedList, exceptionList, payroll, board] = await Promise.all([
-    shiftsForRange(),
+    // The whole month GRID, not a fortnight: the roster opens as a calendar,
+    // and fetching less than it renders would leave the padding cells empty —
+    // an admin reading real holes where there are none.
+    shiftsForRange(monthRange.from, monthRange.to),
     missedShifts(),
     attendanceExceptions(),
     fullAdmin ? payrollReport() : Promise.resolve(null),

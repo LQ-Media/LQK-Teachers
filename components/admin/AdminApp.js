@@ -21,6 +21,7 @@ import PageHeading from "@/components/PageHeading";
 import HoursAdmin from "@/components/admin/HoursAdmin";
 import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
 import PayrollReport from "@/components/admin/PayrollReport";
+import AccessPanel from "@/components/admin/AccessPanel";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -170,6 +171,10 @@ export default function AdminApp({ users, staff, invites = [], locations, shiftL
             <Tab active={tab === "payroll"} onClick={() => setTab("payroll")} icon="download">
               Payroll report
             </Tab>
+            {/* Full admins only — this is the screen that hands out payroll access. */}
+            <Tab active={tab === "access"} onClick={() => setTab("access")} icon="users">
+              Access
+            </Tab>
           </>
         )}
       </div>
@@ -184,6 +189,7 @@ export default function AdminApp({ users, staff, invites = [], locations, shiftL
       )}
       {tab === "hours" && fullAdmin && initialHours && <HoursAdmin initial={initialHours} />}
       {tab === "payroll" && fullAdmin && initialPayroll && <PayrollReport initial={initialPayroll} />}
+      {tab === "access" && fullAdmin && <AccessPanel />}
 
       {userModal && (
         <UserModal
