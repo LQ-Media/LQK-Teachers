@@ -1,5 +1,6 @@
 import { requireAdmin, managedBranches } from "@/lib/dal";
 import { getDb, LOCATIONS, TRACKER_CLASSES } from "@/lib/db";
+import { SHIFT_LOCATIONS } from "@/lib/hours/locations";
 import { avatarSrc } from "@/lib/avatar";
 import { hoursAdminData } from "@/lib/actions/hours";
 import { shiftsForRange, missedShifts, attendanceExceptions } from "@/lib/actions/shifts";
@@ -93,6 +94,7 @@ export default async function AdminPage() {
       staff={staff}
       invites={invites}
       locations={LOCATIONS}
+      shiftLocations={SHIFT_LOCATIONS}
       classes={TRACKER_CLASSES}
       initialHours={initialHours}
       initialShifts={initialShifts}

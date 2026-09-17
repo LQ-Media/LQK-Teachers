@@ -97,7 +97,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null }) {
+export default function AdminApp({ users, staff, invites = [], locations, shiftLocations = locations, classes, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null }) {
   // A centre IT Head has no Login accounts tab, so opening on it would show
   // them a blank Admin screen. The roster is their whole job here.
   const [tab, setTab] = useState(fullAdmin ? "users" : "shifts");
@@ -180,7 +180,7 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
       {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
       {tab === "invites" && <InvitesTable invites={invites} />}
       {tab === "shifts" && (
-        <ShiftsAdmin teachers={teacherOptions} locations={locations} initial={initialShifts} fullAdmin={fullAdmin} managedBranches={managedBranches} />
+        <ShiftsAdmin teachers={teacherOptions} locations={shiftLocations} initial={initialShifts} fullAdmin={fullAdmin} managedBranches={managedBranches} />
       )}
       {tab === "hours" && fullAdmin && initialHours && <HoursAdmin initial={initialHours} />}
       {tab === "payroll" && fullAdmin && initialPayroll && <PayrollReport initial={initialPayroll} />}

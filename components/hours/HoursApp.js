@@ -188,8 +188,48 @@ export default function HoursApp({
 // ---- Shift card --------------------------------------------------------
 
 // One tap is the whole teacher-facing action. There is no clock out: teachers
-// forget, and an open session leaves nobody knowing when they finished. Pay is
-// the rostered shift, so the end time is already known the moment they arrive.
+// forget, and an open session leaves nobody knowing when they finished. Pay
+// runs from the scheduled start — or from the tap, if they were late — to the
+// scheduled end, so the end time is known the moment they arrive.
+
+/**
+ * The teacher's position, for the clock-in geofence. Resolves to null on ANY
+ * failure — denied, unavailable, timed out, insecure origin, no support.
+ *
+ * Deliberately silent and deliberately quick. This runs on a tap the teacher
+ * has already made, in a doorway, on a phone, and a prompt they have to answer
+ * before their shift will start is a prompt they will learn to dismiss. The
+ * server decides what a missing fix means (lib/actions/hours.js: it is recorded
+ * and allowed, because every centre is on an upper floor where GPS is worst);
+ * this only has to not hang.
+ *
+ * 8 seconds, then give up. A fix arriving after the teacher has walked into
+ * the classroom is no longer about where they clocked in.
+ */
+function currentFix() {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
+    if (typeof window !== "undefined" && !window.isSecureContext) return resolve(null);
+    let settled = false;
+    const done = (v) => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
+    const timer = setTimeout(() => done(null), 8000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(timer);
+        done({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+      },
+      () => {
+        clearTimeout(timer);
+        done(null);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+}
 
 function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNotice }) {
   const router = useRouter();
@@ -200,16 +240,17 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
 
   function doClockIn() {
     startTransition(async () => {
-      const r = await clockIn({ branch, note, geo });
+      // A rostered shift carries its own branch, so the teacher is never asked
+      // where they are — but the fix is still taken, silently, because that is
+      // what the geofence checks. A refused or missing fix sends null and the
+      // server decides; it never blocks the tap here.
+      const fix = geo || (await currentFix());
+      const r = await clockIn({ branch, note, geo: fix });
       if (r?.error) onNotice(r.error);
       else {
         setNote("");
         setGeo(null);
-        if (r?.unscheduled) {
-          onNotice(
-            "Clocked in, but you have no shift rostered right now. An admin will see this and set your end time."
-          );
-        } else if (r?.shifts > 1) {
+        if (r?.shifts > 1) {
           onNotice(`Clocked in for all ${r.shifts} of your back-to-back shifts.`);
         }
         router.refresh();
@@ -254,30 +295,16 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
         <div className="mb-4">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-soft">No shift rostered</span>
           <p className="mt-1 text-[13px] text-charcoal-soft">
-            You can still clock in — an admin will set the end time.
+            There’s nothing to clock in to right now. If you’re teaching a class that isn’t on your
+            roster, tell your IT Head and they’ll add the shift.
           </p>
         </div>
       )}
 
-      {/* Only an unrostered tap needs to say where it is; a shift knows already. */}
-      {!nextShift && (
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          <Labelled label="Branch">
-            <select className={field} value={branch} onChange={(e) => setBranch(e.target.value)}>
-              {branchOptions.map((b) => (
-                <option key={b}>{b}</option>
-              ))}
-            </select>
-          </Labelled>
-          <Labelled label="Note (optional)">
-            <input className={field} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What are you doing?" />
-          </Labelled>
-          <div className="sm:col-span-2">
-            <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Where are you?</span>
-            <LocationTag value={geo} onChange={setGeo} />
-          </div>
-        </div>
-      )}
+      {/* There was a branch / note / location form here, shown only when nothing
+          was rostered. An unrostered tap is now refused outright, so the form
+          could only ever be filled in and then rejected. A shift carries its own
+          branch, and the location is taken silently on the tap. */}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-[12px] text-charcoal-soft">
@@ -291,7 +318,7 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
         <button
           type="button"
           onClick={doClockIn}
-          disabled={pending}
+          disabled={pending || !nextShift}
           className="flex items-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
         >
           <Icon name="play" size={15} filled />
