@@ -63,23 +63,20 @@ jobs:
           SESSION_SECRET: ci-build-only-not-a-deployment-secret
 
   lint:
-    name: Lint (advisory)
+    name: Lint
     runs-on: ubuntu-latest
-    # DELIBERATELY NOT BLOCKING, for now.
+    # A REAL GATE as of Sep 2026. It was advisory for exactly one day, while
+    # three pre-existing react-hooks/set-state-in-effect errors sat in
+    # components nobody had touched in months; gating on those would have turned
+    # every pull request red for something its author did not do, and a check
+    # that is always red is a check everybody learns to ignore.
     #
-    # There are three pre-existing react-hooks/set-state-in-effect errors in
-    # components no recent branch has touched. Making lint a gate today would
-    # turn every pull request red for something its author did not do, and a
-    # check that is always red is a check everybody learns to ignore — which
-    # costs more than the three errors do.
+    # They are fixed, so it gates. Note for whoever makes it advisory again:
+    # `continue-on-error` does NOT do that. It stops the workflow failing but
+    # still posts a red X against the pull request. The step itself has to
+    # succeed — `npm run lint || echo "::warning::..."`.
     #
-    # `continue-on-error` is NOT the way to do this, and was tried first: it
-    # stops the WORKFLOW failing but the job still posts a red X against the
-    # pull request, which is the very thing this is trying to avoid. The step
-    # has to succeed. So eslint's findings are surfaced as a warning on the run
-    # summary instead, where they can be read without crying wolf.
-    #
-    # Fix those three, then drop the `|| echo` and the gate is real.
+    # Warnings do not fail the build; eslint only exits non-zero on errors.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,6 +84,4 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: npm run lint
-        run: |
-          npm run lint || echo "::warning::eslint reported problems. Advisory for now — see the note in .github/workflows/ci.yml"
+      - run: npm run lint
