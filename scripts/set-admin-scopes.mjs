@@ -21,28 +21,44 @@ const { randomUUID } = await import("node:crypto");
 
 const FULL = ["Nur Abdul Karim", "Siti Suaidah", "Nurul Iman Fatimah", "Siti Malia"];
 
-// Four of these are the full names Karim confirmed on 16 Sep 2026. The other
-// three are the short forms he gave; the matcher below handles them, and it
-// reports rather than guesses if one turns out to be ambiguous.
+// All seven are the full names as Karim gave them, 16-17 Sep 2026.
+//
+// KHAIRUNNISAA' carries an apostrophe. The matcher lowercases and splits on
+// whitespace, so the apostrophe has to survive a round trip to match the
+// profile row exactly as it was typed in. If it does not, the run reports NO
+// MATCH and writes nothing, which is the outcome we want over a near-miss.
 const CENTRE = [
   ["ZAFIRAH BINTE ZANUDIN", ["Woods Square"]],
   ["NUR SABRINA BINTE RAHIM", ["Primz Bizhub"]],
-  ["Khairunnisa", ["Tampines Blk 462", "Tampines Junction"]],
+  ["KHAIRUNNISAA' BTE SHARIL", ["Tampines Blk 462", "Tampines Junction"]],
   ["SITI ZULAIHA BINTE SAMSUKAMAR", ["Primz Bizhub"]],
-  ["Aisyah Dahlan", ["Tampines Blk 462", "Tampines Junction"]],
+  ["NUR AISYAH BINTE AHMAD DAHLAN", ["Tampines Blk 462", "Tampines Junction"]],
   ["MELLISHA BINTE ERWAN", ["Woods Square"]],
-  ["Nadiah Salam", ["Woods Square"]],
+  ["NADIAH BINTE MOHAMMAD SALAM", ["Woods Square"]],
 ];
 
 const apply = process.argv.includes("--apply");
 const db = getDb();
 const people = db.prepare("SELECT id, full_name, email, role, admin_scope FROM profiles").all();
 
+// Apostrophes are the one thing that will silently break this. KHAIRUNNISAA'
+// can be typed with a straight quote, a curly one, or an accent, and the three
+// are different characters — a mismatch would report NO MATCH and quietly leave
+// an IT Head without the access they were promised. Both sides are folded to a
+// single form before comparing.
+function fold(s) {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc\u0060\u00b4]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Everyone whose full name contains every word of the query, case-insensitively. */
 function find(query) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const words = fold(query).split(" ").filter(Boolean);
   return people.filter((p) => {
-    const name = (p.full_name || "").toLowerCase();
+    const name = fold(p.full_name);
     return words.every((w) => name.includes(w));
   });
 }
