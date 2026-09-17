@@ -7,6 +7,7 @@ import PageHeading from "@/components/PageHeading";
 import EmptyArt from "@/components/EmptyArt";
 import LocationTag, { LocationLine } from "@/components/hours/LocationTag";
 import { clockIn, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
+import { offerShift, withdrawOffer, takeShift } from "@/lib/actions/relief";
 import { explainMissed } from "@/lib/actions/shifts";
 import {
   OT_REASONS,
@@ -37,6 +38,7 @@ export default function HoursApp({
   onShift,
   nextShift,
   upcoming,
+  offers = [],
   missed,
   awaiting,
   sessions,
@@ -140,7 +142,24 @@ export default function HoursApp({
           <h2 className="mb-3 font-heading text-[15px] font-semibold text-charcoal">Your next shifts</h2>
           <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
             {upcoming.map((s) => (
-              <UpcomingRow key={s.id} shift={s} />
+              <UpcomingRow key={s.id} shift={s} onNotice={setNotice} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The relief board. Placed under the roster rather than above it: a
+          teacher opens this page to see their own shifts, and somebody else's
+          spare class is only interesting once they have. */}
+      {offers.length > 0 && (
+        <div className="mt-7">
+          <h2 className="mb-1 font-heading text-[15px] font-semibold text-charcoal">Shifts needing cover</h2>
+          <p className="mb-3 text-[12px] text-charcoal-soft">
+            Offered by other teachers. Taking one moves it to you and it’s paid at your rate.
+          </p>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+            {offers.map((o) => (
+              <OfferRow key={o.id} offer={o} onNotice={setNotice} />
             ))}
           </div>
         </div>
@@ -421,28 +440,165 @@ function OpenCard({ running }) {
 
 // ---- Roster rows -------------------------------------------------------
 
-function UpcomingRow({ shift }) {
+function UpcomingRow({ shift, onNotice }) {
+  const router = useRouter();
   const today = shift.date === sgToday();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  // Only a future shift can be given away — an offer is a request for somebody
+  // to turn up, and one that has already started cannot be answered.
+  const canOffer = !shift.offeredAt && new Date(shift.startsAt) > new Date();
+
+  function submit(fn, arg) {
+    startTransition(async () => {
+      const r = await fn(shift.id, arg);
+      if (r?.error) onNotice?.(r.error);
+      else {
+        setAsking(false);
+        setReason("");
+        router.refresh();
+      }
+    });
+  }
+
+  return (
+    <div className="border-b-[0.5px] border-line px-4 py-3 last:border-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px] font-semibold text-charcoal">
+              {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
+            </span>
+            {shift.phName && (
+              <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
+                {shift.phName}
+              </span>
+            )}
+            {shift.offeredAt && (
+              <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-soft">
+                Offered
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 text-[12px] text-charcoal-soft">
+            {today ? "Today" : sgDate(shift.startsAt)}
+            {shift.branch ? ` · ${shift.branch}` : ""}
+            {shift.category === "ot" ? ` · ${shift.otReason || "Ad-hoc / OT"}` : ""}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-[12px] text-charcoal-soft">{formatHM(shift.minutes)}</span>
+          {shift.offeredAt ? (
+            <button
+              type="button"
+              onClick={() => submit(withdrawOffer)}
+              disabled={pending}
+              className="rounded-control border-[0.5px] border-line px-2.5 py-1.5 text-[12px] font-semibold text-charcoal-soft hover:border-ink hover:text-charcoal disabled:opacity-60"
+            >
+              Take back
+            </button>
+          ) : canOffer ? (
+            <button
+              type="button"
+              onClick={() => setAsking((v) => !v)}
+              disabled={pending}
+              className="rounded-control border-[0.5px] border-line px-2.5 py-1.5 text-[12px] font-semibold text-charcoal-soft hover:border-ink hover:text-charcoal disabled:opacity-60"
+            >
+              Can’t make it
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {shift.offeredAt && shift.offerReason && (
+        <p className="mt-1.5 text-[12px] text-charcoal-soft">Reason given: {shift.offerReason}</p>
+      )}
+
+      {asking && (
+        <div className="mt-3 rounded-control bg-paper p-3">
+          <p className="mb-2 text-[12px] text-charcoal-soft">
+            This puts the shift on the board for any teacher to pick up, and notifies them. It stays
+            yours until somebody takes it.
+          </p>
+          <input
+            className={field}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why can’t you make it? (optional)"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => submit(offerShift, reason)}
+              disabled={pending}
+              className="rounded-control bg-ink px-3 py-2 text-[12px] font-semibold text-paper hover:bg-ink-deep disabled:opacity-60"
+            >
+              {pending ? "Offering…" : "Offer this shift"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAsking(false)}
+              className="rounded-control border-[0.5px] border-line px-3 py-2 text-[12px] font-semibold text-charcoal-soft hover:border-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A shift somebody else has given up. One tap takes it — and the server decides
+// the winner, so two teachers tapping at once cannot both be told yes.
+function OfferRow({ offer, onNotice }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function take() {
+    startTransition(async () => {
+      const r = await takeShift(offer.id);
+      if (r?.error) onNotice(r.error);
+      else {
+        onNotice("That shift is yours now — it’s in your roster.");
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-3 last:border-0">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-semibold text-charcoal">
-            {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
+            {sgClock(offer.startsAt)} – {sgClock(offer.endsAt)}
           </span>
-          {shift.phName && (
+          {offer.phName && (
             <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
-              {shift.phName}
+              {offer.phName}
             </span>
           )}
         </div>
         <div className="mt-0.5 text-[12px] text-charcoal-soft">
-          {today ? "Today" : sgDate(shift.startsAt)}
-          {shift.branch ? ` · ${shift.branch}` : ""}
-          {shift.category === "ot" ? ` · ${shift.otReason || "Ad-hoc / OT"}` : ""}
+          {sgDate(offer.startsAt)}
+          {offer.branch ? ` · ${offer.branch}` : ""}
+          {offer.fromName ? ` · from ${offer.fromName}` : ""}
+          {` · ${formatHM(offer.minutes)}`}
         </div>
+        {offer.offerReason && (
+          <p className="mt-0.5 text-[12px] text-charcoal-soft">“{offer.offerReason}”</p>
+        )}
       </div>
-      <span className="shrink-0 text-[12px] text-charcoal-soft">{formatHM(shift.minutes)}</span>
+      <button
+        type="button"
+        onClick={take}
+        disabled={pending}
+        className="shrink-0 rounded-control bg-ink px-3 py-2 text-[12px] font-semibold text-paper hover:bg-ink-deep disabled:opacity-60"
+      >
+        {pending ? "Taking…" : "Take it"}
+      </button>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { avatarSrc } from "@/lib/avatar";
 import { hoursAdminData } from "@/lib/actions/hours";
 import { shiftsForRange, missedShifts, attendanceExceptions } from "@/lib/actions/shifts";
 import { payrollReport } from "@/lib/actions/payroll";
+import { reliefBoard } from "@/lib/actions/relief";
 import { sgMonthNow } from "@/lib/hours/rates";
 import AdminApp from "@/components/admin/AdminApp";
 
@@ -80,13 +81,19 @@ export default async function AdminPage() {
   const initialHours = fullAdmin ? await hoursAdminData(sgMonthNow()) : null;
   // The roster tab opens on the fortnight ahead, plus whatever is outstanding
   // from the past week — the two things an admin actually acts on.
-  const [range, missedList, exceptionList, payroll] = await Promise.all([
+  const [range, missedList, exceptionList, payroll, board] = await Promise.all([
     shiftsForRange(),
     missedShifts(),
     attendanceExceptions(),
     fullAdmin ? payrollReport() : Promise.resolve(null),
+    reliefBoard(),
   ]);
-  const initialShifts = { ...range, missed: missedList.missed, exceptions: exceptionList.exceptions };
+  const initialShifts = {
+    ...range,
+    missed: missedList.missed,
+    exceptions: exceptionList.exceptions,
+    relief: board,
+  };
 
   return (
     <AdminApp

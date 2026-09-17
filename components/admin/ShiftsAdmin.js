@@ -24,6 +24,7 @@ import {
   splitShift,
 } from "@/lib/actions/shifts";
 import { adjustClockIn } from "@/lib/actions/hours";
+import { reliefBoard, withdrawOffer } from "@/lib/actions/relief";
 import { OT_REASONS, formatHM, sgClock, sgDate, sgTime24, sgToday, addSgDays, isoFromSg } from "@/lib/hours/rates";
 
 const field =
@@ -51,12 +52,13 @@ const DAYS = [
 
 export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = true, managedBranches = null }) {
   const router = useRouter();
-  const [view, setView] = useState("roster"); // roster | attendance | missed
+  const [view, setView] = useState("roster"); // roster | attendance | missed | relief
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [shifts, setShifts] = useState(initial.shifts);
   const [missed, setMissed] = useState(initial.missed);
   const [exceptions, setExceptions] = useState(initial.exceptions || []);
+  const [relief, setRelief] = useState(initial.relief || { uncovered: [], open: [], taken: [] });
   const [notice, setNotice] = useState(null);
   const [modal, setModal] = useState(null); // "one" | "bulk" | "holiday"
   const [splitting, setSplitting] = useState(null);
@@ -129,6 +131,12 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
           </Seg>
           <Seg active={view === "missed"} onClick={() => setView("missed")}>
             Missed clock-ins{missed.length ? ` (${missed.length})` : ""}
+          </Seg>
+          <Seg active={view === "relief"} onClick={() => setView("relief")}>
+            {/* The count is UNCOVERED only. An open offer is somebody doing the
+                right thing in good time; an uncovered one is a class about to
+                have nobody in it, and only that deserves a number on a tab. */}
+            Relief{relief.uncovered.length ? ` (${relief.uncovered.length})` : ""}
           </Seg>
         </div>
 
@@ -217,7 +225,7 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
             })
           }
         />
-      ) : (
+      ) : view === "missed" ? (
         <MissedList
           missed={missed}
           busy={busy}
@@ -228,6 +236,23 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
               else {
                 setNotice(accept ? "Approved — that shift will now be paid." : "Marked as not worked.");
                 reload();
+              }
+            })
+          }
+        />
+      ) : (
+        <ReliefList
+          board={relief}
+          busy={busy}
+          onWithdraw={(id) =>
+            startTransition(async () => {
+              const r = await withdrawOffer(id);
+              if (r?.error) setNotice(r.error);
+              else {
+                setNotice("Taken off the board — that shift stays with whoever holds it.");
+                const next = await reliefBoard();
+                if (!next?.error) setRelief(next);
+                router.refresh();
               }
             })
           }
@@ -1029,6 +1054,114 @@ function Actions({ pending, onClose, onSave, label }) {
         className="rounded-control bg-ink px-4 py-2.5 text-[13px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
       >
         {pending ? "Saving…" : label}
+      </button>
+    </div>
+  );
+}
+
+// The relief board, for an IT Head.
+//
+// UNCOVERED LEADS, and that ordering is the whole point of the screen. An open
+// offer is somebody doing the right thing in good time. An offer whose shift has
+// already started and that nobody took is a class with no teacher in it right
+// now — it needs a phone call, not a list position below thirty tidy rows.
+function ReliefList({ board, busy, onWithdraw }) {
+  const { uncovered = [], open = [], taken = [] } = board || {};
+
+  if (!uncovered.length && !open.length && !taken.length) {
+    return (
+      <div className="rounded-card border-[0.5px] border-line bg-white px-4 py-8 text-center text-[13px] text-charcoal-soft">
+        Nothing on the relief board.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {uncovered.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-[13px] font-semibold text-rust">
+            Nobody took these ({uncovered.length})
+          </h3>
+          <p className="mb-2 text-[12px] text-charcoal-soft">
+            Offered, never taken, and the shift has started. Whoever was originally rostered is still
+            the one on the roster — reassign it or call them.
+          </p>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-rust bg-white">
+            {uncovered.map((o) => (
+              <ReliefRow key={o.id} offer={o} busy={busy} onWithdraw={onWithdraw} urgent />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {open.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-[13px] font-semibold text-charcoal">On the board ({open.length})</h3>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+            {open.map((o) => (
+              <ReliefRow key={o.id} offer={o} busy={busy} onWithdraw={onWithdraw} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {taken.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-[13px] font-semibold text-charcoal">Changed hands</h3>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+            {taken.map((o) => (
+              <div
+                key={o.id}
+                className="border-b-[0.5px] border-line px-4 py-3 text-[13px] last:border-0"
+              >
+                <div className="font-semibold text-charcoal">
+                  {sgClock(o.startsAt)} – {sgClock(o.endsAt)} · {dayLabel(o.date)}
+                </div>
+                <div className="mt-0.5 text-[12px] text-charcoal-soft">
+                  {o.offerFromName || "—"} → {o.takenByName || "—"}
+                  {o.branch ? ` · ${o.branch}` : ""}
+                  {/* Paid at the TAKER's rate, because teacher_id moved with the
+                      shift. Worth saying out loud on the screen where somebody
+                      is deciding whether to let a handover stand. */}
+                  {" · paid at the new teacher’s rate"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReliefRow({ offer, busy, onWithdraw, urgent = false }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b-[0.5px] border-line px-4 py-3 last:border-0">
+      <div className="min-w-0">
+        <div className="text-[13px] font-semibold text-charcoal">
+          {sgClock(offer.startsAt)} – {sgClock(offer.endsAt)} · {dayLabel(offer.date)}
+        </div>
+        <div className="mt-0.5 text-[12px] text-charcoal-soft">
+          from {offer.offerFromName || offer.teacherName || "—"}
+          {offer.branch ? ` · ${offer.branch}` : ""}
+          {offer.phName ? ` · ${offer.phName}` : ""}
+        </div>
+        {offer.offerReason && (
+          <p className="mt-0.5 text-[12px] text-charcoal-soft">“{offer.offerReason}”</p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => onWithdraw(offer.id)}
+        disabled={busy}
+        className={`shrink-0 rounded-control border-[0.5px] px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 ${
+          urgent
+            ? "border-rust text-rust hover:bg-rust/5"
+            : "border-line text-charcoal-soft hover:border-ink hover:text-charcoal"
+        }`}
+      >
+        Take off board
       </button>
     </div>
   );
