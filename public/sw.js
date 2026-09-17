@@ -4,7 +4,7 @@
 // navigations are network-first (so the auth proxy always runs and data is
 // fresh), only immutable static assets are cached, and nothing user-specific
 // is stored. Bump VERSION to force old caches out.
-const VERSION = "lqk-v7"; // bumped 2026-09-15 to precache the positional forms
+const VERSION = "lqk-v8"; // bumped 2026-09-17: push payloads are no longer azan-only
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
@@ -124,11 +124,21 @@ self.addEventListener("fetch", (event) => {
   // Everything else (API, dynamic data): pass through to the network untouched.
 });
 
-// ---- Azan push notifications -------------------------------------------
-// The server (lib/azan/scheduler.js) sends a push at each enabled prayer's
-// time. Browsers require userVisibleOnly subscriptions, so every push shows
-// a notification; tapping it opens the Solat & Azan page, which plays the
-// user's chosen azan on arrival (see components/solat/AzanPlayer.js).
+// ---- Push notifications -------------------------------------------------
+// Two senders share this handler:
+//   • lib/azan/scheduler.js        — a push at each enabled prayer time
+//   • lib/hours/notify-scheduler.js — shift reminders, missing clock-ins,
+//                                     and shifts offered for cover
+//
+// Browsers require userVisibleOnly subscriptions, so every push shows a
+// notification. The payload carries its own title, body, tag and url; the
+// fallbacks below are only for a malformed push, and are deliberately generic
+// rather than azan-specific — a shift notification that failed to parse must
+// not appear on a teacher's lock screen reading "It's time to pray."
+//
+// `tag` is what stops a phone stacking three copies of the same nag: the
+// senders build it from the shift or prayer id, so a repeat REPLACES rather
+// than adds.
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -136,21 +146,24 @@ self.addEventListener("push", (event) => {
   } catch {
     // non-JSON push — show a generic notice
   }
-  const title = data.title || "Prayer time";
+  const isAzan = !!data.prayer;
+  const title = data.title || (isAzan ? "Prayer time" : "Little Quran Kids");
+  const tag = data.tag || (isAzan ? `azan-${data.prayer}` : "lqk");
+  const url = data.url || (isAzan ? "/solat" : "/dashboard");
   event.waitUntil(
     self.registration.showNotification(title, {
-      body: data.body || "It's time to pray.",
+      body: data.body || (isAzan ? "It's time to pray." : "Open the portal for details."),
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      tag: data.prayer ? `azan-${data.prayer}` : "azan",
-      data: { url: data.url || "/solat", prayer: data.prayer || null },
+      tag,
+      data: { url, prayer: data.prayer || null },
     })
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/solat";
+  const url = event.notification.data?.url || "/dashboard";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {

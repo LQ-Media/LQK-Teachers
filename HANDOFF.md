@@ -185,13 +185,20 @@ One thing to watch for specifically: **geolocation requires a secure context.** 
 
 1. **Production spot-check of the capture flow** (above) — highest priority.
 2. **Nominatim load.** Fine today: tagging is rare and human-paced, requests are throttled to 1/sec and cached. If OT tagging becomes routine across all ~77 staff, revisit — the usage policy is aimed at exactly this kind of app, and a self-hosted or commercial geocoder is the escape hatch.
-3. **No geofencing or validation.** A stamp records where the teacher's device says it was when they tapped. It is a record for the approving admin to eyeball, not proof. If Karim ever wants it to *enforce* anything (must be within X metres of a branch), that is a new feature and a very different conversation about staff trust — raise it with him first.
+3. ~~**No geofencing or validation.**~~ **Superseded, Sep 2026.** Karim asked for the Sling geofence, and it is built (`lib/hours/locations.js`, `lib/hours/geocode.js`). Two live policy decisions in it are his to revisit, and both were judgement calls rather than instructions:
+
+   - **The fence ships SWITCHED OFF** and every clock-in records its verdict and distance regardless. Turn it on with `node scripts/sync-location-coords.mjs --enable`, which refuses while any centre is unresolved. The reason it is not on by default: combined with "no clock-in means no pay", a deploy where geocoding had not run would refuse every clock-in at every centre on the first morning.
+   - **A phone that cannot get a fix is ALLOWED through**, recorded as `no_fix`. Every centre is on an upper floor of an office block, which is where GPS is worst, and docking a teacher's pay for their building's concrete seemed the wrong failure direction. Sling blocks this case. If Karim wants it blocked, it is one branch in `geofenceRefusal()` in `lib/actions/hours.js`.
 4. **`claude-test@lqk.test`** is a leftover admin account in the local dev DB with a known password. Harmless locally; delete it if you prefer. Confirm it does **not** exist in production.
-5. **Test coverage stops at the pure helpers.** `npm test` covers `lib/hours/rates.js` and `lib/hours/geo.js`. It does **not** cover the server actions in `lib/actions/hours.js` — including the monthly totals in `hoursAdminData`, where approved sessions use their snapshotted `rate_cents` and pending ones use the teacher's current tier. That branch is the most valuable thing still untested, but covering it means either a DB fixture harness or extracting the aggregation into a pure function. The extraction is the tidier option and it touches payroll code, so agree it with Karim first.
+5. **Test coverage, partly addressed.** The suite is now 555 tests and covers the attendance rules, payroll periods, the admin-scope boundary, the geofence, the notification windows and the relief race — several against a real database built by the real migration. The server actions in `lib/actions/hours.js` are still not covered directly; the note below stands for those.
+
+   **The original note:** Test coverage stops at the pure helpers. `npm test` covers `lib/hours/rates.js` and `lib/hours/geo.js`. It does **not** cover the server actions in `lib/actions/hours.js` — including the monthly totals in `hoursAdminData`, where approved sessions use their snapshotted `rate_cents` and pending ones use the teacher's current tier. That branch is the most valuable thing still untested, but covering it means either a DB fixture harness or extracting the aggregation into a pure function. The extraction is the tidier option and it touches payroll code, so agree it with Karim first.
 
 ---
 
 ## 7. Gotchas that will bite you
+
+**There is CI now** (`.github/workflows/ci.yml`, added Sep 2026) — before that the repo had none and every PR showed zero checks. It runs `npm test` under **both** `TZ=UTC` and `TZ=Asia/Singapore`, because payroll is reckoned in Singapore time while the server runs in UTC and that is where this codebase's date bugs live. Lint is advisory until the three pre-existing `set-state-in-effect` errors are fixed; the workflow says which line to delete to make it a real gate. Note that `continue-on-error` is deliberately NOT used — it still posts a red X on the PR.
 
 **Karim commits to this repo from other devices, mid-session.** This is the single most important operating rule. He did it twice during the session that shipped the geo feature. Always:
 

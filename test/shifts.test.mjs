@@ -319,10 +319,11 @@ describe("overlaps", () => {
 
 describe("public holiday pay", () => {
   test("a PH shift pays the multiplier on the hourly rate", () => {
-    assert.equal(PH_MULTIPLIER, 2);
     const rate = rateFor("teaching", "lead"); // $20/hr
     assert.equal(formatMoney(sessionPayCents(150, rate, null)), "$50.00");
-    assert.equal(formatMoney(sessionPayCents(150, rate, PH_MULTIPLIER)), "$100.00");
+    // Derived from the constant so a rate change does not need this edited.
+    // The value of PH_MULTIPLIER itself is pinned in attendance.test.mjs.
+    assert.equal(formatMoney(sessionPayCents(150, rate, PH_MULTIPLIER)), formatMoney(5000 * PH_MULTIPLIER));
   });
 
   test("OT on a public holiday gets the multiplier too", () => {

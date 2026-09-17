@@ -20,6 +20,7 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import HoursAdmin from "@/components/admin/HoursAdmin";
 import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
+import PayrollReport from "@/components/admin/PayrollReport";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -96,8 +97,10 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts }) {
-  const [tab, setTab] = useState("users");
+export default function AdminApp({ users, staff, invites = [], locations, shiftLocations = locations, classes, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null }) {
+  // A centre IT Head has no Login accounts tab, so opening on it would show
+  // them a blank Admin screen. The roster is their whole job here.
+  const [tab, setTab] = useState(fullAdmin ? "users" : "shifts");
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [staffModal, setStaffModal] = useState(null); // {mode, student?}
   const [inviteModal, setInviteModal] = useState(false);
@@ -143,21 +146,32 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
       {creds && <CredsBanner creds={creds} onClose={() => setCreds(null)} />}
 
       <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
-        <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
-          Login accounts ({users.length})
-        </Tab>
-        <Tab active={tab === "staff"} onClick={() => setTab("staff")} icon="clipboard-check">
-          Staff roster ({staff.length})
-        </Tab>
-        <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
-          Invited emails ({invites.length})
-        </Tab>
+        {fullAdmin && (
+          <>
+            <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
+              Login accounts ({users.length})
+            </Tab>
+            <Tab active={tab === "staff"} onClick={() => setTab("staff")} icon="clipboard-check">
+              Staff roster ({staff.length})
+            </Tab>
+            <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
+              Invited emails ({invites.length})
+            </Tab>
+          </>
+        )}
         <Tab active={tab === "shifts"} onClick={() => setTab("shifts")} icon="calendar">
           Roster{missedCount ? ` (${missedCount})` : ""}
         </Tab>
-        <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
-          Work hours{pendingHours ? ` (${pendingHours})` : ""}
-        </Tab>
+        {fullAdmin && (
+          <>
+            <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
+              Work hours{pendingHours ? ` (${pendingHours})` : ""}
+            </Tab>
+            <Tab active={tab === "payroll"} onClick={() => setTab("payroll")} icon="download">
+              Payroll report
+            </Tab>
+          </>
+        )}
       </div>
 
       {tab === "users" && (
@@ -166,9 +180,10 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
       {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
       {tab === "invites" && <InvitesTable invites={invites} />}
       {tab === "shifts" && (
-        <ShiftsAdmin teachers={teacherOptions} locations={locations} initial={initialShifts} />
+        <ShiftsAdmin teachers={teacherOptions} locations={shiftLocations} initial={initialShifts} fullAdmin={fullAdmin} managedBranches={managedBranches} />
       )}
-      {tab === "hours" && <HoursAdmin initial={initialHours} />}
+      {tab === "hours" && fullAdmin && initialHours && <HoursAdmin initial={initialHours} />}
+      {tab === "payroll" && fullAdmin && initialPayroll && <PayrollReport initial={initialPayroll} />}
 
       {userModal && (
         <UserModal
@@ -348,6 +363,8 @@ function UserModal({ modal, locations, onClose, onCreds }) {
     full_name: u.full_name || "",
     email: u.email || "",
     role: u.role || "teacher",
+    adminScope: u.admin_scope || "centre",
+    managedBranches: u.managed_branches || [],
     position: u.position || "",
     pay_tier: u.pay_tier || "",
     primary_location: u.primary_location || "",
@@ -380,6 +397,10 @@ function UserModal({ modal, locations, onClose, onCreds }) {
       pay_tier: form.pay_tier,
       primary_location: form.primary_location,
       branches: [...branches],
+      adminScope: form.role === "admin" ? form.adminScope : null,
+      // A full admin covers everything, so their branch list is always empty —
+      // sending the stale chips would leave rows behind that mean nothing.
+      managedBranches: form.role === "admin" && form.adminScope === "centre" ? form.managedBranches : [],
     };
     startTransition(async () => {
       const r = editing ? await updateUser(payload) : await createUser(payload);
@@ -421,6 +442,57 @@ function UserModal({ modal, locations, onClose, onCreds }) {
             />
           </Labelled>
         </div>
+
+        {form.role === "admin" && (
+          <div className="rounded-control border-[0.5px] border-line bg-paper-deep/40 p-3">
+            <Labelled label="Admin access">
+              <select
+                className={field}
+                value={form.adminScope}
+                onChange={(e) => set("adminScope", e.target.value)}
+              >
+                <option value="centre">Centre only — roster and attendance, no payroll</option>
+                <option value="full">Full — everything, including payroll</option>
+              </select>
+            </Labelled>
+            {form.adminScope === "centre" && (
+              <div className="mt-3">
+                <span className="mb-1.5 block text-[12px] font-semibold text-charcoal">Their centres</span>
+                <div className="flex flex-wrap gap-2">
+                  {locations.filter((l) => l !== "HQ").map((loc) => {
+                    const on = form.managedBranches.includes(loc);
+                    return (
+                      <button
+                        key={loc}
+                        type="button"
+                        onClick={() =>
+                          set(
+                            "managedBranches",
+                            on
+                              ? form.managedBranches.filter((b) => b !== loc)
+                              : [...form.managedBranches, loc]
+                          )
+                        }
+                        className={`rounded-pill px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                          on
+                            ? "bg-ink text-paper"
+                            : "border-[0.5px] border-line bg-white text-charcoal hover:bg-paper-deep"
+                        }`}
+                      >
+                        {loc}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!form.managedBranches.length && (
+                  <p className="mt-2 text-[11px] text-rust">
+                    With no centres they will see an empty roster.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <Labelled label="Pay tier — sets their teaching rate for work hours">
           <select className={field} value={form.pay_tier} onChange={(e) => set("pay_tier", e.target.value)}>
             <option value="">Not set</option>

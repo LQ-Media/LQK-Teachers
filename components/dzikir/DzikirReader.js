@@ -91,6 +91,16 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
   const [loaded, setLoaded] = useState(false);
 
   // Restore preferences once, client-side, so SSR markup stays stable.
+  //
+  // eslint's set-state-in-effect rule fires here and is wrong about this one.
+  // localStorage does not exist on the server, so these values CANNOT be read
+  // while rendering or in a useState initialiser without producing markup the
+  // server could not have produced — a hydration mismatch, which is a worse bug
+  // than one extra render. Reading an external store the first time the
+  // component reaches a browser is the case the rule's own documentation
+  // describes as legitimate. The effect runs once, with an empty dependency
+  // list, and cascades nothing.
+  /* eslint-disable react-hooks/set-state-in-effect -- see the note above */
   useEffect(() => {
     try {
       const p = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
@@ -111,6 +121,7 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
     } catch {}
     setLoaded(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!loaded) return;
