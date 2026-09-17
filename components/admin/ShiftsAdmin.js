@@ -3,8 +3,10 @@
 // The roster: where MH and IT Heads set who is working when.
 //
 // Three jobs on one screen, in the order they actually get done:
-//   1. Generate a term's worth of recurring shifts for a teacher.
-//   2. Look at a fortnight and fix what's wrong (cancel a class, a holiday).
+//   1. Add shifts — one, or a term's worth, teaching or OT. One form, because
+//      there used to be two and two recurrence engines is how the roster and
+//      the generator end up disagreeing about what a fortnight contains.
+//   2. Look at a month and fix what's wrong (cancel a class, a holiday).
 //   3. Deal with the shifts nobody clocked in for — which is the weekly chase,
 //      now answered by the teachers themselves.
 
@@ -12,8 +14,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import {
-  createShift,
-  generateShifts,
   cancelShift,
   cancelDate,
   shiftsForRange,
@@ -27,8 +27,9 @@ import { adjustClockIn } from "@/lib/actions/hours";
 import { reliefBoard, withdrawOffer } from "@/lib/actions/relief";
 import ShiftCalendar from "@/components/admin/ShiftCalendar";
 import ShiftDetail from "@/components/admin/ShiftDetail";
+import NewShiftModal from "@/components/admin/NewShiftModal";
 import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
-import { OT_REASONS, formatHM, sgClock, sgDate, sgTime24, sgToday, addSgDays, isoFromSg } from "@/lib/hours/rates";
+import { formatHM, sgClock, sgDate, sgTime24, sgToday, addSgDays, isoFromSg } from "@/lib/hours/rates";
 
 const field =
   "w-full bg-paper border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink focus:ring-[1.5px] focus:ring-ink";
@@ -43,16 +44,6 @@ function dayLabel(date) {
   });
 }
 
-const DAYS = [
-  { n: 1, label: "Mon" },
-  { n: 2, label: "Tue" },
-  { n: 3, label: "Wed" },
-  { n: 4, label: "Thu" },
-  { n: 5, label: "Fri" },
-  { n: 6, label: "Sat" },
-  { n: 0, label: "Sun" },
-];
-
 export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = true, managedBranches = null }) {
   const router = useRouter();
   const [view, setView] = useState("roster"); // roster | attendance | missed | relief
@@ -63,7 +54,7 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
   const [exceptions, setExceptions] = useState(initial.exceptions || []);
   const [relief, setRelief] = useState(initial.relief || { uncovered: [], open: [], taken: [] });
   const [notice, setNotice] = useState(null);
-  const [modal, setModal] = useState(null); // "one" | "bulk" | "holiday"
+  const [modal, setModal] = useState(null); // "one" | "holiday"
   const [splitting, setSplitting] = useState(null);
   // The roster opens as a CALENDAR. A list answers "what is outstanding"; the
   // question an admin opens the roster to ask is "who is on at Tampines on the
@@ -166,9 +157,8 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Secondary onClick={() => setModal("bulk")} icon="calendar">
-            Generate roster
-          </Secondary>
+          {/* One button, because one form now makes every kind of shift —
+              teaching or OT, once or every week. */}
           <Secondary onClick={() => setModal("one")} icon="plus">
             Add shift
           </Secondary>
@@ -336,7 +326,7 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
       )}
 
       {modal === "one" && (
-        <OneOffModal
+        <NewShiftModal
           teachers={teachers}
           locations={myLocations}
           defaultDate={oneDate}
@@ -344,10 +334,13 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
             setModal(null);
             setOneDate(null);
           }}
-          onSaved={(msg) => {
+          onSaved={(msg, clashes) => {
             setModal(null);
             setOneDate(null);
-            setNotice(msg);
+            // Anyone skipped is NAMED. A partial success that reads like a
+            // clean one is how somebody ends up unrostered and nobody notices
+            // until the morning of.
+            setNotice(clashes?.length ? `${msg} ${clashes.join(" ")}` : msg);
             reload();
           }}
         />
@@ -360,18 +353,6 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
           locations={myLocations}
           onClose={() => setDetail(null)}
           onChanged={() => reload()}
-        />
-      )}
-      {modal === "bulk" && (
-        <BulkModal
-          teachers={teachers}
-          locations={myLocations}
-          onClose={() => setModal(null)}
-          onSaved={(msg) => {
-            setModal(null);
-            setNotice(msg);
-            reload();
-          }}
         />
       )}
       {modal === "holiday" && (
@@ -763,244 +744,6 @@ function MissedList({ missed, busy, onResolve }) {
 }
 
 // ---- Modals ------------------------------------------------------------
-
-function OneOffModal({ teachers, locations, defaultDate = null, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    teacherId: teachers[0]?.id || "",
-    category: "ot",
-    otReason: OT_REASONS[0],
-    branch: locations[0] || "",
-    date: defaultDate || sgToday(),
-    startTime: "09:00",
-    endTime: "11:00",
-    note: "",
-    unpaid: false,
-  });
-  const [error, setError] = useState(null);
-  const [pending, startTransition] = useTransition();
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  function save() {
-    startTransition(async () => {
-      const r = await createShift(form);
-      if (r?.error) setError(r.error);
-      else onSaved(r.phName ? `Shift added. That date is ${r.phName} — it will pay the public-holiday rate.` : "Shift added.");
-    });
-  }
-
-  return (
-    <Modal title="Add a shift" onClose={onClose}>
-      <p className="mb-3 text-[12px] text-charcoal-soft">
-        Use this for OT once MH has approved it. The teacher doesn’t need to clock in for it.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <L label="Teacher" full>
-          <select className={field} value={form.teacherId} onChange={set("teacherId")}>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.fullName}
-              </option>
-            ))}
-          </select>
-        </L>
-        <L label="Type">
-          <select className={field} value={form.category} onChange={set("category")}>
-            <option value="ot">Ad-hoc / OT</option>
-            <option value="teaching">Class teaching</option>
-          </select>
-        </L>
-        {form.category === "ot" && (
-          <L label="What for?">
-            <select className={field} value={form.otReason} onChange={set("otReason")}>
-              {OT_REASONS.map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          </L>
-        )}
-        <L label="Branch">
-          <select className={field} value={form.branch} onChange={set("branch")}>
-            {locations.map((b) => (
-              <option key={b}>{b}</option>
-            ))}
-          </select>
-        </L>
-        <L label="Date">
-          <input type="date" className={field} value={form.date} onChange={set("date")} />
-        </L>
-        <L label="Start">
-          <input type="time" className={field} value={form.startTime} onChange={set("startTime")} />
-        </L>
-        <L label="End">
-          <input type="time" className={field} value={form.endTime} onChange={set("endTime")} />
-        </L>
-        <L label="Note (optional)" full>
-          <input className={field} value={form.note} onChange={set("note")} />
-        </L>
-      </div>
-      {error && <div className="mt-3 rounded-control bg-rust-soft px-3 py-2 text-[12px] text-rust">{error}</div>}
-      <Actions pending={pending} onClose={onClose} onSave={save} label="Add shift" />
-    </Modal>
-  );
-}
-
-function BulkModal({ teachers, locations, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    branch: locations[0] || "",
-    fromDate: sgToday(),
-    toDate: addSgDays(sgToday(), 90),
-    startTime: "16:00",
-    endTime: "18:00",
-    skipHolidays: true,
-    unpaid: false,
-  });
-  const [picked, setPicked] = useState([]);
-  const [query, setQuery] = useState("");
-  const [weekdays, setWeekdays] = useState([1, 3]);
-  const [error, setError] = useState(null);
-  const [pending, startTransition] = useTransition();
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const shown = teachers.filter((t) => (t.fullName || "").toLowerCase().includes(query.trim().toLowerCase()));
-  const allShownPicked = shown.length > 0 && shown.every((t) => picked.includes(t.id));
-
-  function togglePicked(id) {
-    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  }
-  function toggleAllShown() {
-    const ids = shown.map((t) => t.id);
-    setPicked((p) => (allShownPicked ? p.filter((x) => !ids.includes(x)) : [...new Set([...p, ...ids])]));
-  }
-  function toggleDay(n) {
-    setWeekdays((w) => (w.includes(n) ? w.filter((x) => x !== n) : [...w, n]));
-  }
-
-  function save() {
-    startTransition(async () => {
-      const r = await generateShifts({ ...form, teacherIds: picked, weekdays });
-      if (r?.error) setError(r.error);
-      else {
-        const bits = [
-          `${r.created} shift${r.created === 1 ? "" : "s"} created for ${r.done.length} teacher${r.done.length === 1 ? "" : "s"}`,
-        ];
-        if (r.skipped?.length) bits.push(`${r.skipped.length} date${r.skipped.length === 1 ? "" : "s"} skipped (public holiday)`);
-        if (r.duplicates) bits.push(`${r.duplicates} already existed`);
-        // Name the ones that were left out — a silent partial result is exactly
-        // what makes a bulk tool untrustworthy.
-        if (r.clashed?.length) {
-          bits.push(
-            `${r.clashed.length} skipped for clashes (${r.clashed.map((c) => c.name).slice(0, 3).join(", ")}${r.clashed.length > 3 ? "…" : ""})`
-          );
-        }
-        onSaved(bits.join(" · ") + ".");
-      }
-    });
-  }
-
-  return (
-    <Modal title="Generate a roster" onClose={onClose}>
-      <p className="mb-3 text-[12px] text-charcoal-soft">
-        Creates one shift per occurrence, for everyone you pick. Generate a term at a time rather than a whole year — a
-        roster is easiest to fix before anyone has worked against it.
-      </p>
-
-      <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-charcoal-soft">
-            Teachers{picked.length ? ` · ${picked.length} selected` : ""}
-          </span>
-          {shown.length > 0 && (
-            <button
-              type="button"
-              onClick={toggleAllShown}
-              className="text-[11px] font-semibold text-gold hover:underline"
-            >
-              {allShownPicked ? "Clear these" : `Select all ${shown.length}`}
-            </button>
-          )}
-        </div>
-        <input
-          className={field}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name…"
-        />
-        <div className="mt-1.5 max-h-44 overflow-y-auto rounded-control border-[0.5px] border-line bg-paper">
-          {shown.length === 0 ? (
-            <p className="px-3 py-3 text-[12px] text-charcoal-soft">No one matches that.</p>
-          ) : (
-            shown.map((t) => (
-              <label
-                key={t.id}
-                className="flex cursor-pointer items-center gap-2 border-b-[0.5px] border-line px-3 py-2 text-[13px] text-charcoal last:border-0 hover:bg-paper-deep"
-              >
-                <input type="checkbox" checked={picked.includes(t.id)} onChange={() => togglePicked(t.id)} />
-                {t.fullName}
-              </label>
-            ))
-          )}
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <L label="Branch">
-          <select className={field} value={form.branch} onChange={set("branch")}>
-            {locations.map((b) => (
-              <option key={b}>{b}</option>
-            ))}
-          </select>
-        </L>
-        <L label="From">
-          <input type="date" className={field} value={form.fromDate} onChange={set("fromDate")} />
-        </L>
-        <L label="To">
-          <input type="date" className={field} value={form.toDate} onChange={set("toDate")} />
-        </L>
-        <L label="Start">
-          <input type="time" className={field} value={form.startTime} onChange={set("startTime")} />
-        </L>
-        <L label="End">
-          <input type="time" className={field} value={form.endTime} onChange={set("endTime")} />
-        </L>
-        <div className="sm:col-span-2">
-          <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Days of the week</span>
-          <div className="flex flex-wrap gap-1.5">
-            {DAYS.map((d) => (
-              <button
-                key={d.n}
-                type="button"
-                onClick={() => toggleDay(d.n)}
-                className={`rounded-control px-3 py-2 text-[12px] font-semibold transition-colors ${
-                  weekdays.includes(d.n)
-                    ? "bg-ink text-paper"
-                    : "border-[0.5px] border-line bg-white text-charcoal hover:bg-paper-deep"
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <label className="flex items-center gap-2 text-[13px] text-charcoal sm:col-span-2">
-          <input
-            type="checkbox"
-            checked={form.skipHolidays}
-            onChange={(e) => setForm((f) => ({ ...f, skipHolidays: e.target.checked }))}
-          />
-          Skip Singapore public holidays
-        </label>
-      </div>
-
-      <p className="mt-3 text-[11px] text-charcoal-soft">
-        Each teacher is all-or-nothing: anyone whose existing shifts clash is skipped entirely and named, so nobody ends
-        up with half a term.
-      </p>
-
-      {error && <div className="mt-3 rounded-control bg-rust-soft px-3 py-2 text-[12px] text-rust">{error}</div>}
-      <Actions pending={pending} onClose={onClose} onSave={save} label={picked.length > 1 ? `Generate for ${picked.length}` : "Generate"} />
-    </Modal>
-  );
-}
 
 function CancelDateModal({ locations, onClose, onSaved }) {
   const [date, setDate] = useState(sgToday());

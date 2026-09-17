@@ -110,8 +110,17 @@ export default function AdminApp({ users, staff, invites = [], locations, shiftL
   const pendingHours = initialHours?.pending?.length || 0;
   const missedCount = initialShifts?.missed?.length || 0;
   // Anyone who can hold a shift. Sorted by name so the pickers are scannable.
+  // position and primary_location travel with the name: Sling's employee
+  // picker shows both under each person, and with 77 staff sharing first names
+  // ("NUR …", "SITI …", "NURUL …") the subtitle is often what tells you which
+  // one you meant. It is also what the search matches on.
   const teacherOptions = [...users]
-    .map((u) => ({ id: u.id, fullName: u.full_name }))
+    .map((u) => ({
+      id: u.id,
+      fullName: u.full_name,
+      position: u.position || "",
+      primaryLocation: u.primary_location || "",
+    }))
     .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
 
   const ADD_LABEL = { users: "Add user", staff: "Add staff", invites: "Invite email" };
