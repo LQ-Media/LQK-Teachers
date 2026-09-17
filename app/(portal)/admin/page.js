@@ -1,5 +1,5 @@
 import { requireAdmin, managedBranches } from "@/lib/dal";
-import { getDb, LOCATIONS, TRACKER_CLASSES } from "@/lib/db";
+import { getDb, LOCATIONS } from "@/lib/db";
 import { SHIFT_LOCATIONS } from "@/lib/hours/locations";
 import { avatarSrc } from "@/lib/avatar";
 import { hoursAdminData } from "@/lib/actions/hours";
@@ -7,6 +7,7 @@ import { shiftsForRange, missedShifts, attendanceExceptions } from "@/lib/action
 import { payrollReport } from "@/lib/actions/payroll";
 import { reliefBoard } from "@/lib/actions/relief";
 import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
+import { geofenceEnabled } from "@/lib/hours/geocode";
 import { sgMonthNow } from "@/lib/hours/rates";
 import AdminApp from "@/components/admin/AdminApp";
 
@@ -48,17 +49,12 @@ export default async function AdminPage() {
     isSelf: p.id === session.userId,
   }));
 
-  const studentRows = db.prepare("SELECT id, name, class, juz, position FROM students ORDER BY class, name").all();
-  const lessonCounts = db.prepare("SELECT student_id, COUNT(*) AS c FROM lessons GROUP BY student_id").all();
-  const countBy = new Map(lessonCounts.map((r) => [r.student_id, r.c]));
-  const staff = studentRows.map((s) => ({
-    id: s.id,
-    name: s.name,
-    class: s.class,
-    juz: s.juz,
-    position: s.position || "",
-    lessonCount: countBy.get(s.id) || 0,
-  }));
+  // The tracked-staff roster (the `students` table) is no longer read here.
+  // Karim removed that tab on 17 Sep: "remove the Staff Roster, i dont need
+  // that tab". The rows themselves are untouched and still drive the Tracker,
+  // the dashboard and achievements — and creating a login account still
+  // creates or links one, via attachToRoster() in lib/roster.js. What is gone
+  // is the screen that edited a row's class and juz by hand.
 
   const inviteRows = db
     .prepare(
@@ -101,16 +97,18 @@ export default async function AdminPage() {
   return (
     <AdminApp
       users={users}
-      staff={staff}
       invites={invites}
       locations={LOCATIONS}
       shiftLocations={SHIFT_LOCATIONS}
-      classes={TRACKER_CLASSES}
       initialHours={initialHours}
       initialShifts={initialShifts}
       initialPayroll={payroll}
       fullAdmin={fullAdmin}
       managedBranches={branches}
+      // One boolean, so the Locations screen can say whether the clock-in check
+      // is live. A centre IT Head may read that; only a full admin may change
+      // it, which is why the panel that changes it lives behind Settings.
+      fenceOn={geofenceEnabled()}
     />
   );
 }

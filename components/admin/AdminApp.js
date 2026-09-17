@@ -8,19 +8,13 @@ import {
   resetUserPassword,
   deleteUser,
   deleteUsers,
-  createStudent,
-  updateStudent,
-  deleteStudent,
-  deleteStudents,
   createInvite,
   deleteInvite,
 } from "@/lib/actions/admin";
 import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
-import HoursAdmin from "@/components/admin/HoursAdmin";
-import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
-import PayrollReport from "@/components/admin/PayrollReport";
+import ShiftRoster from "@/components/admin/ShiftRoster";
 import AccessPanel from "@/components/admin/AccessPanel";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
@@ -98,17 +92,30 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, shiftLocations = locations, classes, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null }) {
-  // A centre IT Head has no Login accounts tab, so opening on it would show
-  // them a blank Admin screen. The roster is their whole job here.
-  const [tab, setTab] = useState(fullAdmin ? "users" : "shifts");
+/**
+ * The Admin page: TWO areas, not seven tabs.
+ *
+ * Karim, 17 Sep: "i find the admin view very messy. i want the Sling functions
+ * to be on its own with the other admin matters for this login accounts and
+ * invited emails on its own tab."
+ *
+ * So:
+ *   ADMIN         — accounts, invitations, and who holds admin access.
+ *   SHIFT ROSTER  — everything that was Sling, behind Sling's own tile menu.
+ *                   See components/admin/ShiftRoster.js.
+ *
+ * The page is full width. It used to be capped at max-w-5xl, which left a
+ * calendar of 71 teachers squeezed into half a monitor with white space beside
+ * it — Karim's second ask on the same day.
+ */
+export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null }) {
+  // A centre IT Head has no Admin area at all — no accounts, no invitations, no
+  // access screen — so they open on the roster, which is their whole job here.
+  const [area, setArea] = useState(fullAdmin ? "admin" : "roster");
+  const [tab, setTab] = useState("users"); // within the Admin area
   const [userModal, setUserModal] = useState(null); // {mode, user?}
-  const [staffModal, setStaffModal] = useState(null); // {mode, student?}
   const [inviteModal, setInviteModal] = useState(false);
   const [creds, setCreds] = useState(null); // {email, tempPassword} banner
-
-  const pendingHours = initialHours?.pending?.length || 0;
-  const missedCount = initialShifts?.missed?.length || 0;
   // Anyone who can hold a shift. Sorted by name so the pickers are scannable.
   // position and primary_location travel with the name: Sling's employee
   // picker shows both under each person, and with 77 staff sharing first names
@@ -123,25 +130,41 @@ export default function AdminApp({ users, staff, invites = [], locations, shiftL
     }))
     .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
 
-  const ADD_LABEL = { users: "Add user", staff: "Add staff", invites: "Invite email" };
-  const ADD_ICON = { users: "user-plus", staff: "plus", invites: "mail-plus" };
+  // What is outstanding on the roster side, so the switch says so without
+  // having to be opened. Missed clock-ins plus sessions awaiting approval —
+  // both are somebody waiting on an admin.
+  const rosterBadge =
+    (initialShifts?.missed?.length || 0) +
+    (initialShifts?.relief?.uncovered?.length || 0) +
+    (fullAdmin ? initialHours?.pending?.length || 0 : 0);
+
+  const ADD_LABEL = { users: "Add user", invites: "Invite email" };
+  const ADD_ICON = { users: "user-plus", invites: "mail-plus" };
 
   function openAdd() {
     if (tab === "users") setUserModal({ mode: "new" });
-    else if (tab === "staff") setStaffModal({ mode: "new" });
     else if (tab === "invites") setInviteModal(true);
   }
 
+  const inAdmin = area === "admin" && fullAdmin;
+
   return (
-    <div className="px-4 py-6 sm:p-8 max-w-5xl">
+    <div className="px-4 py-6 sm:p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <PageHeading
           route="/admin"
           icon="settings"
           title="Admin"
-          subtitle="Manage accounts, the tracked staff roster, and work hours."
+          subtitle={
+            inAdmin
+              ? "Accounts, invitations, and who holds admin access."
+              : "Shifts, clock-ins and what they pay."
+          }
         />
-        {tab !== "hours" && (
+        {/* The Add button belongs to the Admin area's tables. Shift Roster has
+            its own actions on the screens that need them — Add shift sits on
+            the calendar, where the date you clicked is the date you meant. */}
+        {inAdmin && (
           <button
             type="button"
             onClick={openAdd}
@@ -155,50 +178,53 @@ export default function AdminApp({ users, staff, invites = [], locations, shiftL
 
       {creds && <CredsBanner creds={creds} onClose={() => setCreds(null)} />}
 
-      <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
-        {fullAdmin && (
-          <>
-            <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
-              Login accounts ({users.length})
-            </Tab>
-            <Tab active={tab === "staff"} onClick={() => setTab("staff")} icon="clipboard-check">
-              Staff roster ({staff.length})
-            </Tab>
-            <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
-              Invited emails ({invites.length})
-            </Tab>
-          </>
-        )}
-        <Tab active={tab === "shifts"} onClick={() => setTab("shifts")} icon="calendar">
-          Roster{missedCount ? ` (${missedCount})` : ""}
-        </Tab>
-        {fullAdmin && (
-          <>
-            <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
-              Work hours{pendingHours ? ` (${pendingHours})` : ""}
-            </Tab>
-            <Tab active={tab === "payroll"} onClick={() => setTab("payroll")} icon="download">
-              Payroll report
-            </Tab>
-            {/* Full admins only — this is the screen that hands out payroll access. */}
-            <Tab active={tab === "access"} onClick={() => setTab("access")} icon="users">
-              Access
-            </Tab>
-          </>
-        )}
-      </div>
+      {/* Two areas. A centre IT Head sees no switch at all, because there is
+          only one side of it they can open. */}
+      {fullAdmin && (
+        <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
+          <Tab active={area === "admin"} onClick={() => setArea("admin")} icon="users">
+            Admin
+          </Tab>
+          <Tab active={area === "roster"} onClick={() => setArea("roster")} icon="calendar">
+            Shift Roster{rosterBadge ? ` (${rosterBadge})` : ""}
+          </Tab>
+        </div>
+      )}
 
-      {tab === "users" && (
+      {inAdmin && (
+        <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
+          <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
+            Login accounts ({users.length})
+          </Tab>
+          <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
+            Invited emails ({invites.length})
+          </Tab>
+          {/* Full admins only — this is the screen that hands out payroll access. */}
+          <Tab active={tab === "access"} onClick={() => setTab("access")} icon="key">
+            Access
+          </Tab>
+        </div>
+      )}
+
+      {inAdmin && tab === "users" && (
         <UsersTable users={users} onEdit={(u) => setUserModal({ mode: "edit", user: u })} onCreds={setCreds} />
       )}
-      {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
-      {tab === "invites" && <InvitesTable invites={invites} />}
-      {tab === "shifts" && (
-        <ShiftsAdmin teachers={teacherOptions} locations={shiftLocations} initial={initialShifts} fullAdmin={fullAdmin} managedBranches={managedBranches} />
+      {inAdmin && tab === "invites" && <InvitesTable invites={invites} />}
+      {inAdmin && tab === "access" && <AccessPanel />}
+
+      {!inAdmin && (
+        <ShiftRoster
+          teachers={teacherOptions}
+          locations={locations}
+          shiftLocations={shiftLocations}
+          initialShifts={initialShifts}
+          initialHours={initialHours}
+          initialPayroll={initialPayroll}
+          fullAdmin={fullAdmin}
+          managedBranches={managedBranches}
+          fenceOn={fenceOn}
+        />
       )}
-      {tab === "hours" && fullAdmin && initialHours && <HoursAdmin initial={initialHours} />}
-      {tab === "payroll" && fullAdmin && initialPayroll && <PayrollReport initial={initialPayroll} />}
-      {tab === "access" && fullAdmin && <AccessPanel />}
 
       {userModal && (
         <UserModal
@@ -207,9 +233,6 @@ export default function AdminApp({ users, staff, invites = [], locations, shiftL
           onClose={() => setUserModal(null)}
           onCreds={setCreds}
         />
-      )}
-      {staffModal && (
-        <StaffModal modal={staffModal} classes={classes} onClose={() => setStaffModal(null)} />
       )}
       {inviteModal && <InviteModal locations={locations} onClose={() => setInviteModal(false)} />}
     </div>
@@ -761,188 +784,6 @@ function InviteModal({ locations, onClose }) {
       </div>
 
       <ModalActions pending={pending} onClose={onClose} onSave={submit} saveLabel="Add invite" />
-    </Modal>
-  );
-}
-
-// ---- Staff roster ------------------------------------------------------
-
-function StaffTable({ staff, onEdit }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const sel = useSelection(staff.map((s) => s.id));
-
-  function removeSelected() {
-    const picked = staff.filter((s) => sel.has(s.id));
-    const lessons = picked.reduce((n, s) => n + (s.lessonCount || 0), 0);
-    if (
-      !confirm(
-        `Remove ${picked.length} staff member${picked.length === 1 ? "" : "s"} from the roster?\n\n` +
-          `This also deletes ${lessons} logged lesson${lessons === 1 ? "" : "s"}. ` +
-          "Their login accounts are not touched. This cannot be undone."
-      )
-    )
-      return;
-    startTransition(async () => {
-      const r = await deleteStudents(sel.chosen);
-      if (r?.error) alert(r.error);
-      sel.clear();
-      router.refresh();
-    });
-  }
-
-  function remove(s) {
-    if (!confirm(`Remove ${titleCase(s.name)} from the roster? This also deletes their ${s.lessonCount} logged lesson(s).`)) return;
-    startTransition(async () => {
-      const r = await deleteStudent(s.id);
-      if (r?.error) alert(r.error);
-      router.refresh();
-    });
-  }
-
-  // Group by class for readability.
-  const groups = staff.reduce((m, s) => {
-    (m[s.class] ||= []).push(s);
-    return m;
-  }, {});
-
-  return (
-    <div className="space-y-5">
-      {staff.length > 0 && (
-        <div>
-          <BulkBar count={sel.count} noun="staff member" pending={pending} onClear={sel.clear} onDelete={removeSelected} />
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] font-semibold text-charcoal-soft">
-            <input
-              type="checkbox"
-              className={checkbox}
-              checked={sel.allChosen}
-              ref={(el) => el && (el.indeterminate = sel.someChosen)}
-              onChange={sel.toggleAll}
-            />
-            Select all {staff.length}
-          </label>
-        </div>
-      )}
-      {Object.keys(groups).length === 0 && (
-        <div className="rounded-card border-[0.5px] border-line bg-white p-6 text-center text-[13px] text-charcoal-soft">
-          No staff on the roster yet.
-        </div>
-      )}
-      {Object.entries(groups).map(([cls, members]) => (
-        <div key={cls} className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
-          <div className="flex items-center justify-between border-b-[0.5px] border-line px-4 py-2.5">
-            <span className="text-[12px] font-bold uppercase tracking-wide text-charcoal">{titleCase(cls)}</span>
-            <span className="text-[11px] text-charcoal-soft">{members.length} staff</span>
-          </div>
-          <ul>
-            {members.map((s) => (
-              <li
-                key={s.id}
-                className={`flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-2.5 last:border-0 ${sel.has(s.id) ? "bg-paper-deep" : ""}`}
-              >
-                <input
-                  type="checkbox"
-                  className={checkbox}
-                  aria-label={`Select ${titleCase(s.name)}`}
-                  checked={sel.has(s.id)}
-                  onChange={() => sel.toggle(s.id)}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-charcoal">{titleCase(s.name)}</div>
-                  <div className="text-[11px] text-charcoal-soft">
-                    Juz {s.juz}
-                    {s.position ? ` · ${s.position}` : ""} · {s.lessonCount} lesson{s.lessonCount === 1 ? "" : "s"}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <IconBtn label="Edit" icon="pencil" onClick={() => onEdit(s)} />
-                  <IconBtn label="Remove" icon="trash" danger disabled={pending} onClick={() => remove(s)} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StaffModal({ modal, classes, onClose }) {
-  const router = useRouter();
-  const editing = modal.mode === "edit";
-  const s = modal.student || {};
-  const [form, setForm] = useState({
-    name: s.name || "",
-    class: s.class || classes[0],
-    juz: s.juz || 1,
-    position: s.position || "",
-  });
-  const [error, setError] = useState(null);
-  const [pending, startTransition] = useTransition();
-  const classChanged = editing && form.class !== s.class;
-
-  function set(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-  function submit() {
-    setError(null);
-    const payload = { id: s.id, ...form };
-    startTransition(async () => {
-      const r = editing ? await updateStudent(payload) : await createStudent(payload);
-      if (r?.error) {
-        setError(r.error);
-        return;
-      }
-      router.refresh();
-      onClose();
-    });
-  }
-
-  return (
-    <Modal title={editing ? "Edit staff member" : "New staff member"} onClose={onClose}>
-      <div className="space-y-3.5">
-        <Labelled label="Name">
-          <input className={field} value={form.name} onChange={(e) => set("name", e.target.value)} />
-        </Labelled>
-        <div className="grid grid-cols-2 gap-3">
-          <Labelled label="Branch">
-            <select className={field} value={form.class} onChange={(e) => set("class", e.target.value)}>
-              {classes.map((c) => (
-                <option key={c} value={c}>
-                  {titleCase(c)}
-                </option>
-              ))}
-            </select>
-          </Labelled>
-          <Labelled label="Current Juz">
-            <input
-              className={field}
-              type="number"
-              min="1"
-              max="30"
-              value={form.juz}
-              onChange={(e) => set("juz", e.target.value)}
-            />
-          </Labelled>
-        </div>
-        <Labelled label="Position / note">
-          <input
-            className={field}
-            value={form.position}
-            placeholder="optional, e.g. Hifz"
-            onChange={(e) => set("position", e.target.value)}
-          />
-        </Labelled>
-
-        {classChanged && (
-          <p className="rounded-control bg-gold-soft/40 px-3 py-2 text-[12px] text-charcoal">
-            Their {s.lessonCount} past lesson{s.lessonCount === 1 ? "" : "s"} will move to {titleCase(form.class)} with them.
-          </p>
-        )}
-        {error && <p className="rounded-control bg-rust-soft px-3 py-2 text-[12px] font-medium text-rust">{error}</p>}
-      </div>
-
-      <ModalActions pending={pending} onClose={onClose} onSave={submit} saveLabel={editing ? "Save changes" : "Add staff"} />
     </Modal>
   );
 }

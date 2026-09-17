@@ -19,7 +19,6 @@ import {
   shiftsForRange,
   missedShifts,
   resolveMissed,
-  syncHolidays,
   attendanceExceptions,
   splitShift,
 } from "@/lib/actions/shifts";
@@ -102,21 +101,6 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
 
   // Pulls MOM's public-holiday calendar. Needed at least once per deployment,
   // and again whenever MOM publishes another year.
-  function doSyncHolidays() {
-    startTransition(async () => {
-      const r = await syncHolidays();
-      if (r?.error) setNotice(r.error);
-      else {
-        const bits = [`${r.total} holidays checked`];
-        if (r.added) bits.push(`${r.added} added`);
-        if (r.renamed) bits.push(`${r.renamed} renamed`);
-        if (r.stamped) bits.push(`${r.stamped} existing shift(s) updated`);
-        setNotice(r.added || r.renamed || r.stamped ? bits.join(" · ") + "." : "Already up to date.");
-        reload();
-      }
-    });
-  }
-
   const byDate = shifts.reduce((acc, s) => {
     (acc[s.date] ||= []).push(s);
     return acc;
@@ -164,9 +148,6 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
           </Secondary>
           <Secondary onClick={() => setModal("holiday")} icon="x">
             Cancel a date
-          </Secondary>
-          <Secondary onClick={doSyncHolidays} icon="refresh">
-            Sync holidays
           </Secondary>
         </div>
       </div>
