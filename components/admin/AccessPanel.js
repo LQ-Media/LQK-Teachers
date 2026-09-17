@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import SearchSelect from "@/components/SearchSelect";
+import GeofencePanel from "@/components/admin/GeofencePanel";
 import {
   previewAdminScopes,
   applyAdminScopes,
@@ -32,7 +33,11 @@ export default function AccessPanel({ initial }) {
   // Two halves of one screen. The LIST is the standing roster from the code —
   // useful for setting everybody at once. The PEOPLE table is per-person, which
   // is what Karim asked for so he can change one person without a deploy.
-  const [tab, setTab] = useState("people"); // people | list | log
+  // "fence" lives here rather than on its own admin tab because it is the same
+  // kind of thing: a full admin deciding what other people are allowed to do.
+  // It also used to need a terminal on the production box, which is the whole
+  // reason it is a screen at all — Karim, 17 Sep.
+  const [tab, setTab] = useState("people"); // people | list | log | fence
   const [roster, setRoster] = useState(null);
   const [log, setLog] = useState(null);
 
@@ -117,6 +122,7 @@ export default function AccessPanel({ initial }) {
           ["people", "Who has access"],
           ["list", "Apply the standing list"],
           ["log", "History"],
+          ["fence", "Clock-in location"],
         ].map(([k, lbl]) => (
           <button
             key={k}
@@ -156,6 +162,10 @@ export default function AccessPanel({ initial }) {
       )}
 
       {tab === "log" && <AccessLog entries={log} pending={pending} />}
+
+      {/* Loads itself, like the other two — it reads every recorded clock-in
+          verdict, so it is not free enough to fetch before somebody asks. */}
+      {tab === "fence" && <GeofencePanel />}
 
       {tab === "list" && (
       <>
