@@ -153,6 +153,33 @@ The table also reports the **furthest ACCEPTED distance per centre**, separately
 
 **`geocodePostalCode()` now says WHICH failure it was**, and that matters more than it looks: it used to collapse "couldn't reach OneMap" and "no exact match for that postal code" into the same null, so a network blip told an admin their correct postal code was wrong and sent them off to change it. When every centre fails unreachably, the screen says so once rather than six times.
 
+### 4d. Admin is two areas now, not seven tabs (2026-09-17)
+
+Karim: *"i find the admin view very messy. i want the Sling functions to be on its own with the other admin matters for this login accounts and invited emails on its own tab"*, and *"the menu at the top can be as attached from the sling"*.
+
+`/admin` now has **two areas**:
+
+| Area | Holds |
+|---|---|
+| **Admin** | Login accounts · Invited emails · Access (who has access / apply the standing list / history) |
+| **Shift Roster** | Sling's tile menu → Schedule · Employees · Positions · Locations · Work hours · Labour cost · Settings |
+
+`components/admin/AdminApp.js` is the shell; `components/admin/ShiftRoster.js` owns the tiles; `components/admin/SlingNav.js` is the tile row.
+
+**Only tiles that open something real.** Sling's row also has Groups, Tags and Announcements; LQK has nothing behind those, and Karim chose explicitly to leave them out — a tile that opens an empty page makes somebody wonder what they have failed to set up.
+
+**Three things moved, each for a reason.** `Sync holidays` left the roster toolbar (a once-a-year action sat next to one used twenty times a week) and the clock-in location check left Access (a rostering setting filed under permissions) — both are under Shift Roster → Settings now, as they are in Sling. `Payroll report` became the `Labour cost` tile, Sling's name for it.
+
+**The three reference screens are read-only on purpose**, and each says where the editable version is so a read-only table never reads as a broken one. Employees is the accounts list shown the way the roster needs it — editing belongs on the Admin tab, because two places to edit a person is two answers to what their position is. Positions and Locations are code, because the first decides whether a shift pays as teaching and the second is what the geofence is built from.
+
+**Positions renders its colour swatch by asking `roleOf()`** rather than repeating the rule, so the calendar legend and that table cannot drift.
+
+**What a centre IT Head sees:** no area switch at all, and four tiles — Schedule, Employees, Positions, Locations. Work hours and Labour cost are pay; Settings can stop every teacher in the company clocking in. All three are guarded in `ShiftRoster` as well as absent from the tile list, because a missing tile stops a click and not a `section` value arriving another way.
+
+**The page is full width.** It was capped at `max-w-5xl`, which squeezed a calendar of 71 teachers into half a monitor.
+
+**Staff roster tab removed**, as asked. The `students` rows it edited are untouched and still drive the Tracker, the dashboard and achievements, and `attachToRoster()` still creates or links one whenever a login account is created. What is gone is the only screen that edited a row's **class and juz** by hand — nothing else in the codebase writes `students.juz`, so it now stays at its imported value, or at 1 for a new account. Say so if that needs a home.
+
 ### Location stamp (shipped 2026-08-10)
 
 OT is worked wherever the job is — a centre being cleaned, an event venue — so a teacher can stamp an OT session with one reading from their device.
@@ -213,6 +240,8 @@ Three things to know:
 - Tests are `.mjs` deliberately. The repo has no `"type": "module"`, and setting one to tidy the `MODULE_TYPELESS_PACKAGE_JSON` warning would change module resolution for every plain `.js` file in the project — not worth it for a cosmetic warning.
 
 The tests assert *rules*, not current output, and each says which rule it protects. If one goes red, the fix is almost never to update the expectation.
+
+**Verified in a browser for the two-area Admin (2026-09-17)**: the Admin/Shift Roster switch with Staff roster gone; the Admin side showing only Login accounts, Invited emails and Access; content measuring 1376px of a 1600px viewport rather than a capped column; the seven tiles reading `SCHEDULE·18 | 14 EMPLOYEES | 11 POSITIONS | 7 LOCATIONS | WORK HOURS | LABOUR COST | SETTINGS` with no Groups/Tags/Announcements; every tile opening its screen; Employees narrowing to "2 of 14" on the query *lead tampines*; Locations splitting 4 fenced from 3 unfenced and naming the fence's current state; Settings listing 2026 and 2027 holidays above the fence panel; `Sync holidays` gone from the roster toolbar with `Add shift` still on it; and a centre IT Head seeing no switch, four tiles, and landing on the calendar. One real bug was caught doing this: a `opacity-0` placeholder "0" on the count-less tiles was invisible to the eye but not to `innerText`, so the tile read "0 SCHEDULE" to a screen reader.
 
 **Verified in a browser for the fence screen (2026-09-17)**, against a seeded database holding 36 recorded verdicts: with no coordinates, six centres reading "Not resolved", the switch withheld entirely and the reason naming all six; after resolving, `3 of 34 recorded clock-ins (9%) would have been refused`, Tampines Junction showing 8 taps with 1 refused up to 1.2 km, and Woods Square showing a furthest-accepted of 940 m; the confirm step restating the count; the chip flipping to ON, the switch history recording "Turned ON by Nur Abdul Karim", and the off button appearing in its place; then OFF again with both entries in the history. A centre IT Head sees no Access tab at all. OneMap itself is blocked by this sandbox's egress policy, so the network half was exercised only on its failure path — which turned out to be worth doing: it showed the screen reporting `OneMap answered HTTP 403` per centre plus one consolidated banner, and it caught `load()` wiping the error message it had just set.
 
