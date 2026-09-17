@@ -110,7 +110,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
  * calendar of 71 teachers squeezed into half a monitor with white space beside
  * it — Karim's second ask on the same day.
  */
-export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null, mailReady = false }) {
+export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null, mailReady = false, positions = null }) {
   // A centre IT Head has no Admin area at all — no accounts, no invitations, no
   // access screen — so they open on the roster, which is their whole job here.
   const [area, setArea] = useState(fullAdmin ? "admin" : "roster");
@@ -236,6 +236,7 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
           fullAdmin={fullAdmin}
           managedBranches={managedBranches}
           fenceOn={fenceOn}
+          positions={positions}
         />
       )}
 

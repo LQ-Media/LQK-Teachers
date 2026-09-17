@@ -8,6 +8,7 @@ import { payrollReport } from "@/lib/actions/payroll";
 import { reliefBoard } from "@/lib/actions/relief";
 import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
 import { geofenceEnabled } from "@/lib/hours/geocode";
+import { livePositions } from "@/lib/hours/position-store";
 import { signupRow } from "@/lib/admin/signup";
 import { mailConfigured } from "@/lib/events/mail";
 import { sgMonthNow } from "@/lib/hours/rates";
@@ -126,6 +127,9 @@ export default async function AdminPage() {
       // So the Send-reminder button can say why it is disabled rather than
       // failing silently when RESEND_API_KEY is not set on this server.
       mailReady={mailConfigured()}
+      // The live position list, so the Add-shift dropdown and the Positions
+      // tile's count both follow what the Positions screen says.
+      positions={livePositions()}
     />
   );
 }

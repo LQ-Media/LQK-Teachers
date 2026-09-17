@@ -6,8 +6,8 @@ import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
 import HoursAdmin from "@/components/admin/HoursAdmin";
 import PayrollReport from "@/components/admin/PayrollReport";
 import RosterSettings from "@/components/admin/RosterSettings";
-import { EmployeesReference, PositionsReference, LocationsReference } from "@/components/admin/RosterReference";
-import { SHIFT_POSITIONS } from "@/lib/hours/positions";
+import PositionsPanel from "@/components/admin/PositionsPanel";
+import { EmployeesReference, LocationsReference } from "@/components/admin/RosterReference";
 import { SHIFT_LOCATIONS } from "@/lib/hours/locations";
 
 // Shift Roster — everything that was Sling, on one tab with Sling's own tile
@@ -38,6 +38,7 @@ export default function ShiftRoster({
   fullAdmin,
   managedBranches,
   fenceOn = null,
+  positions = null,
 }) {
   const [section, setSection] = useState("schedule");
 
@@ -69,8 +70,12 @@ export default function ShiftRoster({
       key: "positions",
       label: "Positions",
       icon: "clipboard-check",
-      count: SHIFT_POSITIONS.length,
-      hint: "The positions a shift can be worked in, and which pay as teaching",
+      // The LIVE count, not the code list's — the point of the screen is that
+      // Karim can change it, so the tile has to follow.
+      count: (positions || []).filter((p) => !p.archivedAt).length || null,
+      hint: fullAdmin
+        ? "Add, rename and archive the positions a shift can be worked in"
+        : "The positions a shift can be worked in, and which pay as teaching",
     },
     {
       key: "locations",
@@ -117,13 +122,16 @@ export default function ShiftRoster({
           teachers={teachers}
           locations={shiftLocations}
           initial={initialShifts}
+          positions={positions}
           fullAdmin={fullAdmin}
           managedBranches={managedBranches}
         />
       )}
 
       {section === "employees" && <EmployeesReference teachers={teachers} locations={locations} />}
-      {section === "positions" && <PositionsReference />}
+      {/* Editable for a full admin, read-only for a centre IT Head: the list
+          decides how every shift is classified on the payroll report. */}
+      {section === "positions" && <PositionsPanel canEdit={fullAdmin} />}
       {section === "locations" && <LocationsReference fenceOn={fenceOn} />}
 
       {/* Guarded again here, not only by the tile list. The tile being absent

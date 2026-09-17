@@ -2,29 +2,24 @@
 
 import Icon from "@/components/Icon";
 import { useMemo, useState } from "react";
-import { SHIFT_POSITIONS, POSITION_GROUPS } from "@/lib/hours/positions";
 import { LOCATIONS, SHIFT_LOCATIONS, GEOFENCE_RADIUS_M, locationForBranch, unfencedBranch } from "@/lib/hours/locations";
-import { ROLE_COLOURS, roleOf } from "@/lib/hours/calendar";
 
-// The three reference tiles on Shift Roster: EMPLOYEES, POSITIONS, LOCATIONS.
+// Two of the reference tiles on Shift Roster: EMPLOYEES and LOCATIONS.
 //
-// Sling has all three and they are genuinely useful on the way past — "which
-// position is this, and does it pay as teaching?" is asked while rostering, and
-// answering it should not mean reading source.
+// POSITIONS used to live here too and was read-only. It is now editable and has
+// its own screen — see components/admin/PositionsPanel.js. The argument for
+// keeping it in code was that it decided pay, and that was overstated: pay
+// comes from the tier on the person, so a position only decides teaching-vs-OT.
 //
-// All THREE ARE READ-ONLY, deliberately:
+// BOTH OF THESE ARE STILL READ-ONLY, deliberately:
 //
 //   Employees  — the list of accounts lives on the Admin tab, where creating
 //                and editing one belongs. Two places to edit a person is two
 //                answers to what their position is.
-//   Positions  — the list is code (lib/hours/positions.js), because it decides
-//                whether a shift pays as teaching or logs as OT. A dropdown
-//                somebody can add a row to is a dropdown somebody can use to
-//                invent a pay rate.
-//   Locations  — likewise code (lib/hours/locations.js): a centre's postal code
-//                is what the geofence is built from. Adding one here without
-//                resolving its coordinates would create a centre where nobody
-//                can clock in.
+//   Locations  — the list is code (lib/hours/locations.js): a centre's postal
+//                code is what the geofence is built from. Adding one here
+//                without resolving its coordinates would create a centre where
+//                nobody can clock in.
 //
 // Each screen says where the editable version is, so a read-only table never
 // reads as a broken one.
@@ -130,82 +125,6 @@ export function EmployeesReference({ teachers, locations }) {
           </div>
         )}
       </Card>
-    </>
-  );
-}
-
-// ---- Positions --------------------------------------------------------
-
-/**
- * The positions a shift can be worked in, and what each means for pay.
- *
- * The colour swatch is the same one the calendar uses, so the legend on the
- * grid and this table cannot disagree about what a green block is.
- */
-export function PositionsReference() {
-  return (
-    <>
-      <Note>
-        Read-only, and on purpose: the position is what decides whether a shift pays as teaching or logs as
-        non-teaching OT. The list lives in <code className="text-[11px]">lib/hours/positions.js</code> so a dropdown
-        can never become a way to invent a pay rate.
-      </Note>
-
-      {POSITION_GROUPS.map((group) => {
-        const rows = SHIFT_POSITIONS.filter((p) => p.group === group);
-        return (
-          <div key={group} className="mb-4 last:mb-0">
-            <Card title={`${group} (${rows.length})`}>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[30rem]">
-                  <thead>
-                    <tr className="border-b-[0.5px] border-line">
-                      <th className={TH}>Position</th>
-                      <th className={TH}>Logs as</th>
-                      <th className={TH}>Team on the payroll report</th>
-                      <th className={TH}>Colour on the calendar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((p) => {
-                      // Ask the calendar what colour it would paint, rather than
-                      // repeating its rules — a second copy would drift.
-                      const role = roleOf({
-                        status: "planned",
-                        category: p.category,
-                        otRole: p.otRole,
-                        position: p.key,
-                      });
-                      const c = ROLE_COLOURS[role];
-                      return (
-                        <tr key={p.key} className="border-b-[0.5px] border-line last:border-0">
-                          <td className={`${TD} font-semibold text-charcoal`}>{p.key}</td>
-                          <td className={TD}>
-                            <span
-                              className={`rounded-pill px-2 py-0.5 text-[11px] font-semibold ${
-                                p.category === "ot" ? "bg-paper-deep text-charcoal" : "bg-sage/15 text-charcoal"
-                              }`}
-                            >
-                              {p.category === "ot" ? "Non-teaching (OT)" : "Teaching"}
-                            </span>
-                          </td>
-                          <td className={`${TD} text-charcoal-soft`}>{p.otRole || "—"}</td>
-                          <td className={TD}>
-                            <span className="flex items-center gap-2">
-                              <span className={`h-3.5 w-3.5 rounded-[3px] ${c.bg}`} />
-                              <span className="text-[12px] text-charcoal-soft">{c.label}</span>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-        );
-      })}
     </>
   );
 }
