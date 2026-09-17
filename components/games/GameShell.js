@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Icon from "@/components/Icon";
 import {
+  DEFAULT_SAY_RATE,
   SAY_RATES,
   getSayRate,
   getVoicePref,
@@ -20,8 +21,8 @@ import {
 import { MASCOT_VOICE } from "@/lib/games/voices";
 
 /**
- * The frame every game runs inside: kiosk cover, hold-to-exit, level switch,
- * voice speed, music toggle.
+ * The frame every game runs inside: kiosk cover, exit, level switch, voice
+ * speed, music toggle.
  *
  * The speed control lives here rather than in any one game so that all five
  * share it and a teacher sets it once. It drives lib/games/audio.js directly,
@@ -35,17 +36,18 @@ import { MASCOT_VOICE } from "@/lib/games/voices";
  * wander into and no log-out button to find, while the route stays inside the
  * authenticated layout and needs no separate session handling.
  *
- * WHY EXIT IS A HOLD
+ * EXIT IS A PLAIN TAP
  *
- * A tap is something a child does forty times a minute. Leaving the game takes
- * a deliberate three-quarter-second press with visible feedback — long enough
- * that it never happens by accident, short enough that an ustazah never fights
- * it. A tap on it does nothing but show the hint.
+ * It used to be a three-quarter-second hold with a progress ring, so that a
+ * child tapping around could not wander out of the game and into a portal
+ * holding every child's records. That was changed on request: the teachers
+ * found fighting the hold cost them more than the stray exits did. Leaving is
+ * now one tap, and getting back in is one tap on the games hub, which is the
+ * trade that was asked for.
  */
 
 const LEVEL_KEY = "lqk_games_level";
 const MUSIC_KEY = "lqk_games_music";
-const HOLD_MS = 750;
 
 /* What each voice is called in this school. The menu says male and female
    alongside, because the control is about the voice and not about the person. */
@@ -60,16 +62,15 @@ export default function GameShell({
   children,
 }) {
   const router = useRouter();
-  const [holding, setHolding] = useState(0);
-  const [rate, setRate] = useState(SAY_RATES[2]);
+  // Starts at the module's own default so the chip can never disagree with
+  // what the audio layer will actually speak at.
+  const [rate, setRate] = useState(DEFAULT_SAY_RATE);
   const [rateOpen, setRateOpen] = useState(false);
   const [voice, setVoice] = useState("auto");
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voices, setVoices] = useState({ genders: [], arabic: 0, loaded: false });
   const [musicAvailable, setMusicAvailable] = useState(false);
   const [musicOn, setMusicOn] = useState(false);
-  const holdFrom = useRef(null);
-  const raf = useRef(null);
 
   /* Tell the audio layer which mascot is on screen, so that the default
      "auto" voice follows it: the ustaz games speak male, the ustazah games
@@ -200,32 +201,12 @@ export default function GameShell({
     });
   }, []);
 
-  /* ------------------------------------------------------------ hold to exit */
+  /* ------------------------------------------------------------------- exit */
 
-  const stopHold = useCallback(() => {
-    holdFrom.current = null;
-    if (raf.current) cancelAnimationFrame(raf.current);
-    raf.current = null;
-    setHolding(0);
-  }, []);
-
-  const startHold = useCallback(() => {
-    if (holdFrom.current !== null) return;
-    holdFrom.current = performance.now();
-    const step = () => {
-      if (holdFrom.current === null) return;
-      const held = (performance.now() - holdFrom.current) / HOLD_MS;
-      if (held >= 1) {
-        stopHold();
-        stopMusic();
-        router.push("/games");
-        return;
-      }
-      setHolding(held);
-      raf.current = requestAnimationFrame(step);
-    };
-    raf.current = requestAnimationFrame(step);
-  }, [router, stopHold]);
+  const leave = useCallback(() => {
+    stopMusic();
+    router.push("/games");
+  }, [router]);
 
   // Escape is the grown-up's way out, for a teacher on a laptop.
   useEffect(() => {
@@ -244,32 +225,12 @@ export default function GameShell({
       <header className="flex flex-shrink-0 items-center gap-2 border-b border-line bg-white px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <button
           type="button"
-          aria-label="Hold to leave the game"
-          title="Hold to leave"
-          onPointerDown={startHold}
-          onPointerUp={stopHold}
-          onPointerLeave={stopHold}
-          onPointerCancel={stopHold}
-          className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control text-charcoal-soft hover:bg-paper-deep"
+          aria-label="Leave the game"
+          title="Back to Games"
+          onClick={leave}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control text-charcoal-soft hover:bg-paper-deep"
         >
           <Icon name="chevron-left" size={20} />
-          {holding > 0 && (
-            <svg className="pointer-events-none absolute inset-0" viewBox="0 0 40 40">
-              <circle
-                cx="20"
-                cy="20"
-                r="17"
-                fill="none"
-                stroke="#96681A"
-                strokeWidth="3"
-                strokeLinecap="round"
-                pathLength="100"
-                strokeDasharray="100"
-                strokeDashoffset={100 - holding * 100}
-                transform="rotate(-90 20 20)"
-              />
-            </svg>
-          )}
         </button>
 
         <div className="min-w-0 flex-1">

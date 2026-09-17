@@ -7,7 +7,7 @@ import Glyph from "@/components/games/Glyph";
 import Mascot from "@/components/games/Mascot";
 import Icon from "@/components/Icon";
 import { HARAKAT, HURUF, huruf, sayFor, withHarakah } from "@/lib/games/huruf";
-import { buzz, fanfare, nudge, sayLetter, unlockAudio } from "@/lib/games/audio";
+import { buzz, fanfare, nudge, sayUnits, unlockAudio } from "@/lib/games/audio";
 
 /**
  * Hear & Touch — the listening game, and the only one that runs the other way.
@@ -53,44 +53,92 @@ function shuffle(list) {
   return out;
 }
 
-/** One question: the answer plus three distractors, in random card order. */
-function buildRound(previousAnswerKey) {
+/** How many units a card holds at each level, and how many right to move on. */
+const UNITS_PER_LEVEL = [1, 2, 3];
+const TO_ADVANCE = 10;
+
+function randomUnit() {
+  const letter = HURUF[Math.floor(Math.random() * HURUF.length)];
+  const harakah = HARAKAT[Math.floor(Math.random() * HARAKAT.length)];
+  return { letterId: letter.id, harakahId: harakah.id };
+}
+
+const keyOf = (units) => units.map((u) => `${u.letterId}-${u.harakahId}`).join("+");
+
+/**
+ * A confusable alternative to one unit — the same letter with a different
+ * vowel, or a letter from the same shape family. Never a random letter: a
+ * round of ب against و can be won without listening.
+ */
+function confusable(unit) {
+  const family = familyOf(unit.letterId).filter((id) => id !== unit.letterId);
+  const otherHarakat = HARAKAT.map((h) => h.id).filter((id) => id !== unit.harakahId);
+  const swapVowel = () => ({
+    letterId: unit.letterId,
+    harakahId: otherHarakat[Math.floor(Math.random() * otherHarakat.length)],
+  });
+  const swapLetter = () => ({
+    letterId: family[Math.floor(Math.random() * family.length)],
+    harakahId: HARAKAT[Math.floor(Math.random() * HARAKAT.length)].id,
+  });
+  if (!family.length) return swapVowel();
+  return Math.random() < 0.5 ? swapVowel() : swapLetter();
+}
+
+/**
+ * One question at a given level: the answer sequence plus three distractors,
+ * in random card order.
+ *
+ * Each distractor differs from the answer in exactly ONE unit. That is what
+ * makes the longer levels a listening test rather than a memory test — the
+ * child cannot win by catching only the first sound, because three of the four
+ * cards start the same way as often as not.
+ */
+function buildRound(level, previousKey) {
+  const size = UNITS_PER_LEVEL[level] ?? 1;
+
   let answer;
   do {
-    const letter = HURUF[Math.floor(Math.random() * HURUF.length)];
-    const harakah = HARAKAT[Math.floor(Math.random() * HARAKAT.length)];
-    answer = { letterId: letter.id, harakahId: harakah.id };
-  } while (`${answer.letterId}-${answer.harakahId}` === previousAnswerKey);
+    answer = Array.from({ length: size }, randomUnit);
+  } while (keyOf(answer) === previousKey);
 
   const options = [answer];
-  const family = familyOf(answer.letterId).filter((id) => id !== answer.letterId);
+  const seen = new Set([keyOf(answer)]);
 
-  // Same letter, different harakah: tests the vowel.
-  for (const h of shuffle(HARAKAT.map((h) => h.id)).filter((id) => id !== answer.harakahId)) {
-    if (options.length >= 2) break;
-    options.push({ letterId: answer.letterId, harakahId: h });
+  // Vary one position at a time, cycling through the positions so a long
+  // sequence gets distractors spread across it rather than all at the start.
+  for (let attempt = 0; attempt < 40 && options.length < 4; attempt++) {
+    const at = attempt % size;
+    const candidate = answer.map((u, i) => (i === at ? confusable(u) : u));
+    const key = keyOf(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(candidate);
   }
 
-  // Same shape family, any harakah: tests the consonant.
-  for (const id of shuffle(family)) {
-    if (options.length >= 4) break;
-    options.push({
-      letterId: id,
-      harakahId: HARAKAT[Math.floor(Math.random() * HARAKAT.length)].id,
-    });
-  }
-
-  // Letters with no shape family (ا ل م ه و ك) need filling out from anywhere.
+  // A one-unit answer with no shape family (ا ل م ه و ك) can run out of
+  // confusable neighbours, so the last cards come from anywhere.
   while (options.length < 4) {
-    const letter = HURUF[Math.floor(Math.random() * HURUF.length)];
-    const harakahId = HARAKAT[Math.floor(Math.random() * HARAKAT.length)].id;
-    const key = `${letter.id}-${harakahId}`;
-    if (!options.some((o) => `${o.letterId}-${o.harakahId}` === key)) {
-      options.push({ letterId: letter.id, harakahId });
-    }
+    const candidate = Array.from({ length: size }, randomUnit);
+    const key = keyOf(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(candidate);
   }
 
   return { answer, options: shuffle(options) };
+}
+
+/** The units of a card, with the Arabic and the deck's transliteration. */
+function readCard(units) {
+  return units.map((u) => {
+    const letter = huruf(u.letterId);
+    return {
+      ...u,
+      arabic: withHarakah(letter, u.harakahId),
+      say: sayFor(letter, u.harakahId),
+    };
+  });
 }
 
 /* Who is on screen. Used for the mascot AND for the default reciting voice,
@@ -101,71 +149,102 @@ const MASCOT = "ustazah";
 export default function HearTouch() {
   const [round, setRound] = useState(null);
   const [picked, setPicked] = useState(null);
-  const [score, setScore] = useState({ right: 0, asked: 0 });
+  const [level, setLevel] = useState(0);
+  const [score, setScore] = useState(0);
   const [beat, setBeat] = useState(0);
   const previous = useRef(null);
 
+  const size = UNITS_PER_LEVEL[level];
+
+  /* The prompt is spoken UNIT BY UNIT, never as one string. At level 2 and 3 a
+     card holds two or three sounds, and a speech engine handed "بَتَ" reads it
+     as a word — which is the one thing this game must not do, because the
+     child is being asked to hear the parts. */
   const play = useCallback((q) => {
-    const letter = huruf(q.answer.letterId);
-    sayLetter({
-      letterId: q.answer.letterId,
-      harakahId: q.answer.harakahId,
-      arabic: withHarakah(letter, q.answer.harakahId),
-    });
+    sayUnits(readCard(q.answer));
   }, []);
 
-  const next = useCallback(() => {
-    const q = buildRound(previous.current);
-    previous.current = `${q.answer.letterId}-${q.answer.harakahId}`;
-    setPicked(null);
-    setRound(q);
-    // A beat of silence before the prompt, or it collides with the reward
-    // sound of the round just finished.
-    setTimeout(() => play(q), 380);
-  }, [play]);
+  const deal = useCallback(
+    (forLevel) => {
+      const q = buildRound(forLevel, previous.current);
+      previous.current = keyOf(q.answer);
+      setPicked(null);
+      setRound(q);
+      // A beat of silence before the prompt, or it collides with the sound of
+      // the round just finished.
+      setTimeout(() => play(q), 380);
+    },
+    [play],
+  );
 
   // The first round waits for a tap rather than starting on mount: iOS will not
   // let a page make sound before a gesture, and a question the child never
   // heard is a question they cannot answer.
   function start() {
     unlockAudio();
-    next();
+    deal(level);
   }
 
-  function choose(option) {
+  /**
+   * A card was touched.
+   *
+   * WRONG CLEARS EVERYTHING AND DEALS AGAIN, IMMEDIATELY
+   *
+   * It used to mark the pick and replay the prompt, leaving `picked` set — and
+   * because every tap began with `if (picked) return`, the second try was
+   * silently ignored. A wrong answer left the game unusable until you
+   * navigated away, which is exactly how it was reported.
+   *
+   * Asked for: a wrong touch now resets the run to zero and deals a fresh
+   * round on the spot. Ten right in a row moves up a level.
+   */
+  function choose(units) {
     if (picked || !round) return;
     unlockAudio();
-    const correct =
-      option.letterId === round.answer.letterId && option.harakahId === round.answer.harakahId;
-    setPicked({ ...option, correct });
-    setScore((s) => ({ right: s.right + (correct ? 1 : 0), asked: s.asked + 1 }));
+    const correct = keyOf(units) === keyOf(round.answer);
     setBeat((b) => b + 1);
 
-    if (correct) {
-      fanfare();
-      buzz([20, 40, 20]);
-      setTimeout(next, 1500);
-    } else {
+    if (!correct) {
+      setPicked({ key: keyOf(units), correct: false });
       nudge();
       buzz(60);
-      // Wrong answers replay the prompt rather than moving on: the point is to
-      // hear it again next to what they picked, not to be marked down.
-      setTimeout(() => round && play(round), 700);
+      setScore(0);
+      setTimeout(() => deal(level), 650);
+      return;
     }
+
+    setPicked({ key: keyOf(units), correct: true });
+    const next = score + 1;
+    const levelUp = next >= TO_ADVANCE && level < UNITS_PER_LEVEL.length - 1;
+    fanfare();
+    buzz([20, 40, 20]);
+
+    if (levelUp) {
+      setScore(0);
+      setLevel(level + 1);
+      setTimeout(() => deal(level + 1), 1500);
+      return;
+    }
+    setScore(next);
+    setTimeout(() => deal(level), 1500);
   }
+
+  const cleared = score >= TO_ADVANCE && level === UNITS_PER_LEVEL.length - 1;
 
   return (
     <GameShell
       title="Hear &amp; Touch"
       mascot={MASCOT}
       subtitle={
-        score.asked > 0 ? `${score.right} of ${score.asked} heard right` : "Listen, then touch"
+        round
+          ? `Level ${level + 1} — ${size} ${size === 1 ? "sound" : "sounds"} · ${score} of ${TO_ADVANCE}`
+          : "Listen, then touch"
       }
     >
       <div className="relative flex h-full flex-col">
         {/* The prompt. Big and central, because it is the question — and
             tappable, because "again" is the single most common request. */}
-        <div className="relative flex flex-shrink-0 items-center justify-center py-4">
+        <div className="relative flex flex-shrink-0 flex-col items-center gap-2 py-3">
           <button
             type="button"
             onClick={() => (round ? play(round) : start())}
@@ -176,22 +255,38 @@ export default function HearTouch() {
               {round ? "Play it again" : "Start listening"}
             </span>
           </button>
+
+          {/* Ten lamps rather than a number: a child who cannot read a score
+              can still see how much of the row is filled, and a wrong answer
+              emptying it is legible without a word of explanation. */}
+          {round && (
+            <div className="flex items-center gap-1.5" aria-label={`${score} of ${TO_ADVANCE}`}>
+              {Array.from({ length: TO_ADVANCE }, (_, i) => (
+                <span
+                  key={i}
+                  className={`h-2 w-2 rounded-pill transition-colors ${
+                    i < score ? "bg-gold" : "bg-line"
+                  }`}
+                />
+              ))}
+              {cleared && (
+                <span className="ml-1 font-heading text-[12px] font-bold text-ink">All three!</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div dir="rtl" className="grid min-h-0 flex-1 grid-cols-2 gap-2.5 p-3">
-          {(round?.options ?? []).map((o) => {
-            const letter = huruf(o.letterId);
-            const isPicked =
-              picked && picked.letterId === o.letterId && picked.harakahId === o.harakahId;
-            const revealed =
-              picked?.correct &&
-              o.letterId === round.answer.letterId &&
-              o.harakahId === round.answer.harakahId;
+          {(round?.options ?? []).map((units) => {
+            const card = readCard(units);
+            const key = keyOf(units);
+            const isPicked = picked?.key === key;
+            const revealed = picked?.correct && key === keyOf(round.answer);
             return (
               <button
-                key={`${o.letterId}-${o.harakahId}`}
+                key={key}
                 type="button"
-                onClick={() => choose(o)}
+                onClick={() => choose(units)}
                 className={`flex flex-col items-center justify-center rounded-card border-2 transition-colors ${
                   revealed
                     ? "lqk-bloom border-gold bg-gold-soft"
@@ -200,8 +295,11 @@ export default function HearTouch() {
                       : "border-line bg-white hover:bg-paper-deep"
                 }`}
               >
-                <Glyph size={52} className="h-full max-h-[34vh] w-auto text-ink">
-                  {withHarakah(letter, o.harakahId)}
+                {/* One run of text, so the browser shapes the sequence the way
+                    a mushaf would — بَتَ joined, not two loose letters. The ear
+                    still gets them separately. */}
+                <Glyph size={52} className="h-full max-h-[30vh] w-auto text-ink">
+                  {card.map((u) => u.arabic).join("")}
                 </Glyph>
                 {/* The transliteration appears only after an answer: showing it
                     up front would turn a listening game into a reading one. */}
@@ -210,7 +308,7 @@ export default function HearTouch() {
                     picked ? "opacity-100" : "opacity-0"
                   } ${revealed ? "text-ink" : "text-charcoal-soft"}`}
                 >
-                  {sayFor(letter, o.harakahId)}
+                  {card.map((u) => u.say).join("-")}
                 </span>
               </button>
             );
@@ -219,6 +317,8 @@ export default function HearTouch() {
           {!round && (
             <p className="col-span-2 self-center text-center text-[13px] text-charcoal-soft">
               Press <strong>Start listening</strong> and touch the letter you hear.
+              <br />
+              Ten in a row moves you up: one sound, then two, then three.
             </p>
           )}
         </div>

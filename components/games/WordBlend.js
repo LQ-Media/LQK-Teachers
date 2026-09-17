@@ -8,7 +8,7 @@ import Mascot from "@/components/games/Mascot";
 import Icon from "@/components/Icon";
 import { HARAKAT, HURUF, sayFor } from "@/lib/games/huruf";
 import { CARD_SETS, ayahOf, cardSet, meaningOf, syllables } from "@/lib/games/words";
-import { buzz, chime, fanfare, sayLetter, speakArabic, unlockAudio } from "@/lib/games/audio";
+import { buzz, chime, fanfare, sayLetter, sayUnits, speakArabic, unlockAudio } from "@/lib/games/audio";
 
 /**
  * Word Blending — joining letters into a word.
@@ -117,6 +117,31 @@ export default function WordBlend() {
     reset();
   }
 
+  /**
+   * How a finished word is voiced, and why the two sets differ.
+   *
+   * The printed deck is half nonsense by design — ثَمَسَ, سَصَجَ, دَضَنَ are
+   * built from confusable letters, not from meaning. Handing one of those to a
+   * speech engine as a single string gets it read as if it were a word, which
+   * is both wrong to the ear and hides the thing being drilled. So a deck card
+   * is sounded out unit by unit: "Tsa, Ma, Sa", never "thamasa".
+   *
+   * A Quran card is a real word with its meaning on screen, so hearing it
+   * whole is the reward for having blended it, and it stays one utterance.
+   */
+  function sayWhole() {
+    if (setId === "quran") {
+      speakArabic(word);
+      return;
+    }
+    sayUnits(
+      units.map((u) => {
+        const r = readUnit(u);
+        return { letterId: r.letter?.id, harakahId: r.harakah?.id ?? null, arabic: u };
+      }),
+    );
+  }
+
   function touch(i) {
     unlockAudio();
     if (complete) return;
@@ -153,7 +178,7 @@ export default function WordBlend() {
       // There is no clip for a whole drill word, so this is the device voice or
       // nothing; either way the flourish plays, so the join is always marked.
       setTimeout(() => {
-        speakArabic(word);
+        sayWhole();
         fanfare();
       }, 620);
     }
@@ -221,7 +246,7 @@ export default function WordBlend() {
               type="button"
               onClick={() => {
                 unlockAudio();
-                speakArabic(word);
+                sayWhole();
               }}
               className="lqk-bloom flex max-w-full items-center gap-3 rounded-pill bg-gold-soft px-6 py-2 text-ink"
             >
