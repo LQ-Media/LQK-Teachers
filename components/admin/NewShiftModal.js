@@ -5,13 +5,7 @@ import Icon from "@/components/Icon";
 import SearchSelect from "@/components/SearchSelect";
 import { createShifts } from "@/lib/actions/shifts";
 import { sgToday, sgWeekday } from "@/lib/hours/rates";
-import {
-  SHIFT_POSITIONS,
-  POSITION_GROUPS,
-  REPEAT_OPTIONS,
-  needsUntil,
-  positionFromProfile,
-} from "@/lib/hours/positions";
+import { SHIFT_POSITIONS, REPEAT_OPTIONS, needsUntil, positionFromProfile } from "@/lib/hours/positions";
 import { endOfSgWeek } from "@/lib/hours/calendar";
 
 // New shift, laid out as Sling lays it out.
@@ -43,7 +37,12 @@ const DAYS = [
 const field =
   "w-full bg-white border-[0.5px] border-line rounded-control px-[11px] py-[9px] text-[13px] text-charcoal outline-none focus:border-ink";
 
-export default function NewShiftModal({ teachers, locations, defaultDate, onClose, onSaved }) {
+export default function NewShiftModal({ teachers, locations, defaultDate, positions, onClose, onSaved }) {
+  // The live list from the Positions screen, or the code list when it has not
+  // been threaded through (and as the floor if the table is somehow empty) —
+  // a Position dropdown with nothing in it cannot create a shift at all.
+  const posList = positions?.length ? positions : SHIFT_POSITIONS;
+  const groups = [...new Set(posList.map((p) => p.group))];
   const startDate = defaultDate || sgToday();
   const [form, setForm] = useState({
     date: startDate,
@@ -265,9 +264,9 @@ export default function NewShiftModal({ teachers, locations, defaultDate, onClos
           <Row label="Position" icon="clipboard-check">
             <select className={field} value={form.position} onChange={set("position")}>
               <option value="">Add position</option>
-              {POSITION_GROUPS.map((g) => (
+              {groups.map((g) => (
                 <optgroup key={g} label={g}>
-                  {SHIFT_POSITIONS.filter((p) => p.group === g).map((p) => (
+                  {posList.filter((p) => p.group === g).map((p) => (
                     <option key={p.key} value={p.key}>
                       {p.key}
                     </option>
@@ -279,7 +278,7 @@ export default function NewShiftModal({ teachers, locations, defaultDate, onClos
                 decides it and a surprise on the payroll report is expensive. */}
             {form.position && (
               <p className="mt-1 text-[11px] text-charcoal-soft">
-                {SHIFT_POSITIONS.find((p) => p.key === form.position)?.category === "ot"
+                {posList.find((p) => p.key === form.position)?.category === "ot"
                   ? "Logged as non-teaching (OT)."
                   : "Logged as a teaching shift."}
               </p>

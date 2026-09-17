@@ -11,6 +11,8 @@ import {
   createInvite,
   deleteInvite,
 } from "@/lib/actions/admin";
+import { sendSignupReminders } from "@/lib/actions/signup";
+import { STATE_LABEL, needsReminder, MAX_PER_SEND } from "@/lib/admin/signup";
 import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
@@ -108,7 +110,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
  * calendar of 71 teachers squeezed into half a monitor with white space beside
  * it — Karim's second ask on the same day.
  */
-export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null }) {
+export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null, mailReady = false, positions = null }) {
   // A centre IT Head has no Admin area at all — no accounts, no invitations, no
   // access screen — so they open on the roster, which is their whole job here.
   const [area, setArea] = useState(fullAdmin ? "admin" : "roster");
@@ -129,6 +131,11 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
       primaryLocation: u.primary_location || "",
     }))
     .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
+
+  // Accounts nobody has signed in to, plus ones an admin has reset and the
+  // person has not picked up. Counted here so the tab itself answers "who
+  // hasn't signed up" without being opened.
+  const unsigned = users.filter((u) => needsReminder(u.signup?.state)).length;
 
   // What is outstanding on the roster side, so the switch says so without
   // having to be opened. Missed clock-ins plus sessions awaiting approval —
@@ -195,6 +202,7 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
         <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
           <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
             Login accounts ({users.length})
+            {unsigned ? <span className="ml-1 text-rust">· {unsigned} not signed up</span> : null}
           </Tab>
           <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
             Invited emails ({invites.length})
@@ -207,7 +215,12 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
       )}
 
       {inAdmin && tab === "users" && (
-        <UsersTable users={users} onEdit={(u) => setUserModal({ mode: "edit", user: u })} onCreds={setCreds} />
+        <UsersTable
+          users={users}
+          mailReady={mailReady}
+          onEdit={(u) => setUserModal({ mode: "edit", user: u })}
+          onCreds={setCreds}
+        />
       )}
       {inAdmin && tab === "invites" && <InvitesTable invites={invites} />}
       {inAdmin && tab === "access" && <AccessPanel />}
@@ -223,6 +236,7 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
           fullAdmin={fullAdmin}
           managedBranches={managedBranches}
           fenceOn={fenceOn}
+          positions={positions}
         />
       )}
 
@@ -241,11 +255,83 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
 
 // ---- Users -------------------------------------------------------------
 
-function UsersTable({ users, onEdit, onCreds }) {
+/**
+ * The sign-up state, as a pill.
+ *
+ * Three states rather than a tick and a cross, because "reset and not picked
+ * up" is a person locked out of an account they were using — a different and
+ * more urgent thing than never having started. See lib/admin/signup.js.
+ */
+function SignupPill({ signup }) {
+  const state = signup?.state || "active";
+  const tone =
+    state === "active"
+      ? "bg-sage/15 text-charcoal"
+      : state === "reset"
+        ? "bg-gold-soft/60 text-charcoal"
+        : "bg-rust/10 text-rust";
+  return (
+    <span className={`inline-block rounded-pill px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
+      {STATE_LABEL[state]}
+    </span>
+  );
+}
+
+function shortDay(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("en-SG", {
+    timeZone: "Asia/Singapore",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function UsersTable({ users, mailReady = false, onEdit, onCreds }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // "everyone" | "outstanding" | "active"
+  const [show, setShow] = useState("everyone");
+  const [report, setReport] = useState(null);
+
+  const shown = users.filter((u) => {
+    if (show === "outstanding") return needsReminder(u.signup?.state);
+    if (show === "active") return !needsReminder(u.signup?.state);
+    return true;
+  });
+  const outstanding = users.filter((u) => needsReminder(u.signup?.state));
+  // Selection is over the VISIBLE rows, so "select all" while filtered to the
+  // outstanding picks exactly the people a reminder is for — which is the whole
+  // reason the filter is there.
+  const remindable = shown.filter((u) => needsReminder(u.signup?.state)).map((u) => u.id);
+
   // Your own account can never be deleted, so it is never selectable either.
-  const sel = useSelection(users.filter((u) => !u.isSelf).map((u) => u.id));
+  const sel = useSelection(shown.filter((u) => !u.isSelf).map((u) => u.id));
+
+  function sendReminders(ids) {
+    const names = users.filter((u) => ids.includes(u.id)).map((u) => u.full_name);
+    if (!names.length) return;
+    const preview = names.slice(0, 5).join(", ") + (names.length > 5 ? `, and ${names.length - 5} more` : "");
+    if (
+      !confirm(
+        `Email a sign-up reminder to ${names.length} ${names.length === 1 ? "person" : "people"}?\n\n${preview}\n\n` +
+          "This gives each of them a NEW temporary password and sends it to them. " +
+          "Any password they already have stops working."
+      )
+    )
+      return;
+    setReport(null);
+    startTransition(async () => {
+      const r = await sendSignupReminders(ids);
+      if (r?.error) {
+        alert(r.error);
+        return;
+      }
+      setReport(r);
+      sel.clear();
+      router.refresh();
+    });
+  }
 
   function removeSelected() {
     const names = users.filter((u) => sel.has(u.id)).map((u) => u.full_name);
@@ -294,6 +380,96 @@ function UsersTable({ users, onEdit, onCreds }) {
 
   return (
     <>
+    {/* Who has signed up, and the one button for the ones who haven't. */}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-card border-[0.5px] border-line bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1 rounded-control bg-paper-deep p-1">
+        {[
+          ["everyone", `Everyone (${users.length})`],
+          ["outstanding", `Not signed up (${outstanding.length})`],
+          ["active", `Signed up (${users.length - outstanding.length})`],
+        ].map(([k, lbl]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => { setShow(k); sel.clear(); }}
+            className={`rounded-[7px] px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+              show === k ? "bg-white text-charcoal shadow-sm" : "text-charcoal-soft hover:text-charcoal"
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {outstanding.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!mailReady && (
+            <span className="text-[12px] text-rust">
+              Email isn’t set up on this server, so reminders can’t be sent.
+            </span>
+          )}
+          <button
+            type="button"
+            disabled={pending || !mailReady || !remindable.length}
+            onClick={() => sendReminders(remindable.slice(0, MAX_PER_SEND))}
+            title={`Sends at most ${MAX_PER_SEND} at a time`}
+            className="rounded-control border-[0.5px] border-ink px-3 py-2 text-[12px] font-semibold text-ink hover:bg-ink/5 disabled:opacity-40"
+          >
+            Remind {Math.min(remindable.length, MAX_PER_SEND) || 0}
+            {remindable.length > MAX_PER_SEND ? ` of ${remindable.length}` : ""}
+          </button>
+        </div>
+      )}
+    </div>
+
+    {/* Per-person outcomes. A partial send has to be readable: the people it
+        failed for have had their password changed and NOT been told, and this
+        is the only place that still knows what it was. */}
+    {report && (
+      <div className="mb-4 rounded-card border-[0.5px] border-line bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[13px] font-semibold text-charcoal">
+            {report.sent} sent{report.failed ? `, ${report.failed} failed` : ""}
+            {report.held?.length ? ` · ${report.held.length} held back for the next batch` : ""}
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setReport(null)}
+            className="text-charcoal-soft hover:text-charcoal"
+          >
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+        <ul className="mt-2 space-y-1">
+          {report.results.map((r) => (
+            <li key={r.id} className="text-[12px]">
+              <strong className={`font-semibold ${r.ok ? "text-sage" : "text-rust"}`}>
+                {r.ok ? "Sent" : "Failed"}
+              </strong>{" "}
+              <span className="text-charcoal">{r.name || r.id}</span>
+              <span className="text-charcoal-soft">{r.email ? ` · ${r.email}` : ""}</span>
+              {!r.ok && (
+                <span className="text-charcoal-soft">
+                  {" "}
+                  — {r.error}
+                  {r.tempPassword ? (
+                    <>
+                      . Their password is now{" "}
+                      <code className="rounded bg-paper-deep px-1 py-0.5 font-semibold text-charcoal">
+                        {r.tempPassword}
+                      </code>{" "}
+                      — pass it on by hand.
+                    </>
+                  ) : null}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
     <BulkBar count={sel.count} noun="account" pending={pending} onClear={sel.clear} onDelete={removeSelected} />
     <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
       <div className="overflow-x-auto">
@@ -311,13 +487,14 @@ function UsersTable({ users, onEdit, onCreds }) {
                 />
               </th>
               <Th>Name</Th>
+              <Th>Signed up?</Th>
               <Th>Role</Th>
               <Th>Branch</Th>
               <Th className="text-right pr-4">Actions</Th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {shown.map((u) => (
               <tr
                 key={u.id}
                 className={`border-b-[0.5px] border-line last:border-0 align-middle ${sel.has(u.id) ? "bg-paper-deep" : ""}`}
@@ -358,6 +535,24 @@ function UsersTable({ users, onEdit, onCreds }) {
                   </div>
                 </td>
                 <td className="px-3 py-3">
+                  <SignupPill signup={u.signup} />
+                  {u.signup?.lastLoginAt ? (
+                    <div className="mt-0.5 text-[11px] text-charcoal-soft">
+                      Last in {shortDay(u.signup.lastLoginAt)}
+                    </div>
+                  ) : u.signup?.state === "active" ? (
+                    // Honest about the gap: last_login_at only started being
+                    // recorded on 17 Sep, so an older account holds its own
+                    // password with no date to show for it.
+                    <div className="mt-0.5 text-[11px] text-charcoal-soft">Before 17 Sep</div>
+                  ) : null}
+                  {u.signup?.reminderCount ? (
+                    <div className="mt-0.5 text-[11px] text-charcoal-soft">
+                      Reminded {u.signup.reminderCount}× · last {shortDay(u.signup.remindedAt)}
+                    </div>
+                  ) : null}
+                </td>
+                <td className="px-3 py-3">
                   <RolePill role={u.role} />
                 </td>
                 <td className="px-3 py-3 text-[12px] text-charcoal-soft">
@@ -366,6 +561,14 @@ function UsersTable({ users, onEdit, onCreds }) {
                 <td className="py-3 pr-4">
                   <div className="flex items-center justify-end gap-1">
                     <IconBtn label="Edit" icon="pencil" onClick={() => onEdit(u)} />
+                    {needsReminder(u.signup?.state) && (
+                      <IconBtn
+                        label="Email a sign-up reminder"
+                        icon="mail"
+                        disabled={pending || !mailReady}
+                        onClick={() => sendReminders([u.id])}
+                      />
+                    )}
                     <IconBtn label="Reset password" icon="key" disabled={pending} onClick={() => reset(u)} />
                     <IconBtn
                       label="Delete"
@@ -378,10 +581,14 @@ function UsersTable({ users, onEdit, onCreds }) {
                 </td>
               </tr>
             ))}
-            {!users.length && (
+            {!shown.length && (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-[13px] text-charcoal-soft">
-                  No accounts yet.
+                <td colSpan={6} className="p-6 text-center text-[13px] text-charcoal-soft">
+                  {users.length
+                    ? show === "outstanding"
+                      ? "Everybody has signed up."
+                      : "Nobody matches that."
+                    : "No accounts yet."}
                 </td>
               </tr>
             )}

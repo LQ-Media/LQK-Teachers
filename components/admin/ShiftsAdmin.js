@@ -43,7 +43,7 @@ function dayLabel(date) {
   });
 }
 
-export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = true, managedBranches = null }) {
+export default function ShiftsAdmin({ teachers, locations, initial, positions = null, fullAdmin = true, managedBranches = null }) {
   const router = useRouter();
   const [view, setView] = useState("roster"); // roster | attendance | missed | relief
   const [from, setFrom] = useState(initial.from);
@@ -310,6 +310,7 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
         <NewShiftModal
           teachers={teachers}
           locations={myLocations}
+          positions={positions}
           defaultDate={oneDate}
           onClose={() => {
             setModal(null);

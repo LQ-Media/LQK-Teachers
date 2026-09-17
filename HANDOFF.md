@@ -180,6 +180,46 @@ Karim: *"i find the admin view very messy. i want the Sling functions to be on i
 
 **Staff roster tab removed**, as asked. The `students` rows it edited are untouched and still drive the Tracker, the dashboard and achievements, and `attachToRoster()` still creates or links one whenever a login account is created. What is gone is the only screen that edited a row's **class and juz** by hand — nothing else in the codebase writes `students.juz`, so it now stays at its imported value, or at 1 for a new account. Say so if that needs a home.
 
+### 4e. Who has signed up, and editable positions (2026-09-17)
+
+**Sign-up status.** `profiles.last_login_at` is new, stamped by `login()` and `register()`. Login accounts now shows **three** states, and the third is why `lib/admin/signup.js` is a module rather than a ternary:
+
+| State | Means | Reminder? |
+|---|---|---|
+| `active` | signed in, holds a password they chose | no |
+| `never` | an admin made the account, nobody has used it | yes |
+| `reset` | signed in before, an admin has since reset them, new password not picked up | yes |
+
+Collapsing `reset` into `never` would report somebody as never having signed up when in fact an admin broke it; collapsing it into `active` would hide a teacher who is locked out right now.
+
+`last_login_at` is backfilled to **NULL**, not to a date. An older account holding its own password therefore reads as signed up with "Before 17 Sep" where a date would go — the opposite default would have declared all 71 accounts unsigned on the day this shipped and emailed every one of them a new password.
+
+**Sending a reminder RESETS that person's password**, and Karim chose that over building an activation-link flow because the portal still has no forgotten-password page. Three rules in `lib/actions/signup.js` are deliberate:
+
+- **The reset is written BEFORE the email is sent**, per person. A failed email then leaves somebody holding a password they were never told — recoverable, and the screen surfaces it. The other order would send a password that is not yet the account's, and a failed write after it would leave a credential that does not work and no way to know why.
+- **25 a press, enforced.** Resend's free tier is 100 a *day* shared with the Parents portal (see the warning atop `lib/events/mail.js`). The remainder comes back as ids, not a count, so the next press knows who it still owes. Duplicates are collapsed — two resets in one batch means the first email's password is dead before it arrives.
+- **The state is re-derived server-side**, never trusted from the browser. A stale screen could name somebody who signed in five minutes ago.
+
+Failures are logged to `signup_reminders` with the reason and do **not** count towards "Reminded 3×", or the number would describe emails nobody received.
+
+### 4f. Positions are editable (2026-09-17)
+
+Karim: *"i need the positions page or it to be edittable for me if i need to edit or add."*
+
+**A correction to §4b:** it said the position list had to stay in code "because it decides pay". That was overstated. `rateFor(category, payTier, otRole)` reads the **tier on the person** for teaching and the **OT team's rate** for non-teaching — a position decides teaching-vs-OT and which team, and nothing about a rate. Editable is safe.
+
+`shift_positions` is the live list, **seeded once** from `SHIFT_POSITIONS` so a deploy changes nothing. The seed is guarded on the table being EMPTY, not per row: `INSERT OR REPLACE` on every boot would silently undo a rename or an archive on the next deploy. `lib/hours/positions.js` stays as the seed and as the floor for an empty table — a Position dropdown with nothing in it cannot create a shift.
+
+**`name` is the primary key and IS the value stored in `shifts.position`**, so a rename rewrites those rows in the same transaction. The form shows the count before you save. A surrogate id was the alternative and would have meant migrating every deployed shift's position string.
+
+Three rules worth keeping:
+
+- **Re-classifying a position does not re-price shifts already created.** A shift's `category` is stamped at creation and is what the payroll report reads; flipping a position to OT afterwards must not retroactively unpay a month of approved teaching.
+- **Archive, never delete.** A position is the classification on months of paid shifts. `positionMeaningLive()` therefore resolves *archived* positions too, so tidying the list never locks the edit form out of old shifts. Archiving the last live position is refused.
+- **No base wage.** Sling has one; LQK does not pay that way, and two sources of truth for pay is how they end up disagreeing. Karim chose to leave it out.
+
+A chosen colour beats the name-derived one in `roleOf()`, and `cancelled` is not offered as a choice — it is the status colour, and painting a live position grey would make a working shift look called off.
+
 ### Location stamp (shipped 2026-08-10)
 
 OT is worked wherever the job is — a centre being cleaned, an event venue — so a teacher can stamp an OT session with one reading from their device.
@@ -240,6 +280,8 @@ Three things to know:
 - Tests are `.mjs` deliberately. The repo has no `"type": "module"`, and setting one to tidy the `MODULE_TYPELESS_PACKAGE_JSON` warning would change module resolution for every plain `.js` file in the project — not worth it for a cosmetic warning.
 
 The tests assert *rules*, not current output, and each says which rule it protects. If one goes red, the fix is almost never to update the expectation.
+
+**Verified in a browser for sign-up status and editable positions (2026-09-17)**, against a seeded database holding all three states: the tab reading "· 4 not signed up", the filter pills `Everyone (7) / Not signed up (4) / Signed up (3)` narrowing to exactly the 4 outstanding rows, "Before 17 Sep" on the undated active account, "Reminded 2× · last 14 Sept 2026" on the chased one, and the Remind button disabled with a plain reason while `RESEND_API_KEY` was unset. Then with a key set: a send reported **"0 sent, 1 failed — Resend returned 403. Their password is now lqk-rkc8yy — pass it on by hand"**, and the database confirmed the hash HAD changed, the row was logged `ok=0` with the reason, and the failure did not count towards "Reminded N×". Positions: adding "Relief Teacher" with a palette colour and seeing it in the Add-shift dropdown on the same visit; the rename warning naming the shift count before saving; the OT-team dropdown appearing only for an OT position; no wage column anywhere. **Not verified here:** a SUCCESSFUL send — this sandbox's egress policy blocks Resend, so only the failure path could run.
 
 **Verified in a browser for the two-area Admin (2026-09-17)**: the Admin/Shift Roster switch with Staff roster gone; the Admin side showing only Login accounts, Invited emails and Access; content measuring 1376px of a 1600px viewport rather than a capped column; the seven tiles reading `SCHEDULE·18 | 14 EMPLOYEES | 11 POSITIONS | 7 LOCATIONS | WORK HOURS | LABOUR COST | SETTINGS` with no Groups/Tags/Announcements; every tile opening its screen; Employees narrowing to "2 of 14" on the query *lead tampines*; Locations splitting 4 fenced from 3 unfenced and naming the fence's current state; Settings listing 2026 and 2027 holidays above the fence panel; `Sync holidays` gone from the roster toolbar with `Add shift` still on it; and a centre IT Head seeing no switch, four tiles, and landing on the calendar. One real bug was caught doing this: a `opacity-0` placeholder "0" on the count-less tiles was invisible to the eye but not to `innerText`, so the tile read "0 SCHEDULE" to a screen reader.
 
