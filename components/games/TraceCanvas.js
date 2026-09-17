@@ -177,6 +177,28 @@ export default function TraceCanvas({
 
   /* ---------------------------------------------------------------- pointer */
 
+  /* Keep the browser from deciding the trace was a scroll.
+   *
+   * `touch-action: none` on the surface is the declarative half and is set in
+   * the class list below. This is the other half: while a finger is actually
+   * tracing, the default action of each touchmove is cancelled outright, which
+   * is what stops a phone turning the stroke into a pan or a pull-to-refresh
+   * and firing pointercancel at us.
+   *
+   * It has to be a native listener. React registers touchmove as PASSIVE, and
+   * preventDefault() inside a React onTouchMove handler does nothing at all —
+   * so this cannot be expressed as a JSX prop.
+   */
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return undefined;
+    const block = (e) => {
+      if (pointerId.current !== null && e.cancelable) e.preventDefault();
+    };
+    svg.addEventListener("touchmove", block, { passive: false });
+    return () => svg.removeEventListener("touchmove", block);
+  }, []);
+
   /** Take the transform once, at the start of a gesture. */
   const readTransform = useCallback(() => {
     const svg = svgRef.current;
@@ -309,7 +331,13 @@ export default function TraceCanvas({
    * road, which stops the glow on a trace that was perfectly good.
    */
   const sampleEvent = useCallback((e) => {
-    const parts = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    /* getCoalescedEvents lives on the NATIVE pointer event. React's synthetic
+       event copies a fixed list of properties and does not forward methods, so
+       reading it off the synthetic event silently returned undefined and this
+       whole path was dead code — every intermediate position the browser had
+       already captured was thrown away. */
+    const native = e.nativeEvent ?? e;
+    const parts = native.getCoalescedEvents ? native.getCoalescedEvents() : null;
     const list = parts && parts.length ? parts : [e];
     for (const part of list) {
       const p = toViewBox(part.clientX, part.clientY);
@@ -317,18 +345,48 @@ export default function TraceCanvas({
     }
   }, [toViewBox, sampleAt]);
 
+  const acquire = useCallback((e) => {
+    pointerId.current = e.pointerId;
+    readTransform();
+  }, [readTransform]);
+
   function onPointerDown(e) {
     if (pointerId.current !== null || done) return;
     unlockAudio();
-    pointerId.current = e.pointerId;
+    acquire(e);
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    readTransform();
     const p = toViewBox(e.clientX, e.clientY);
     if (p) sampleAt(p);
   }
 
+  /**
+   * A moving finger, including one the browser has already given up on.
+   *
+   * THE PHONE BUG THIS EXISTS FOR
+   *
+   * A phone fires `pointercancel` as soon as it decides a touch might be a
+   * scroll or a system gesture — the finger is still on the glass and still
+   * moving, but the gesture is officially over. The surface used to drop the
+   * pointer id at that moment and then ignore every later move, so a drag died
+   * silently while TAPPING still worked, because each tap is a fresh
+   * `pointerdown`. That is exactly how it was reported: "it works if I tap
+   * along the path". A big touchscreen never does this, which is why the same
+   * code felt fine there.
+   *
+   * So a move with no gesture in progress re-acquires instead of being thrown
+   * away. A touch pointer only moves while it is down, and a mouse reports its
+   * held buttons, so "is this finger still pressed" is answerable and there is
+   * no risk of a stray hover reviving a finished stroke.
+   */
   function onPointerMove(e) {
-    if (e.pointerId !== pointerId.current) return;
+    if (pointerId.current === null) {
+      if (done) return;
+      const pressed = e.pointerType === "touch" || e.buttons > 0 || e.pressure > 0;
+      if (!pressed) return;
+      acquire(e);
+    } else if (e.pointerId !== pointerId.current) {
+      return;
+    }
     sampleEvent(e);
   }
 
@@ -357,7 +415,10 @@ export default function TraceCanvas({
   const startPoint = strokes[strokeIndex]?.start;
 
   return (
-    <div className={`relative ${className}`}>
+    /* touch-none on the wrapper as well as the surface: the SVG alone left the
+       wrapper at touch-action:auto, so a finger that strayed a pixel off the
+       SVG could still start a pan. */
+    <div className={`relative touch-none ${className}`}>
       <svg
         ref={svgRef}
         viewBox={geometry?.viewBox ?? "0 0 1000 1000"}
