@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Icon from "@/components/Icon";
+import SearchSelect from "@/components/SearchSelect";
 import { sgClock, formatHM, sgToday } from "@/lib/hours/rates";
 import {
   DAY_LABELS,
@@ -53,7 +54,9 @@ export default function ShiftCalendar({
   onOpen,
 }) {
   const [branch, setBranch] = useState("");
-  const [teacherId, setTeacherId] = useState("");
+  // MULTI-select, and searchable: 77 names share so many first words that a
+  // plain <select> is a scroll hunt even when you know who you want.
+  const [teacherIds, setTeacherIds] = useState([]);
   const [category, setCategory] = useState("");
   const today = sgToday();
 
@@ -62,11 +65,11 @@ export default function ShiftCalendar({
   const visible = useMemo(() => {
     return (shifts || []).filter((s) => {
       if (branch && s.branch !== branch) return false;
-      if (teacherId && s.teacherId !== teacherId) return false;
+      if (teacherIds.length && !teacherIds.includes(s.teacherId)) return false;
       if (category && s.category !== category) return false;
       return true;
     });
-  }, [shifts, branch, teacherId, category]);
+  }, [shifts, branch, teacherIds, category]);
 
   const cells = useMemo(() => byDate(visible), [visible]);
   const legend = useMemo(() => legendFor(visible), [visible]);
@@ -159,19 +162,16 @@ export default function ShiftCalendar({
               </option>
             ))}
           </select>
-          <select
-            aria-label="Teacher"
-            value={teacherId}
-            onChange={(e) => setTeacherId(e.target.value)}
-            className="max-w-[170px] rounded-control border-[0.5px] border-line bg-paper px-2.5 py-2 text-[12px] text-charcoal"
-          >
-            <option value="">All teachers</option>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.fullName || t.full_name}
-              </option>
-            ))}
-          </select>
+          <SearchSelect
+            label="Teacher"
+            className="w-[190px]"
+            multiple
+            placeholder="All teachers"
+            searchPlaceholder="Type a name"
+            options={teachers.map((t) => ({ value: t.id, label: t.fullName || t.full_name }))}
+            value={teacherIds}
+            onChange={setTeacherIds}
+          />
           <select
             aria-label="Type"
             value={category}
@@ -269,7 +269,7 @@ export default function ShiftCalendar({
 
       {visible.length === 0 && !loading && (
         <p className="mt-3 text-center text-[13px] text-charcoal-soft">
-          No shifts {branch || teacherId || category ? "match those filters" : "rostered"} in {rangeLabel}.
+          No shifts {branch || teacherIds.length || category ? "match those filters" : "rostered"} in {rangeLabel}.
         </p>
       )}
     </div>

@@ -26,6 +26,7 @@ import {
 import { adjustClockIn } from "@/lib/actions/hours";
 import { reliefBoard, withdrawOffer } from "@/lib/actions/relief";
 import ShiftCalendar from "@/components/admin/ShiftCalendar";
+import ShiftDetail from "@/components/admin/ShiftDetail";
 import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
 import { OT_REASONS, formatHM, sgClock, sgDate, sgTime24, sgToday, addSgDays, isoFromSg } from "@/lib/hours/rates";
 
@@ -353,25 +354,12 @@ export default function ShiftsAdmin({ teachers, locations, initial, fullAdmin = 
       )}
 
       {detail && (
-        <ShiftDetailModal
-          shift={detail}
-          busy={busy}
+        <ShiftDetail
+          shiftId={detail.id}
+          teachers={teachers}
+          locations={myLocations}
           onClose={() => setDetail(null)}
-          onSplit={() => {
-            const s = detail;
-            setDetail(null);
-            setSplitting(s);
-          }}
-          onCancel={(reason) =>
-            startTransition(async () => {
-              const r = await cancelShift(detail.id, reason);
-              if (r?.error) setNotice(r.error);
-              else {
-                setDetail(null);
-                reload();
-              }
-            })
-          }
+          onChanged={() => reload()}
         />
       )}
       {modal === "bulk" && (
@@ -1247,112 +1235,5 @@ function ReliefRow({ offer, busy, onWithdraw, urgent = false }) {
         Take off board
       </button>
     </div>
-  );
-}
-
-/**
- * One shift, clicked in the calendar.
- *
- * Shows the facts and offers the two things that already exist for a shift:
- * cancel it, or split it so two reliefs can take a class each. Deliberately NOT
- * an editor — the list view edits, and half an editor in two places is how the
- * two drift apart.
- */
-function ShiftDetailModal({ shift, busy, onClose, onSplit, onCancel }) {
-  const [reason, setReason] = useState("cancelled");
-  const [confirming, setConfirming] = useState(false);
-  const cancelled = shift.status === "cancelled";
-  const worked = !!shift.sessionId;
-
-  return (
-    <Modal title="Shift" onClose={onClose}>
-      <div className="space-y-1 text-[13px] text-charcoal">
-        <div className="font-heading text-[18px] font-bold">
-          {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
-        </div>
-        <div className="text-charcoal-soft">
-          {dayLabel(shift.date)} · {formatHM(shift.minutes)}
-          {shift.phName ? ` · ${shift.phName}` : ""}
-        </div>
-        <div className="pt-2">{shift.teacherName || "—"}</div>
-        <div className="text-[12px] text-charcoal-soft">
-          {shift.position || (shift.category === "ot" ? shift.otReason || "Ad-hoc / OT" : "Class teaching")}
-          {shift.branch ? ` · ${shift.branch}` : ""}
-        </div>
-        {shift.note && <p className="pt-2 text-[12px] text-charcoal-soft">{shift.note}</p>}
-
-        {cancelled && (
-          <p className="pt-2 text-[12px] font-semibold text-rust">
-            Cancelled{shift.cancelReason ? ` — ${shift.cancelReason}` : ""}
-          </p>
-        )}
-        {!cancelled && shift.category !== "ot" && (
-          <p className="pt-2 text-[12px] text-charcoal-soft">
-            {shift.clockInAt
-              ? `Clocked in ${sgClock(shift.clockInAt)}`
-              : new Date(shift.endsAt) < new Date()
-                ? "No clock-in — this shift pays nothing until an IT Head adjusts it."
-                : "Not clocked in yet."}
-          </p>
-        )}
-      </div>
-
-      {!cancelled && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {/* Split refuses once anybody has clocked in, so it is not offered. */}
-          {!worked && (
-            <button
-              type="button"
-              onClick={onSplit}
-              disabled={busy}
-              className="rounded-control border-[0.5px] border-line px-3 py-2 text-[13px] font-semibold text-charcoal hover:border-ink disabled:opacity-60"
-            >
-              Split for relief
-            </button>
-          )}
-          {!confirming ? (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              disabled={busy}
-              className="rounded-control border-[0.5px] border-rust px-3 py-2 text-[13px] font-semibold text-rust hover:bg-rust/5 disabled:opacity-60"
-            >
-              Cancel this shift
-            </button>
-          ) : (
-            <div className="w-full rounded-control border-[0.5px] border-rust bg-rust/5 p-3">
-              <label className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Why?</label>
-              <select
-                className={field}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              >
-                <option value="cancelled">Class cancelled</option>
-                <option value="holiday">Public holiday</option>
-                <option value="leave">Teacher on leave</option>
-                <option value="error">Rostered by mistake</option>
-              </select>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => onCancel(reason)}
-                  disabled={busy}
-                  className="rounded-control bg-rust px-3 py-2 text-[13px] font-semibold text-paper disabled:opacity-60"
-                >
-                  {busy ? "Cancelling…" : "Cancel the shift"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirming(false)}
-                  className="rounded-control border-[0.5px] border-line px-3 py-2 text-[13px] font-semibold text-charcoal-soft hover:border-ink"
-                >
-                  Keep it
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </Modal>
   );
 }
