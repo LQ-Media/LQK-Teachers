@@ -25,7 +25,7 @@ export async function generateMetadata({ params }) {
   const found = getGuestByToken(token);
   if (!found) return { title: "Invitation" };
   return {
-    title: `${found.event.title} — an invitation for your family`,
+    title: `${found.event.title} — an invitation for you`,
     description: found.event.venue_name || undefined,
     robots: { index: false, follow: false },
   };

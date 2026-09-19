@@ -163,7 +163,6 @@ export default function QiblaFinder() {
     }
     if (typeof DOE.requestPermission === "function") {
       // iOS — wait for the user to tap "Enable compass".
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompassState("need-permission");
       return;
     }

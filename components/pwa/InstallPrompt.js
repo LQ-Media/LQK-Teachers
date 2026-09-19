@@ -26,6 +26,12 @@ export default function InstallPrompt() {
   const [show, setShow] = useState(false);
   const [ios, setIos] = useState(false);
 
+  // Same exception as DzikirReader: everything this effect decides from —
+  // navigator, localStorage, the standalone display mode — exists only in a
+  // browser. Reading it during render would either crash on the server or
+  // produce markup the server could not have produced. The effect runs once and
+  // cascades nothing.
+  /* eslint-disable react-hooks/set-state-in-effect -- see the note above */
   useEffect(() => {
     // Production only: the SW is cache-first for /_next/static/, and dev
     // (Turbopack) reuses chunk URLs across edits — registering it in dev
@@ -60,6 +66,7 @@ export default function InstallPrompt() {
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function dismiss() {
     setShow(false);

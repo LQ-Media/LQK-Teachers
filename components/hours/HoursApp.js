@@ -6,7 +6,8 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import EmptyArt from "@/components/EmptyArt";
 import LocationTag, { LocationLine } from "@/components/hours/LocationTag";
-import { clockIn, clockOut, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
+import { clockIn, addPastSession, editSession, deleteSession, setSessionLocation } from "@/lib/actions/hours";
+import { offerShift, withdrawOffer, takeShift } from "@/lib/actions/relief";
 import { explainMissed } from "@/lib/actions/shifts";
 import {
   OT_REASONS,
@@ -37,6 +38,7 @@ export default function HoursApp({
   onShift,
   nextShift,
   upcoming,
+  offers = [],
   missed,
   awaiting,
   sessions,
@@ -140,7 +142,24 @@ export default function HoursApp({
           <h2 className="mb-3 font-heading text-[15px] font-semibold text-charcoal">Your next shifts</h2>
           <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
             {upcoming.map((s) => (
-              <UpcomingRow key={s.id} shift={s} />
+              <UpcomingRow key={s.id} shift={s} onNotice={setNotice} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The relief board. Placed under the roster rather than above it: a
+          teacher opens this page to see their own shifts, and somebody else's
+          spare class is only interesting once they have. */}
+      {offers.length > 0 && (
+        <div className="mt-7">
+          <h2 className="mb-1 font-heading text-[15px] font-semibold text-charcoal">Shifts needing cover</h2>
+          <p className="mb-3 text-[12px] text-charcoal-soft">
+            Offered by other teachers. Taking one moves it to you and it’s paid at your rate.
+          </p>
+          <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
+            {offers.map((o) => (
+              <OfferRow key={o.id} offer={o} onNotice={setNotice} />
             ))}
           </div>
         </div>
@@ -188,8 +207,48 @@ export default function HoursApp({
 // ---- Shift card --------------------------------------------------------
 
 // One tap is the whole teacher-facing action. There is no clock out: teachers
-// forget, and an open session leaves nobody knowing when they finished. Pay is
-// the rostered shift, so the end time is already known the moment they arrive.
+// forget, and an open session leaves nobody knowing when they finished. Pay
+// runs from the scheduled start — or from the tap, if they were late — to the
+// scheduled end, so the end time is known the moment they arrive.
+
+/**
+ * The teacher's position, for the clock-in geofence. Resolves to null on ANY
+ * failure — denied, unavailable, timed out, insecure origin, no support.
+ *
+ * Deliberately silent and deliberately quick. This runs on a tap the teacher
+ * has already made, in a doorway, on a phone, and a prompt they have to answer
+ * before their shift will start is a prompt they will learn to dismiss. The
+ * server decides what a missing fix means (lib/actions/hours.js: it is recorded
+ * and allowed, because every centre is on an upper floor where GPS is worst);
+ * this only has to not hang.
+ *
+ * 8 seconds, then give up. A fix arriving after the teacher has walked into
+ * the classroom is no longer about where they clocked in.
+ */
+function currentFix() {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
+    if (typeof window !== "undefined" && !window.isSecureContext) return resolve(null);
+    let settled = false;
+    const done = (v) => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
+    const timer = setTimeout(() => done(null), 8000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(timer);
+        done({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+      },
+      () => {
+        clearTimeout(timer);
+        done(null);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+}
 
 function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNotice }) {
   const router = useRouter();
@@ -200,16 +259,17 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
 
   function doClockIn() {
     startTransition(async () => {
-      const r = await clockIn({ branch, note, geo });
+      // A rostered shift carries its own branch, so the teacher is never asked
+      // where they are — but the fix is still taken, silently, because that is
+      // what the geofence checks. A refused or missing fix sends null and the
+      // server decides; it never blocks the tap here.
+      const fix = geo || (await currentFix());
+      const r = await clockIn({ branch, note, geo: fix });
       if (r?.error) onNotice(r.error);
       else {
         setNote("");
         setGeo(null);
-        if (r?.unscheduled) {
-          onNotice(
-            "Clocked in, but you have no shift rostered right now. An admin will see this and set your end time."
-          );
-        } else if (r?.shifts > 1) {
+        if (r?.shifts > 1) {
           onNotice(`Clocked in for all ${r.shifts} of your back-to-back shifts.`);
         }
         router.refresh();
@@ -219,7 +279,7 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
 
   // An unscheduled session is the only thing left genuinely running — nobody
   // knows when it ends, so the teacher can close it themselves.
-  if (running) return <OpenCard running={running} pending={pending} onNotice={onNotice} />;
+  if (running) return <OpenCard running={running} />;
 
   if (onShift) return <OnShiftCard session={onShift} />;
 
@@ -254,30 +314,16 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
         <div className="mb-4">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-soft">No shift rostered</span>
           <p className="mt-1 text-[13px] text-charcoal-soft">
-            You can still clock in — an admin will set the end time.
+            There’s nothing to clock in to right now. If you’re teaching a class that isn’t on your
+            roster, tell your IT Head and they’ll add the shift.
           </p>
         </div>
       )}
 
-      {/* Only an unrostered tap needs to say where it is; a shift knows already. */}
-      {!nextShift && (
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          <Labelled label="Branch">
-            <select className={field} value={branch} onChange={(e) => setBranch(e.target.value)}>
-              {branchOptions.map((b) => (
-                <option key={b}>{b}</option>
-              ))}
-            </select>
-          </Labelled>
-          <Labelled label="Note (optional)">
-            <input className={field} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What are you doing?" />
-          </Labelled>
-          <div className="sm:col-span-2">
-            <span className="mb-1 block text-[11px] font-semibold text-charcoal-soft">Where are you?</span>
-            <LocationTag value={geo} onChange={setGeo} />
-          </div>
-        </div>
-      )}
+      {/* There was a branch / note / location form here, shown only when nothing
+          was rostered. An unrostered tap is now refused outright, so the form
+          could only ever be filled in and then rejected. A shift carries its own
+          branch, and the location is taken silently on the tap. */}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-[12px] text-charcoal-soft">
@@ -291,7 +337,7 @@ function ShiftCard({ running, onShift, nextShift, branchOptions, tierRate, onNot
         <button
           type="button"
           onClick={doClockIn}
-          disabled={pending}
+          disabled={pending || !nextShift}
           className="flex items-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
         >
           <Icon name="play" size={15} filled />
@@ -346,24 +392,19 @@ function OnShiftCard({ session }) {
   );
 }
 
-// An unscheduled tap: no roster to say when it ends, so the system never
-// guesses. The teacher can close it, or an admin sets the end time.
-function OpenCard({ running, pending, onNotice }) {
+// A session left open under the old rules, before unscheduled clock-ins were
+// blocked. No new one can be created, and the teacher cannot close it: pay runs
+// to the scheduled end and ending your own shift is editing your own pay
+// (Karim, 16 Sep 2026). An admin closes it with the time it really ended.
+function OpenCard({ running }) {
+  // Still needed for the location tag below: tagging where they were is the one
+  // thing a teacher can usefully do with a legacy open session.
   const router = useRouter();
-  const [busy, startTransition] = useTransition();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-
-  function doClose() {
-    startTransition(async () => {
-      const r = await clockOut();
-      if (r?.error) onNotice(r.error);
-      else router.refresh();
-    });
-  }
 
   return (
     <div className="rounded-card border-[0.5px] border-gold bg-gold-soft/30 p-5">
@@ -377,15 +418,9 @@ function OpenCard({ running, pending, onNotice }) {
             {running.branch ? `${running.branch} · ` : ""}since {sgClock(running.startedAt)}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={doClose}
-          disabled={pending || busy}
-          className="flex items-center gap-2 rounded-control bg-ink px-5 py-3 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep disabled:opacity-60"
-        >
-          <Icon name="square" size={15} filled />
-          {busy ? "Saving…" : "Clock out"}
-        </button>
+        <div className="max-w-[15rem] text-right text-[12px] text-charcoal-soft">
+          An admin will close this off with the time it actually ended.
+        </div>
       </div>
       <div className="mt-3 rounded-control bg-white/70 p-3">
         <span className="mb-1.5 block text-[11px] font-semibold text-charcoal-soft">Location</span>
@@ -405,28 +440,165 @@ function OpenCard({ running, pending, onNotice }) {
 
 // ---- Roster rows -------------------------------------------------------
 
-function UpcomingRow({ shift }) {
+function UpcomingRow({ shift, onNotice }) {
+  const router = useRouter();
   const today = shift.date === sgToday();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  // Only a future shift can be given away — an offer is a request for somebody
+  // to turn up, and one that has already started cannot be answered.
+  const canOffer = !shift.offeredAt && new Date(shift.startsAt) > new Date();
+
+  function submit(fn, arg) {
+    startTransition(async () => {
+      const r = await fn(shift.id, arg);
+      if (r?.error) onNotice?.(r.error);
+      else {
+        setAsking(false);
+        setReason("");
+        router.refresh();
+      }
+    });
+  }
+
+  return (
+    <div className="border-b-[0.5px] border-line px-4 py-3 last:border-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px] font-semibold text-charcoal">
+              {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
+            </span>
+            {shift.phName && (
+              <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
+                {shift.phName}
+              </span>
+            )}
+            {shift.offeredAt && (
+              <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-soft">
+                Offered
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 text-[12px] text-charcoal-soft">
+            {today ? "Today" : sgDate(shift.startsAt)}
+            {shift.branch ? ` · ${shift.branch}` : ""}
+            {shift.category === "ot" ? ` · ${shift.otReason || "Ad-hoc / OT"}` : ""}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-[12px] text-charcoal-soft">{formatHM(shift.minutes)}</span>
+          {shift.offeredAt ? (
+            <button
+              type="button"
+              onClick={() => submit(withdrawOffer)}
+              disabled={pending}
+              className="rounded-control border-[0.5px] border-line px-2.5 py-1.5 text-[12px] font-semibold text-charcoal-soft hover:border-ink hover:text-charcoal disabled:opacity-60"
+            >
+              Take back
+            </button>
+          ) : canOffer ? (
+            <button
+              type="button"
+              onClick={() => setAsking((v) => !v)}
+              disabled={pending}
+              className="rounded-control border-[0.5px] border-line px-2.5 py-1.5 text-[12px] font-semibold text-charcoal-soft hover:border-ink hover:text-charcoal disabled:opacity-60"
+            >
+              Can’t make it
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {shift.offeredAt && shift.offerReason && (
+        <p className="mt-1.5 text-[12px] text-charcoal-soft">Reason given: {shift.offerReason}</p>
+      )}
+
+      {asking && (
+        <div className="mt-3 rounded-control bg-paper p-3">
+          <p className="mb-2 text-[12px] text-charcoal-soft">
+            This puts the shift on the board for any teacher to pick up, and notifies them. It stays
+            yours until somebody takes it.
+          </p>
+          <input
+            className={field}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why can’t you make it? (optional)"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => submit(offerShift, reason)}
+              disabled={pending}
+              className="rounded-control bg-ink px-3 py-2 text-[12px] font-semibold text-paper hover:bg-ink-deep disabled:opacity-60"
+            >
+              {pending ? "Offering…" : "Offer this shift"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAsking(false)}
+              className="rounded-control border-[0.5px] border-line px-3 py-2 text-[12px] font-semibold text-charcoal-soft hover:border-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A shift somebody else has given up. One tap takes it — and the server decides
+// the winner, so two teachers tapping at once cannot both be told yes.
+function OfferRow({ offer, onNotice }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function take() {
+    startTransition(async () => {
+      const r = await takeShift(offer.id);
+      if (r?.error) onNotice(r.error);
+      else {
+        onNotice("That shift is yours now — it’s in your roster.");
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-3 last:border-0">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-semibold text-charcoal">
-            {sgClock(shift.startsAt)} – {sgClock(shift.endsAt)}
+            {sgClock(offer.startsAt)} – {sgClock(offer.endsAt)}
           </span>
-          {shift.phName && (
+          {offer.phName && (
             <span className="rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sage">
-              {shift.phName}
+              {offer.phName}
             </span>
           )}
         </div>
         <div className="mt-0.5 text-[12px] text-charcoal-soft">
-          {today ? "Today" : sgDate(shift.startsAt)}
-          {shift.branch ? ` · ${shift.branch}` : ""}
-          {shift.category === "ot" ? ` · ${shift.otReason || "Ad-hoc / OT"}` : ""}
+          {sgDate(offer.startsAt)}
+          {offer.branch ? ` · ${offer.branch}` : ""}
+          {offer.fromName ? ` · from ${offer.fromName}` : ""}
+          {` · ${formatHM(offer.minutes)}`}
         </div>
+        {offer.offerReason && (
+          <p className="mt-0.5 text-[12px] text-charcoal-soft">“{offer.offerReason}”</p>
+        )}
       </div>
-      <span className="shrink-0 text-[12px] text-charcoal-soft">{formatHM(shift.minutes)}</span>
+      <button
+        type="button"
+        onClick={take}
+        disabled={pending}
+        className="shrink-0 rounded-control bg-ink px-3 py-2 text-[12px] font-semibold text-paper hover:bg-ink-deep disabled:opacity-60"
+      >
+        {pending ? "Taking…" : "Take it"}
+      </button>
     </div>
   );
 }

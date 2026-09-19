@@ -1,9 +1,8 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import Icon from "@/components/Icon";
-import { parseTajweed, tajweedRule } from "@/lib/quran/tajweed";
-import { tokeniseMakhraj, MAKHRAJ_REGIONS } from "@/lib/quran/makhraj";
+import ArabicBody from "./ArabicBody";
 
 /**
  * A single ayah. Memoised on granular props (not the whole store state) so that
@@ -64,7 +63,6 @@ function VerseCard({
             verse={verse}
             displayMode={displayMode}
             wordIndex={wordIndex}
-            arabicColor={settings.arabicColor}
             onWordTap={onWordTap}
           />{" "}
           <AyahMedallion number={verse.number} />
@@ -107,64 +105,6 @@ function AyahMedallion({ number }) {
       {arabic}
     </span>
   );
-}
-
-/** The Arabic line, rendered per display mode. */
-function ArabicBody({ verse, displayMode, wordIndex, arabicColor, onWordTap }) {
-  // Tajweed — colour by rule. Falls back to plain text if the field is absent.
-  const tajweedTokens = useMemo(
-    () => (displayMode === "tajweed" ? parseTajweed(verse.textTajweed) : null),
-    [displayMode, verse.textTajweed]
-  );
-  // Makhraj — colour each letter by articulation region.
-  const makhrajTokens = useMemo(
-    () => (displayMode === "makhraj" ? tokeniseMakhraj(verse.textUthmani) : null),
-    [displayMode, verse.textUthmani]
-  );
-
-  if (displayMode === "tajweed") {
-    if (!tajweedTokens || tajweedTokens.length === 0) return verse.textUthmani;
-    return tajweedTokens.map((t, i) => (
-      <span key={i} style={t.rule ? { color: tajweedRule(t.rule).color } : undefined}>
-        {t.text}
-      </span>
-    ));
-  }
-
-  if (displayMode === "makhraj") {
-    return makhrajTokens.map((t, i) => (
-      <span key={i} style={t.region ? { color: MAKHRAJ_REGIONS[t.region].color } : undefined}>
-        {t.text}
-      </span>
-    ));
-  }
-
-  // Plain — word-by-word, tappable for meaning, with live word-sync highlight.
-  if (verse.words.length === 0) return verse.textUthmani;
-  return verse.words.map((w, i) => {
-    const highlighted = i === wordIndex;
-    return (
-      <span key={i}>
-        <span
-          role="button"
-          tabIndex={0}
-          className={`cursor-pointer rounded px-0.5 transition-colors hover:bg-gold-soft/50 focus:bg-gold-soft/50 focus:outline-none ${
-            highlighted ? "bg-gold-soft" : ""
-          }`}
-          style={highlighted ? { color: "var(--color-ink-deep)" } : undefined}
-          onClick={() => onWordTap(w)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onWordTap(w);
-            }
-          }}
-        >
-          {w.text}
-        </span>{" "}
-      </span>
-    );
-  });
 }
 
 function GhostButton({ on, tone, label, title, onClick, children }) {

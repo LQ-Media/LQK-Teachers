@@ -39,7 +39,19 @@ const RESET_ROUTES = ["/forgot-password", "/reset-password"];
    phone — and the TV showing the leaderboard cannot type a password. The
    credential is the pass token in the path (verified in
    lib/events/passport-queries.js) or the event's staff PIN. */
-const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/", "/q/"];
+/* /huruf/ is the Games' static content: the traced letter shapes, the two
+   mascots and the spoken letter clips. It is public for the same reason
+   /prop/ is — none of it is anyone's data, it is identical for every teacher,
+   and it is the printed flashcards' own artwork. It also has to be reachable
+   without a session because the service worker precaches it at INSTALL time
+   (public/sw.js): behind the gate, an install running on an expired session
+   would follow the redirect and cache the login page's HTML under the
+   geometry's URL, and every game would then open to an empty box until the
+   cache was cleared.
+
+   Note this is the asset namespace, not the games themselves — /games and
+   /games/<name> are ordinary portal pages and stay behind the gate. */
+const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/", "/q/", "/huruf/"];
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;

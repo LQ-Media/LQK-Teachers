@@ -1,4 +1,5 @@
 import { Baloo_2, Nunito_Sans, Amiri, Noto_Naskh_Arabic } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
 // Display / headings — Baloo 2 (rounded, friendly, on-brand).
@@ -32,6 +33,19 @@ const amiri = Amiri({
   weight: ["400", "700"],
 });
 
+// Mirza — the face on the printed huruf flashcards, and so the face the Games
+// use for every letter on screen. Self-hosted rather than fetched from Google
+// because the same file is the source the trace geometry is generated from
+// (scripts/huruf-geometry.py): one font file, so a letter a child traces and a
+// letter they read on a card cannot drift apart. It lives in brand/ rather than
+// public/ because next/font emits its own hashed copy — a second copy under
+// public/ would be served to nobody. Licence: brand/fonts/OFL.txt.
+const mirza = localFont({
+  src: "../brand/fonts/Mirza-Regular.ttf",
+  variable: "--font-mirza",
+  display: "swap",
+});
+
 export const metadata = {
   title: "LQK Teachers Portal",
   description: "Little Quran Kids — Teachers Portal",
@@ -61,7 +75,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${baloo.variable} ${nunito.variable} ${naskh.variable} ${amiri.variable} h-full`}
+      className={`${baloo.variable} ${nunito.variable} ${naskh.variable} ${amiri.variable} ${mirza.variable} h-full`}
     >
       <body className="min-h-full">{children}</body>
     </html>
