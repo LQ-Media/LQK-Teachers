@@ -1,38 +1,39 @@
-import { cookies } from "next/headers";
-import { encrypt, getSession } from "@/lib/session";
-import { isProvider, providerConfigured, beginAuth, appOrigin } from "@/lib/auth/oauth";
+import { NextResponse } from "next/server";
+import { baseUrl } from "@/lib/mail";
+import { getSession } from "@/lib/session";
+import { PROVIDERS, providerConfigured } from "@/lib/auth/providers";
+import { startAuth } from "@/lib/auth/oauth";
 
-// Only route methods may be exported from a route file, so the cookie name is
-// repeated in the callback route.
-const OAUTH_COOKIE = "lqk_oauth";
+/* Step 1 of social sign-in: send the browser to the provider.
+   The matching callback is ../callback/route.js. */
 
-// GET /api/auth/<provider>/start[?mode=link]
-//
-// Sends the person to the provider. What we need back at the callback
-// (state, nonce, PKCE verifier, and whether this is a sign-in or a "link to
-// my account" from the profile page) rides in a signed, httpOnly cookie that
-// lives ten minutes. `/api` is outside the page proxy, so a signed-out
-// person can reach this — that is the point.
+export const dynamic = "force-dynamic";
+
 export async function GET(request, ctx) {
   const { provider } = await ctx.params;
-  if (!isProvider(provider) || !providerConfigured(provider)) {
-    return Response.redirect(new URL("/login?error=provider", request.url), 302);
-  }
-  const mode = request.nextUrl.searchParams.get("mode") === "link" ? "link" : "signin";
-  const session = await getSession();
-  // Linking needs a signed-in person to link TO.
-  if (mode === "link" && !session?.userId) return Response.redirect(new URL("/login", request.url), 302);
+  const home = baseUrl();
 
-  const origin = appOrigin(request.headers);
-  const { url, state, nonce, verifier } = beginAuth(provider, { origin });
-  const token = await encrypt({ p: provider, s: state, n: nonce, v: verifier, m: mode, u: mode === "link" ? session.userId : null });
-  const store = await cookies();
-  store.set(OAUTH_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/api/auth",
-    maxAge: 600,
-  });
-  return Response.redirect(url, 302);
+  if (!PROVIDERS[provider] || !providerConfigured(provider)) {
+    return NextResponse.redirect(`${home}/login?error=unavailable`);
+  }
+
+  // "link" attaches the provider account to the profile that is ALREADY signed
+  // in — how a teacher connects a personal Gmail, or an Apple ID hidden behind
+  // a relay address, that could never be matched to their work email on its own.
+  const wantsLink = new URL(request.url).searchParams.get("link") === "1";
+  let profileId = null;
+  if (wantsLink) {
+    const session = await getSession();
+    if (!session?.userId) return NextResponse.redirect(`${home}/login`);
+    profileId = session.userId;
+  }
+
+  try {
+    const url = await startAuth(provider, { mode: wantsLink ? "link" : "signin", profileId });
+    return NextResponse.redirect(url);
+  } catch {
+    // startAuth only throws on missing configuration or a missing SESSION_SECRET
+    // — nothing here is worth leaking to the browser.
+    return NextResponse.redirect(`${home}/login?error=unavailable`);
+  }
 }

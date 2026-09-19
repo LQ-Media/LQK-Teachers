@@ -4,8 +4,13 @@ import Icon from "@/components/Icon";
 
 export default function MiniPlayer({ state, store }) {
   const p = state.playback;
-  const total = state.verses.length;
-  const currentIndex = p.verseKey ? state.verses.findIndex((v) => v.verseKey === p.verseKey) : -1;
+  // Whatever is on screen is what plays: the page in page mode, the surah
+  // otherwise. Counting against the surah while showing a page would tell a
+  // teacher they were on ayah 5 of 286 when the page holds seven lines.
+  const onPage = state.layout === "page";
+  const list = onPage ? state.pageVerses : state.verses;
+  const total = list.length;
+  const currentIndex = p.verseKey ? list.findIndex((v) => v.verseKey === p.verseKey) : -1;
   const isPlaying = p.playing || p.loading;
   const scroll = state.autoscroll;
   const chapter = state.chapters.find((c) => c.id === Number(state.chapterId));
@@ -17,10 +22,10 @@ export default function MiniPlayer({ state, store }) {
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <div className="text-[10.5px] font-bold uppercase tracking-wide text-charcoal-soft">
-              Play surah
+              {onPage ? "Play page" : "Play surah"}
             </div>
             <div className="truncate text-[14px] font-bold text-charcoal">
-              {chapter ? chapter.nameSimple : ""}
+              {onPage ? `Page ${state.pageNumber}` : chapter ? chapter.nameSimple : ""}
               <span className="ml-1.5 font-semibold text-charcoal-soft">
                 {currentIndex >= 0 ? `${currentIndex + 1}/${total}` : total > 0 ? `${total} ayahs` : ""}
               </span>
@@ -31,7 +36,7 @@ export default function MiniPlayer({ state, store }) {
           </ControlButton>
           <button
             type="button"
-            aria-label={isPlaying ? "Pause" : "Play surah"}
+            aria-label={isPlaying ? "Pause" : onPage ? "Play page" : "Play surah"}
             onClick={() => (isPlaying ? store.pause() : store.playChapter())}
             className="flex h-11 w-11 items-center justify-center rounded-full bg-ink text-paper shadow-sm transition-[background-color,transform] duration-150 ease-out hover:bg-ink-deep active:scale-95"
           >

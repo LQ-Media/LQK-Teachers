@@ -100,7 +100,7 @@ const OWNED = [
   ["assessments", "teacher_id"],
   ["assessment_reviews", "teacher_id"],
   ["class_reports", "teacher_id"],
-  ["auth_identities", "profile_id"],
+  ["oauth_identities", "profile_id"],
 ];
 
 // Rows that outlive the person and just lose the pointer. These have no

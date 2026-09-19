@@ -24,6 +24,7 @@ const MORE_ITEMS = [
   { href: "/ilmu", label: "Ilmu Bank", icon: "users" },
   { href: "/packs", label: "Lesson Packs", icon: "clipboard-check" },
   { href: "/kalimah", label: "Kalimah", icon: "star" },
+  { href: "/games", label: "Games", icon: "sparkles" },
   { href: "/qibla", label: "Qibla", icon: "compass" },
   { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Awards", icon: "trophy" },
@@ -50,8 +51,20 @@ export default function MobileTabBar({ role, canAssess = false }) {
   const moreItems = MORE_ITEMS.filter((i) => (!i.roles || i.roles.includes(role)) && (!i.assessor || canAssess));
   const moreActive = moreItems.some((i) => isUnder(pathname, i.href));
 
-  // Close the sheet whenever navigation happens, and on Escape.
-  useEffect(() => setMoreOpen(false), [pathname]);
+  // Close the sheet whenever navigation happens.
+  //
+  // Adjusted DURING RENDER rather than in an effect. React re-runs this
+  // component immediately with the new state and never commits the open sheet
+  // or paints it, where an effect would: the sheet would render open over the
+  // new page for one frame and then vanish. This is React's documented pattern
+  // for adjusting state when a value changes.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
+    setMoreOpen(false);
+  }
+
+  // Escape closes it too.
   useEffect(() => {
     if (!moreOpen) return;
     const onKey = (e) => e.key === "Escape" && setMoreOpen(false);

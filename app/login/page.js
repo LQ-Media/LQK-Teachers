@@ -1,27 +1,36 @@
-import { cookies } from "next/headers";
-import { decrypt } from "@/lib/session";
-import { configuredProviders, PROVIDERS, isProvider } from "@/lib/auth/oauth";
-import LoginClient from "@/components/LoginClient";
+import { enabledProviders, providerLabel } from "@/lib/auth/providers";
+import LoginPanel from "./LoginPanel";
 
 export const metadata = { title: "Sign in · LQK Teachers Portal" };
 
-/**
- * Server half of the login page: which social sign-ins exist here, and
- * whether the person just arrived from one with no account yet (in which
- * case the callback left their name and email in a signed cookie).
- */
+/* Anything that went wrong in the OAuth round trip comes back as a short code
+   on the URL — app/api/auth/[provider]/callback never puts a provider's own
+   error text on screen, since that is attacker-influenced and usually
+   incomprehensible anyway. The codes are turned into plain English here. */
+function noticeFor(code, provider) {
+  const name = provider ? providerLabel(provider) : "that provider";
+  switch (code) {
+    case "no_account":
+      return `No portal account matches that ${name} account. Sign in with your email and password, then connect ${name} from your profile — or ask your admin to add you.`;
+    case "cancelled":
+      return `${name} sign-in was cancelled.`;
+    case "failed":
+      return `That ${name} sign-in didn’t complete. Please try again.`;
+    case "link_session":
+      return "You were signed out before that finished. Sign in again, then connect the account from your profile.";
+    case "unavailable":
+      return "That sign-in method isn’t available on this server.";
+    default:
+      return "";
+  }
+}
+
 export default async function LoginPage({ searchParams }) {
   const sp = await searchParams;
-  const providers = configuredProviders();
-  const error = typeof sp?.error === "string" ? sp.error : "";
-
-  let prefill = null;
-  if (sp?.register === "1") {
-    const pending = await decrypt((await cookies()).get("lqk_oauth_pending")?.value);
-    if (pending && isProvider(pending.p) && pending.e) {
-      prefill = { name: pending.n || "", email: pending.e, providerLabel: PROVIDERS[pending.p].label };
-    }
-  }
-
-  return <LoginClient providers={providers} prefill={prefill} error={error} />;
+  return (
+    <LoginPanel
+      providers={enabledProviders()}
+      notice={noticeFor(sp?.error || "", sp?.provider || "")}
+    />
+  );
 }

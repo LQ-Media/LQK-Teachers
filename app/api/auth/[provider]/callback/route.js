@@ -1,101 +1,135 @@
-import { randomUUID } from "node:crypto";
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { createSession, encrypt, decrypt } from "@/lib/session";
-import { isProvider, providerConfigured, completeAuth, appOrigin } from "@/lib/auth/oauth";
+import { baseUrl } from "@/lib/mail";
+import { createSession, getSession } from "@/lib/session";
+import { PROVIDERS, providerConfigured, trustedEmailFromClaims } from "@/lib/auth/providers";
+import { clearAuthState, completeAuth } from "@/lib/auth/oauth";
+import { findIdentity, linkIdentity, touchIdentity } from "@/lib/auth/identities";
 
-const OAUTH_COOKIE = "lqk_oauth";
-const PENDING_COOKIE = "lqk_oauth_pending";
+/* Step 2 of social sign-in: what the provider redirects (or POSTs) back to.
 
-// GET /api/auth/<provider>/callback?code=&state=
-//
-// The person is back from the provider. In order:
-//   1. the state must match the cookie set at /start (and it is one-shot);
-//   2. the code becomes an identity: provider + stable subject + email;
-//   3. an identity already on file signs that account in;
-//   4. otherwise, in "link" mode, it is attached to the signed-in account;
-//   5. otherwise an EXACT lower-cased email match to an existing profile
-//      links and signs in — never creating an account, never touching a role;
-//   6. otherwise the person goes to Register with name and email filled in,
-//      and a signed "pending" cookie so the account they create gets the
-//      identity attached. They still pick a branch; HQ still needs the code.
-export async function GET(request, ctx) {
-  const { provider } = await ctx.params;
-  const store = await cookies();
-  const back = (q) => Response.redirect(new URL(`/login?${q}`, request.url), 302);
-  if (!isProvider(provider) || !providerConfigured(provider)) return back("error=provider");
+   SIGN-IN NEVER CREATES AN ACCOUNT. A portal account carries a role, a branch
+   and a pay tier — things an admin decides, and things that determine what
+   somebody is paid. Letting a Google sign-in mint one would mean anybody with a
+   Google account could get a foothold in a payroll system. So this either finds
+   an existing profile or refuses, and the refusal tells them to ask their admin.
 
-  const sp = request.nextUrl.searchParams;
-  const saved = await decrypt(store.get(OAUTH_COOKIE)?.value);
-  store.delete(OAUTH_COOKIE);
-  if (sp.get("error")) return back(`error=denied&provider=${provider}`);
-  const code = sp.get("code");
-  const state = sp.get("state");
-  if (!code || !state || !saved || saved.p !== provider || saved.s !== state) return back("error=state");
+   A profile is found in one of two ways:
+     • by the provider's subject, if this account was linked before — the only
+       way that can't be spoofed, and how a personal Gmail or an Apple relay
+       address signs in; or
+     • by a VERIFIED email that matches a profile, on first use. See
+       trustedEmailFromClaims in lib/auth/providers.js for what "verified"
+       means per provider — an asserted email is not enough. */
 
-  let who;
+export const dynamic = "force-dynamic";
+
+async function handle(providerId, { code, state, error }) {
+  const home = baseUrl();
+  const fail = (reason) => NextResponse.redirect(`${home}/login?error=${reason}`);
+
+  if (!PROVIDERS[providerId] || !providerConfigured(providerId)) return fail("unavailable");
+  // The person tapped "Cancel" on the consent screen, or the provider refused.
+  if (error) return fail("cancelled");
+
+  let result;
   try {
-    who = await completeAuth(provider, { code, origin: appOrigin(request.headers), verifier: saved.v, nonce: saved.n });
-  } catch (err) {
-    console.warn(`[oauth] ${provider} callback failed: ${err?.message}`);
-    return back(`error=failed&provider=${provider}`);
+    result = await completeAuth(providerId, { code, state });
+  } catch {
+    return fail("failed");
+  } finally {
+    // One-shot: the state cookie is spent whether or not the exchange worked.
+    await clearAuthState();
   }
 
+  const { mode, profileId: linkTarget, claims } = result;
   const db = getDb();
   const now = new Date().toISOString();
-  const existing = db
-    .prepare("SELECT profile_id FROM auth_identities WHERE provider = ? AND provider_subject = ?")
-    .get(provider, who.subject);
+  const subject = String(claims.sub);
+  const claimEmail = String(claims.email || claims.preferred_username || "").trim().toLowerCase();
 
-  // Linking from the profile page.
-  if (saved.m === "link" && saved.u) {
-    if (existing && existing.profile_id !== saved.u) {
-      return Response.redirect(new URL("/profile?linked=taken", request.url), 302);
-    }
-    if (!existing) {
-      db.prepare(
-        "INSERT INTO auth_identities (id, profile_id, provider, provider_subject, email, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-      ).run(randomUUID(), saved.u, provider, who.subject, who.email, now);
-    }
-    return Response.redirect(new URL(`/profile?linked=${provider}`, request.url), 302);
-  }
+  if (mode === "link") {
+    // Re-check the live session against the profile pinned when the flow
+    // started. If they signed out (or into a different account) mid-flow, the
+    // identity must not land on whoever is signed in now.
+    const session = await getSession();
+    if (!session?.userId || session.userId !== linkTarget) return fail("link_session");
 
-  let profile = existing ? db.prepare("SELECT * FROM profiles WHERE id = ?").get(existing.profile_id) : null;
-
-  // First time with this provider: exact email match only, and only when the
-  // provider vouches for the address. An unverified email proves nothing.
-  if (!profile && who.email && who.emailVerified) {
-    const match = db.prepare("SELECT * FROM profiles WHERE email = ?").get(who.email);
-    if (match) {
-      db.prepare(
-        "INSERT INTO auth_identities (id, profile_id, provider, provider_subject, email, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-      ).run(randomUUID(), match.id, provider, who.subject, who.email, now);
-      profile = match;
-    }
-  }
-
-  if (profile) {
-    const mustChange = !!profile.must_change_password;
-    await createSession({
-      userId: profile.id,
-      role: profile.role,
-      fullName: profile.full_name,
-      primaryLocation: profile.primary_location,
-      mustChange,
+    const linked = linkIdentity(db, {
+      profileId: session.userId,
+      provider: providerId,
+      subject,
+      // Shown on the profile page so a teacher can see WHICH account is
+      // connected. Stored even when it isn't trusted for matching — it is a
+      // label here, never a credential.
+      email: claimEmail || null,
+      whenIso: now,
     });
-    return Response.redirect(new URL(mustChange ? "/change-password" : "/dashboard", request.url), 302);
+    if (!linked.ok) return NextResponse.redirect(`${home}/profile?link_error=claimed&provider=${providerId}`);
+    return NextResponse.redirect(`${home}/profile?linked=${providerId}`);
   }
 
-  // Nobody by that email: register, with the identity waiting in a cookie.
-  if (!who.email) return back(`error=noemail&provider=${provider}`);
-  const pending = await encrypt({ p: provider, sub: who.subject, e: who.email, n: who.name });
-  store.set(PENDING_COOKIE, pending, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 900,
+  let profile = null;
+
+  const identity = findIdentity(db, providerId, subject);
+  if (identity) {
+    profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(identity.profile_id) || null;
+    if (profile) touchIdentity(db, providerId, subject, now);
+  }
+
+  if (!profile) {
+    const trustedEmail = trustedEmailFromClaims(providerId, claims);
+    if (trustedEmail) {
+      profile = db.prepare("SELECT * FROM profiles WHERE email = ?").get(trustedEmail) || null;
+      // First social sign-in for an existing teacher: remember the link, so
+      // later sign-ins match on the subject and survive an email change.
+      if (profile) {
+        linkIdentity(db, {
+          profileId: profile.id,
+          provider: providerId,
+          subject,
+          email: trustedEmail,
+          whenIso: now,
+        });
+      }
+    }
+  }
+
+  if (!profile) return NextResponse.redirect(`${home}/login?error=no_account&provider=${providerId}`);
+
+  // The forced first-password change still applies. Signing in with Google is
+  // an extra door into the same account, not a way around the account's state.
+  const mustChange = !!profile.must_change_password;
+  await createSession({
+    userId: profile.id,
+    role: profile.role,
+    fullName: profile.full_name,
+    primaryLocation: profile.primary_location,
+    mustChange,
   });
-  const q = new URLSearchParams({ register: "1", provider, name: who.name, email: who.email });
-  return Response.redirect(new URL(`/login?${q.toString()}`, request.url), 302);
+
+  return NextResponse.redirect(`${home}${mustChange ? "/change-password" : "/dashboard"}`);
+}
+
+export async function GET(request, ctx) {
+  const { provider } = await ctx.params;
+  const params = new URL(request.url).searchParams;
+  return handle(provider, {
+    code: params.get("code"),
+    state: params.get("state"),
+    error: params.get("error"),
+  });
+}
+
+/* Apple only. Asking Apple for any scope switches it to response_mode=form_post,
+   so the result arrives as a cross-site POST rather than a redirect — which is
+   also why the state cookie is SameSite=None (see lib/auth/oauth.js). */
+export async function POST(request, ctx) {
+  const { provider } = await ctx.params;
+  const form = await request.formData().catch(() => null);
+  return handle(provider, {
+    code: form?.get("code") || null,
+    state: form?.get("state") || null,
+    error: form?.get("error") || null,
+  });
 }

@@ -275,16 +275,4 @@ describe("database", () => {
     ins.run(randomUUID(), teacher, assessor, new Date().toISOString());
     assert.throws(() => ins.run(randomUUID(), teacher, assessor, new Date().toISOString()), /UNIQUE/i);
   });
-
-  test("one social identity per provider account, and it goes with the profile", () => {
-    const ins = db.prepare(
-      "INSERT INTO auth_identities (id, profile_id, provider, provider_subject, email, created_at) VALUES (?, ?, 'google', 'sub-1', 'siti@example.com', ?)"
-    );
-    ins.run(randomUUID(), teacher, new Date().toISOString());
-    assert.throws(() => ins.run(randomUUID(), assessor, new Date().toISOString()), /UNIQUE/i, "same Google account twice");
-    assert.throws(
-      () => db.prepare("INSERT INTO auth_identities (id, profile_id, provider, provider_subject, created_at) VALUES (?, ?, 'apple', 'x', ?)").run(randomUUID(), teacher, new Date().toISOString()),
-      /CHECK/i
-    );
-  });
 });

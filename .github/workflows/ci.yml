@@ -1,0 +1,87 @@
+# Continuous integration for the teachers portal.
+#
+# The repository had no CI at all until this: every pull request showed zero
+# checks, and the only thing standing between a broken main and a deploy was
+# whoever last ran `npm test` by hand. Railway builds straight from main.
+#
+# THE TWO TIMEZONE RUNS ARE THE POINT. Payroll is reckoned in Singapore time
+# while the server runs in UTC, and almost every date bug this codebase has had
+# was a function that agreed with itself under one and not the other — a shift
+# that lands in the wrong payroll period, a public holiday that starts eight
+# hours early. Running the suite under both is what catches those before a
+# teacher's pay does.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push supersedes the first: no point finishing a run for a commit
+# nobody will merge.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (${{ matrix.tz }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # a failure under one timezone must not hide the other
+      matrix:
+        tz: [UTC, Asia/Singapore]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # node:sqlite — the DB layer needs a modern runtime
+          cache: npm
+      - run: npm ci
+      - name: npm test
+        run: npm test
+        env:
+          TZ: ${{ matrix.tz }}
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: next build
+        run: npm run build
+        env:
+          # Only needs to be present and non-trivial: the build refuses to sign
+          # sessions with an insecure key, and would otherwise fail at prerender.
+          # Nothing is deployed from here.
+          SESSION_SECRET: ci-build-only-not-a-deployment-secret
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    # A REAL GATE as of Sep 2026. It was advisory for exactly one day, while
+    # three pre-existing react-hooks/set-state-in-effect errors sat in
+    # components nobody had touched in months; gating on those would have turned
+    # every pull request red for something its author did not do, and a check
+    # that is always red is a check everybody learns to ignore.
+    #
+    # They are fixed, so it gates. Note for whoever makes it advisory again:
+    # `continue-on-error` does NOT do that. It stops the workflow failing but
+    # still posts a red X against the pull request. The step itself has to
+    # succeed — `npm run lint || echo "::warning::..."`.
+    #
+    # Warnings do not fail the build; eslint only exits non-zero on errors.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint

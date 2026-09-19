@@ -7,10 +7,21 @@ import { currentPeriod } from "@/lib/assess/periods";
 // Admin-only CSV, one line per scored criterion, plus one line per assessment
 // carrying the overall note (criterion blank) so nothing on file is lost in
 // the sheet. Gated on the session directly: /api is outside the page proxy.
+//
+// Results are FULL-ADMIN ONLY, the same bar as the Assessments tab. A centre IT
+// Head also holds role='admin', so a role check alone would let them read every
+// teacher's scores — the same leak the payroll routes had. The scope is read
+// from the DATABASE, not the JWT, so withdrawing it takes effect at once.
+function isFullAdmin(userId) {
+  if (!userId) return false;
+  const row = getDb().prepare("SELECT role, admin_scope FROM profiles WHERE id = ?").get(userId);
+  return !!row && row.role === "admin" && row.admin_scope === "full";
+}
+
 export async function GET(request) {
   const session = await getSession();
   if (!session?.userId) return new Response("Unauthorized", { status: 401 });
-  if (session.role !== "admin") return new Response("Forbidden", { status: 403 });
+  if (!isFullAdmin(session.userId)) return new Response("Forbidden", { status: 403 });
 
   const year = Number(request.nextUrl.searchParams.get("year")) || currentPeriod().year;
   const db = getDb();

@@ -3,6 +3,19 @@ import { decrypt } from "@/lib/session";
 
 const PUBLIC_ROUTES = ["/login"];
 
+/* Password reset. Reachable without a session — the whole point is that the
+   person cannot sign in — but unlike /login these do NOT bounce a signed-in
+   user away, and they are exempt from the must-change gate below.
+
+   Both matter. A teacher who is already signed in on their phone and opens the
+   reset link from their laptop's inbox must still be able to finish; sending
+   them to /dashboard instead would look like the link is broken. And someone
+   holding a temporary password an admin gave them (must_change_password = 1) is
+   exactly who reaches for "forgot password" — bouncing them into
+   /change-password, which needs the password they don't have, is a dead end.
+   Redeeming the link clears the flag anyway. */
+const RESET_ROUTES = ["/forgot-password", "/reset-password"];
+
 /* Prefixes anyone may reach WITHOUT a session.
 
    /i/<token> is a guest's event invitation. Guests are not portal users and
@@ -26,12 +39,27 @@ const PUBLIC_ROUTES = ["/login"];
    phone — and the TV showing the leaderboard cannot type a password. The
    credential is the pass token in the path (verified in
    lib/events/passport-queries.js) or the event's staff PIN. */
-const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/", "/q/"];
+/* /huruf/ is the Games' static content: the traced letter shapes, the two
+   mascots and the spoken letter clips. It is public for the same reason
+   /prop/ is — none of it is anyone's data, it is identical for every teacher,
+   and it is the printed flashcards' own artwork. It also has to be reachable
+   without a session because the service worker precaches it at INSTALL time
+   (public/sw.js): behind the gate, an install running on an expired session
+   would follow the redirect and cache the login page's HTML under the
+   geometry's URL, and every game would then open to an empty box until the
+   cache was cleared.
+
+   Note this is the asset namespace, not the games themselves — /games and
+   /games/<name> are ordinary portal pages and stay behind the gate. */
+const PUBLIC_PREFIXES = ["/i/", "/prop/", "/dzikir/", "/q/", "/huruf/"];
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
+  const isResetRoute = RESET_ROUTES.includes(pathname);
   const isPublicRoute =
-    PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+    PUBLIC_ROUTES.includes(pathname) ||
+    isResetRoute ||
+    PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 
   const token = request.cookies.get("lqk_session")?.value;
   const session = await decrypt(token);
@@ -53,6 +81,7 @@ export async function proxy(request) {
     session?.userId &&
     session.mustChange &&
     pathname !== "/change-password" &&
+    !isResetRoute &&
     !PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
   ) {
     return NextResponse.redirect(new URL("/change-password", request.url));

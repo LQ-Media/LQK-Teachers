@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/dal";
-import { listEvents } from "@/lib/events/queries";
+import { listEvents, countStoreOrders } from "@/lib/events/queries";
 import { eventInstant, endOfDeadlineDay } from "@/lib/events/when";
 import PageHeading from "@/components/PageHeading";
 import NewEventForm from "./NewEventForm";
@@ -63,6 +63,7 @@ function ProgressBar({ event }) {
 export default async function EventsPage() {
   await requireRole(["admin"]);
   const events = listEvents();
+  const registrations = countStoreOrders();
 
   return (
     <div className="px-4 py-6 sm:p-8 max-w-4xl">
@@ -74,6 +75,19 @@ export default async function EventsPage() {
       />
 
       <NewEventForm />
+
+      {/* Ticketed products sold on the store's own product pages land as
+          registrations, not RSVPs — a different desk, so a different page.
+          Hidden until the first paid order, because an empty admin page is a
+          question nobody asked. */}
+      {registrations > 0 ? (
+        <p className="mt-4 text-sm text-charcoal-soft">
+          <Link href="/events/registrations" className="text-gold hover:underline">
+            Store registrations
+          </Link>{" "}
+          — {registrations} paid {registrations === 1 ? "order" : "orders"} from the LQK store.
+        </p>
+      ) : null}
 
       {events.length === 0 ? (
         <p className="mt-8 rounded-card border border-line bg-white p-6 text-sm text-charcoal-soft">

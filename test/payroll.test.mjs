@@ -123,7 +123,10 @@ describe("public holiday pay in the summary", () => {
       [session({ status: "pending", rateCents: null, phName: "X", phEstimateMultiplier: PH_MULTIPLIER })],
       "2026-08"
     );
-    assert.equal(formatMoney(t.pendingCents), "$80.00");
+    // Derived, not pinned: the point here is that a pending row follows
+    // whatever PH_MULTIPLIER is today, so this must not need editing when the
+    // rate changes. The value itself is pinned once, in attendance.test.mjs.
+    assert.equal(formatMoney(t.pendingCents), formatMoney(4000 * PH_MULTIPLIER), "2h x $20 x the live multiplier");
   });
 
   test("a non-holiday session is never multiplied", () => {
