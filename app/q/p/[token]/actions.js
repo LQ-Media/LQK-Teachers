@@ -49,7 +49,7 @@ export async function generateFamilyPhotoAction(token, { dataUrl, consented }) {
   if (!result.ok) return { ok: false, error: result.error };
 
   const fileName = writePhoto(randomUUID(), result.mime, result.bytes);
-  savePhoto(event.id, registration.id, {
+  const version = savePhoto(event.id, registration.id, {
     fileName,
     mime: result.mime,
     bytes: result.bytes.length,
@@ -60,7 +60,9 @@ export async function generateFamilyPhotoAction(token, { dataUrl, consented }) {
   });
 
   revalidatePath(`/q/p/${token}`);
-  return { ok: true };
+  // The version goes back so the page can point <img> at a URL it has never
+  // fetched before, rather than at a cached copy of the previous attempt.
+  return { ok: true, version };
 }
 
 /* A family removing their own picture. No confirmation dance on the server —

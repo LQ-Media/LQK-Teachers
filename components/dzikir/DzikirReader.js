@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 
-// A horizontal drag counts as a page turn when it is decisively sideways:
-// far enough to be deliberate, and clearly more horizontal than vertical so
-// that scrolling a long litany never flips the page by accident.
+// A horizontal drag moves to the neighbouring sub-section when it is decisively
+// sideways: far enough to be deliberate, and clearly more horizontal than
+// vertical so that scrolling a long litany never navigates by accident.
 const SWIPE_MIN_PX = 64;
 const SWIPE_RATIO = 1.6;
 const SWIPE_MAX_MS = 900;
@@ -23,15 +23,25 @@ const LANGS = [
 const ARABIC_STACK =
   "var(--font-dzikir-arabic), 'Noto Naskh Arabic', var(--font-amiri), 'Amiri', 'Scheherazade New', serif";
 
-// Font-size steps: Arabic drives the scale, transliteration and meaning follow.
-const SIZES = [
-  { ar: 22, lh: 2.0, tr: 12.5, mn: 13 },
-  { ar: 26, lh: 2.0, tr: 13.5, mn: 14 },
-  { ar: 30, lh: 2.05, tr: 14.5, mn: 15 },
-  { ar: 36, lh: 2.1, tr: 15.5, mn: 16 },
-  { ar: 44, lh: 2.15, tr: 17, mn: 18 },
-];
-const DEFAULT_SIZE = 2;
+// Text size, matched to the Quran reader: a slider per layer in px rather than
+// one coupled A−/A+ scale, over the same ranges (lib/quran/store.js), so a
+// teacher who has tuned one reader finds the other set up the same way.
+const SIZE_RANGE = {
+  ar: { label: "Arabic", min: 20, max: 60 },
+  tr: { label: "Transliteration", min: 10, max: 26 },
+  mn: { label: "Meaning", min: 11, max: 26 },
+};
+const DEFAULT_SIZES = { ar: 30, tr: 15, mn: 15 };
+
+// Arabic needs more leading as it grows: harakat and the naskh descenders
+// collide at a fixed multiple. Stepped rather than continuous so the line grid
+// stays steady while the slider is being dragged.
+function arabicLineHeight(px) {
+  if (px >= 44) return 2.15;
+  if (px >= 36) return 2.1;
+  if (px >= 30) return 2.05;
+  return 2.0;
+}
 
 const SPEED_MIN = 1;
 const SPEED_MAX = 5;
@@ -39,51 +49,94 @@ const DEFAULT_SPEED = 2;
 
 const PREF_KEY = "lqk.dzikir.prefs";
 
+// The A−/A+ steps this reader used before the sliders. Prefs already on a
+// teacher's device carry the step index, so map it forward once rather than
+// dropping them back to the default size.
+const LEGACY_STEPS = [
+  { ar: 22, tr: 12.5, mn: 13 },
+  { ar: 26, tr: 13.5, mn: 14 },
+  { ar: 30, tr: 14.5, mn: 15 },
+  { ar: 36, tr: 15.5, mn: 16 },
+  { ar: 44, tr: 17, mn: 18 },
+];
+
+function clampSize(key, value) {
+  const cfg = SIZE_RANGE[key];
+  if (!Number.isFinite(value)) return DEFAULT_SIZES[key];
+  return Math.min(cfg.max, Math.max(cfg.min, Math.round(value)));
+}
+
 /**
- * The devotional reader: ONE passage on screen at a time.
+ * The devotional reader: the WHOLE sub-section on one scrolling page.
  *
- * Paging is horizontal — swipe, ← →, or the buttons under the passage — and
- * runs inside the current sub-section. At either end the same gesture crosses
- * into the neighbouring sub-section (`prev`/`next`), which is a real
- * navigation; everything in between is local state, so a page turn is instant.
+ * Every passage in the sub-section is laid out top to bottom, so a litany is
+ * read straight through the way it is recited. Horizontal paging is reserved
+ * for the level above — swipe, ← →, or the buttons at the foot cross into the
+ * neighbouring sub-section — which keeps the nested trail (group → collection →
+ * sub-section) intact while removing the page turn per verse.
  *
- * Reading aids carried over from the scrolling reader: an A−/A+ size stepper,
- * transliteration/meaning toggles, an English⇄Bahasa picker, and a hands-free
- * auto-scroll for the long passages that still outrun a screen.
+ * Reading aids: per-layer text-size sliders in a display sheet (the Quran
+ * reader's control), transliteration/meaning toggles, an English⇄Bahasa picker,
+ * and a hands-free auto-scroll for the long collections.
  */
 export default function DzikirReader({ pages, title, prev = null, next = null, upHref = null }) {
   const router = useRouter();
-  const [i, setI] = useState(0);
   const [lang, setLang] = useState("en");
   const [showTranslit, setShowTranslit] = useState(true);
   const [showMeaning, setShowMeaning] = useState(true);
-  const [size, setSize] = useState(DEFAULT_SIZE);
+  const [sizes, setSizes] = useState(DEFAULT_SIZES);
+  const [sizeOpen, setSizeOpen] = useState(false);
   const [scrolling, setScrolling] = useState(false);
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [loaded, setLoaded] = useState(false);
 
   // Restore preferences once, client-side, so SSR markup stays stable.
+  //
+  // eslint's set-state-in-effect rule fires here and is wrong about this one.
+  // localStorage does not exist on the server, so these values CANNOT be read
+  // while rendering or in a useState initialiser without producing markup the
+  // server could not have produced — a hydration mismatch, which is a worse bug
+  // than one extra render. Reading an external store the first time the
+  // component reaches a browser is the case the rule's own documentation
+  // describes as legitimate. The effect runs once, with an empty dependency
+  // list, and cascades nothing.
+  /* eslint-disable react-hooks/set-state-in-effect -- see the note above */
   useEffect(() => {
     try {
       const p = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
       if (p.lang === "en" || p.lang === "id") setLang(p.lang);
       if (typeof p.showTranslit === "boolean") setShowTranslit(p.showTranslit);
       if (typeof p.showMeaning === "boolean") setShowMeaning(p.showMeaning);
-      if (Number.isInteger(p.size) && p.size >= 0 && p.size < SIZES.length) setSize(p.size);
       if (Number.isInteger(p.speed) && p.speed >= SPEED_MIN && p.speed <= SPEED_MAX) setSpeed(p.speed);
+
+      const legacy = Number.isInteger(p.size) ? LEGACY_STEPS[p.size] : null;
+      const stored = p.sizes && typeof p.sizes === "object" ? p.sizes : legacy;
+      if (stored) {
+        setSizes({
+          ar: clampSize("ar", Number(stored.ar)),
+          tr: clampSize("tr", Number(stored.tr)),
+          mn: clampSize("mn", Number(stored.mn)),
+        });
+      }
     } catch {}
     setLoaded(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!loaded) return;
     try {
       localStorage.setItem(
         PREF_KEY,
-        JSON.stringify({ lang, showTranslit, showMeaning, size, speed })
+        JSON.stringify({ lang, showTranslit, showMeaning, sizes, speed })
       );
     } catch {}
-  }, [loaded, lang, showTranslit, showMeaning, size, speed]);
+  }, [loaded, lang, showTranslit, showMeaning, sizes, speed]);
+
+  const setSize = useCallback((key, value) => {
+    setSizes((s) => ({ ...s, [key]: clampSize(key, value) }));
+  }, []);
+  const resetSizes = useCallback(() => setSizes(DEFAULT_SIZES), []);
 
   // Hands-free auto-scroll of the window. Accumulate in a float because
   // scrollTop is integer-quantised and slow speeds would otherwise stall.
@@ -133,49 +186,35 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
 
   const total = pages.length;
 
-  // ── Paging ────────────────────────────────────────────────────────────────
-  // Within the sub-section this is local state; past either end it hands over
-  // to the neighbouring sub-section's route.
-  // The index is mirrored in a ref and moved eagerly, so a burst of arrow-key
-  // presses advances by one each — reading `i` from the closure would make them
-  // all compute the same target — and so the scroll reset stays out of the
-  // state updater, which has to be pure.
-  const iRef = useRef(0);
-  const step = useCallback(
+  // ── Crossing sub-sections ─────────────────────────────────────────────────
+  // Verses are scrolled, not paged, so a sideways move always means the
+  // neighbouring sub-section — a real navigation, hence the router.
+  const cross = useCallback(
     (delta) => {
-      setScrolling(false); // never carry auto-scroll across a page turn
-      const target = iRef.current + delta;
-      if (target >= 0 && target < total) {
-        iRef.current = target;
-        setI(target);
-        // Back to the top: the passage just left may have been long, and the
-        // next one starts at its own beginning.
-        window.scrollTo({ top: 0, behavior: "auto" });
-        return;
-      }
-      const cross = delta > 0 ? next : prev;
-      if (cross) router.push(cross.href);
+      setScrolling(false); // never carry auto-scroll across a navigation
+      const target = delta > 0 ? next : prev;
+      if (target) router.push(target.href);
     },
-    [total, prev, next, router]
+    [prev, next, router]
   );
 
-  // Arrow keys page on desktop. Ignored while typing in a field, and never when
-  // a modifier is held (that is a browser shortcut, e.g. ⌘← for Back).
+  // Arrow keys cross on desktop. Ignored while typing in a field, and never
+  // when a modifier is held (that is a browser shortcut, e.g. ⌘← for Back).
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       const el = document.activeElement;
       const tag = el?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
-      if (e.key === "ArrowRight") step(1);
-      else if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") cross(1);
+      else if (e.key === "ArrowLeft") cross(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  }, [cross]);
 
-  // Touch paging. Recorded on the container rather than the window so a swipe
-  // that starts on the sticky control bar doesn't turn the page.
+  // Touch. Recorded on the container rather than the window so a swipe that
+  // starts on the sticky control bar doesn't navigate.
   const touch = useRef(null);
 
   const onTouchStart = useCallback((e) => {
@@ -189,7 +228,7 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
       const start = touch.current;
       touch.current = null;
       if (!start) return;
-      // A text selection drag is not a page turn.
+      // A text selection drag is not a navigation.
       if (window.getSelection?.()?.toString()) return;
 
       const t = e.changedTouches?.[0];
@@ -200,15 +239,12 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
       if (Math.abs(dx) < SWIPE_MIN_PX) return;
       if (Math.abs(dx) < Math.abs(dy) * SWIPE_RATIO) return;
 
-      step(dx < 0 ? 1 : -1); // drag left → next, drag right → previous
+      cross(dx < 0 ? 1 : -1); // drag left → next section, drag right → previous
     },
-    [step]
+    [cross]
   );
 
   const meaningOf = (p) => (p ? (lang === "en" ? p.en : p.id_) : "");
-  const sz = SIZES[size];
-  const decSize = useCallback(() => setSize((s) => Math.max(0, s - 1)), []);
-  const incSize = useCallback(() => setSize((s) => Math.min(SIZES.length - 1, s + 1)), []);
 
   if (!total) {
     return (
@@ -218,17 +254,9 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
     );
   }
 
-  const page = pages[Math.min(i, total - 1)];
-  const p = page.p;
-  const heading = page.hdr ? meaningOf(page.hdr) || page.hdr.id_ : null;
-  const meaning = meaningOf(p);
-
-  const atStart = i === 0;
-  const atEnd = i === total - 1;
-
   return (
     <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* Controls, pinned so they stay reachable inside a long passage. The
+      {/* Controls, pinned so they stay reachable partway down a long litany. The
           negative margins bleed the bar to the page edges and must track the
           page's own padding (px-4 on phones, p-8 from sm up). */}
       <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-line bg-paper/95 px-4 py-2.5 backdrop-blur sm:-mx-8 sm:px-8">
@@ -237,16 +265,15 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
           <Toggle label="Transliteration" on={showTranslit} onClick={() => setShowTranslit((v) => !v)} />
           <Toggle label="Meaning" on={showMeaning} onClick={() => setShowMeaning((v) => !v)} />
 
-          {/* Font size */}
-          <div className="inline-flex items-center overflow-hidden rounded-pill border border-line bg-white">
-            <StepBtn label="Smaller text" onClick={decSize} disabled={size === 0}>
-              <span className="text-[12px] font-bold">A</span>
-            </StepBtn>
-            <span className="px-1 text-[11px] tabular-nums text-charcoal-soft/70">{sz.ar}</span>
-            <StepBtn label="Larger text" onClick={incSize} disabled={size === SIZES.length - 1}>
-              <span className="text-[16px] font-bold">A</span>
-            </StepBtn>
-          </div>
+          {/* Text size — the Quran reader's sheet, sliders and all */}
+          <button
+            type="button"
+            onClick={() => setSizeOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-pill border border-line bg-white px-2.5 py-1 text-[12px] font-semibold text-charcoal-soft transition-colors hover:text-charcoal"
+          >
+            <Icon name="type" size={13} />
+            Text size
+          </button>
 
           {/* Auto-scroll */}
           <div className="inline-flex items-center overflow-hidden rounded-pill border border-line bg-white">
@@ -279,10 +306,8 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
             </StepBtn>
           </div>
 
-          {/* Where you are in the sub-section — the one thing a single-passage
-              screen cannot show implicitly the way a scrolling list did. */}
           <span className="ml-auto text-[12px] font-semibold tabular-nums text-charcoal-soft">
-            {i + 1} / {total}
+            {total} passage{total === 1 ? "" : "s"}
           </span>
         </div>
       </div>
@@ -293,122 +318,185 @@ export default function DzikirReader({ pages, title, prev = null, next = null, u
         </p>
       ) : null}
 
-      {heading ? (
-        <h2 className="mb-3 flex items-center gap-2 font-heading text-[13px] font-bold uppercase tracking-wide text-charcoal-soft">
-          <span className="h-px w-4 flex-shrink-0 bg-gold" aria-hidden="true" />
-          {heading}
-        </h2>
-      ) : null}
+      {/* Every passage of the sub-section, in order. Read straight down; the
+          in-line headings NU ships stay attached to the passage they open. */}
+      <div className="space-y-4">
+        {pages.map((page, idx) => {
+          const p = page.p;
+          const heading = page.hdr ? meaningOf(page.hdr) || page.hdr.id_ : null;
+          const meaning = meaningOf(p);
 
-      <article
-        key={p.id}
-        className="lqk-rise rounded-card border border-line bg-white px-4 py-5 sm:px-6 sm:py-6"
-      >
-        {p.ar ? (
-          <p
-            lang="ar"
-            dir="rtl"
-            className="text-ink"
-            style={{
-              fontFamily: ARABIC_STACK,
-              fontSize: `${sz.ar}px`,
-              lineHeight: sz.lh,
-              whiteSpace: "pre-line",
-            }}
-          >
-            {p.ar}
-          </p>
-        ) : null}
+          return (
+            <section key={p.id ?? idx}>
+              {heading ? (
+                <h2 className="mb-3 mt-6 flex items-center gap-2 font-heading text-[13px] font-bold uppercase tracking-wide text-charcoal-soft first:mt-0">
+                  <span className="h-px w-4 flex-shrink-0 bg-gold" aria-hidden="true" />
+                  {heading}
+                </h2>
+              ) : null}
 
-        {showTranslit && p.tr ? (
-          <p
-            className="mt-3 italic leading-relaxed text-charcoal-soft"
-            style={{ fontSize: `${sz.tr}px`, whiteSpace: "pre-line" }}
-          >
-            {p.tr}
-          </p>
-        ) : null}
+              <article className="rounded-card border border-line bg-white px-4 py-5 sm:px-6 sm:py-6">
+                {p.ar ? (
+                  <p
+                    lang="ar"
+                    dir="rtl"
+                    className="text-ink"
+                    style={{
+                      fontFamily: ARABIC_STACK,
+                      fontSize: `${sizes.ar}px`,
+                      lineHeight: arabicLineHeight(sizes.ar),
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    {p.ar}
+                  </p>
+                ) : null}
 
-        {showMeaning ? (
-          meaning ? (
-            <p
-              className="mt-3 border-t border-line pt-3 leading-relaxed text-charcoal"
-              style={{ fontSize: `${sz.mn}px`, whiteSpace: "pre-line" }}
-            >
-              {meaning}
-            </p>
-          ) : (
-            <p className="mt-3 border-t border-line pt-3 text-[12.5px] italic text-charcoal-soft/70">
-              {lang === "en"
-                ? "No English translation for this passage."
-                : "Tiada terjemahan untuk bagian ini."}
-            </p>
-          )
-        ) : null}
-      </article>
+                {showTranslit && p.tr ? (
+                  <p
+                    className="mt-3 italic leading-relaxed text-charcoal-soft"
+                    style={{ fontSize: `${sizes.tr}px`, whiteSpace: "pre-line" }}
+                  >
+                    {p.tr}
+                  </p>
+                ) : null}
 
-      {/* The swipe made visible, and the only way to page for anyone on a mouse
-          or a keyboard. At either end the button crosses into the neighbouring
-          sub-section rather than going dead. */}
-      <nav className="mt-6 grid grid-cols-2 gap-2.5" aria-label="Passages">
-        <PageButton
-          side="prev"
-          label={atStart ? prev?.title : "Previous"}
-          sublabel={atStart ? "Previous section" : `Passage ${i}`}
-          href={atStart ? prev?.href : null}
-          onClick={atStart ? null : () => step(-1)}
-          disabled={atStart && !prev}
-        />
-        <PageButton
-          side="next"
-          label={atEnd ? next?.title : "Next"}
-          sublabel={atEnd ? "Next section" : `Passage ${i + 2}`}
-          href={atEnd ? next?.href : null}
-          onClick={atEnd ? null : () => step(1)}
-          disabled={atEnd && !next}
-        />
+                {showMeaning ? (
+                  meaning ? (
+                    <p
+                      className="mt-3 border-t border-line pt-3 leading-relaxed text-charcoal"
+                      style={{ fontSize: `${sizes.mn}px`, whiteSpace: "pre-line" }}
+                    >
+                      {meaning}
+                    </p>
+                  ) : (
+                    <p className="mt-3 border-t border-line pt-3 text-[12.5px] italic text-charcoal-soft/70">
+                      {lang === "en"
+                        ? "No English translation for this passage."
+                        : "Tiada terjemahan untuk bagian ini."}
+                    </p>
+                  )
+                ) : null}
+              </article>
+            </section>
+          );
+        })}
+      </div>
+
+      {/* The swipe made visible, and the only way to cross for anyone on a
+          mouse. At either end the button goes dead rather than disappearing —
+          collapsing it would shift the other side across. */}
+      <nav className="mt-6 grid grid-cols-2 gap-2.5" aria-label="Sections">
+        <SectionButton side="prev" target={prev} />
+        <SectionButton side="next" target={next} />
       </nav>
 
       {upHref ? (
         <p className="mt-4 text-center text-[11.5px] text-charcoal-soft/70">
-          Swipe or use the ← → keys to move through {title}.{" "}
+          Scroll to read {title} through. Swipe or use the ← → keys for the next section.{" "}
           <Link href={upHref} className="font-semibold text-gold hover:text-gold-hover">
             Back to all sections
           </Link>
         </p>
+      ) : null}
+
+      {sizeOpen ? (
+        <TextSizeSheet
+          sizes={sizes}
+          onChange={setSize}
+          onReset={resetSizes}
+          onClose={() => setSizeOpen(false)}
+        />
       ) : null}
     </div>
   );
 }
 
 /**
- * One side of the pager. Renders as a link when the tap leaves this page and a
- * button when it does not, and as a disabled placeholder at the very ends —
- * collapsing it would shift the other side across mid-read.
+ * Text size, presented as in the Quran reader: a bottom sheet with one slider
+ * per layer over the same px ranges, plus a reset. Sliders rather than an
+ * A−/A+ stepper because the three layers are read by different people for
+ * different reasons — a teacher projecting the Arabic wants it huge without
+ * dragging the meaning up with it.
  */
-function PageButton({ side, label, sublabel, href, onClick, disabled }) {
-  const isNext = side === "next";
-  const inner = (
+function TextSizeSheet({ sizes, onChange, onReset, onClose }) {
+  // Escape closes, as it does for every other overlay in the portal.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
     <>
-      <span className="flex-none text-charcoal-soft">
-        <Icon name={isNext ? "chevron-right" : "arrow-left"} size={16} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[11px] font-bold uppercase tracking-wide text-charcoal-soft/70">
-          {sublabel}
-        </span>
-        <span className="block break-words font-heading text-[13.5px] font-bold leading-snug text-charcoal">
-          {label}
-        </span>
-      </span>
+      <div className="fixed inset-0 z-40 bg-charcoal/40" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-label="Text size"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[86vh] w-full max-w-[560px] flex-col rounded-t-[24px] bg-white p-4 shadow-[0_-8px_24px_rgba(74,51,64,0.18)]"
+      >
+        <div className="mx-auto mb-3.5 h-1.5 w-11 flex-none rounded-pill bg-line" />
+
+        <div className="flex-1 overflow-y-auto px-0.5 pb-2">
+          <h3 className="mb-2.5 text-[12px] font-bold uppercase tracking-wide text-charcoal-soft">
+            Text size
+          </h3>
+          <div className="space-y-3.5">
+            {Object.entries(SIZE_RANGE).map(([key, cfg]) => (
+              <label key={key} className="block">
+                <span className="mb-1 flex items-center justify-between text-[13px] text-charcoal">
+                  {cfg.label}
+                  <span className="text-[12px] tabular-nums text-charcoal-soft">{sizes[key]}px</span>
+                </span>
+                <input
+                  type="range"
+                  min={cfg.min}
+                  max={cfg.max}
+                  step={1}
+                  value={sizes[key]}
+                  onChange={(e) => onChange(key, Number(e.target.value))}
+                  className="w-full accent-ink"
+                  aria-label={`${cfg.label} text size`}
+                />
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-6 flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-[13px] font-semibold text-charcoal-soft underline-offset-2 hover:text-charcoal hover:underline"
+            >
+              Reset to defaults
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-control bg-ink px-5 py-2 text-[14px] font-semibold text-paper transition-colors hover:bg-ink-deep"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
     </>
   );
+}
 
+/**
+ * One side of the section pager. A link when there is a neighbouring
+ * sub-section, and a disabled placeholder at the ends of the collection.
+ */
+function SectionButton({ side, target }) {
+  const isNext = side === "next";
   const shape = `flex items-center gap-3 rounded-card border px-4 py-3 text-left ${
     isNext ? "flex-row-reverse text-right" : ""
   }`;
 
-  if (disabled) {
+  if (!target) {
     return (
       <span className={`${shape} border-dashed border-line text-[12.5px] text-charcoal-soft/50`}>
         <span className="flex-1">{isNext ? "End of the collection" : "Start of the collection"}</span>
@@ -416,18 +504,23 @@ function PageButton({ side, label, sublabel, href, onClick, disabled }) {
     );
   }
 
-  if (href) {
-    return (
-      <Link href={href} className={`${shape} border-line bg-white transition-colors hover:border-gold hover:bg-paper`}>
-        {inner}
-      </Link>
-    );
-  }
-
   return (
-    <button type="button" onClick={onClick} className={`${shape} w-full border-line bg-white transition-colors hover:border-gold hover:bg-paper`}>
-      {inner}
-    </button>
+    <Link
+      href={target.href}
+      className={`${shape} border-line bg-white transition-colors hover:border-gold hover:bg-paper`}
+    >
+      <span className="flex-none text-charcoal-soft">
+        <Icon name={isNext ? "chevron-right" : "arrow-left"} size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-bold uppercase tracking-wide text-charcoal-soft/70">
+          {isNext ? "Next section" : "Previous section"}
+        </span>
+        <span className="block break-words font-heading text-[13.5px] font-bold leading-snug text-charcoal">
+          {target.title}
+        </span>
+      </span>
+    </Link>
   );
 }
 

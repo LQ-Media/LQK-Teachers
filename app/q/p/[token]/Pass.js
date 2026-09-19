@@ -26,14 +26,20 @@ export default function Pass({
   photoEnabled,
   photoBlurb,
   consentText,
-  hasPhoto,
+  photoVersion: initialVersion,
   qr,
 }) {
   const [pending, startTransition] = useTransition();
   const [picked, setPicked] = useState(null); // {dataUrl, preview}
   const [consented, setConsented] = useState(false);
   const [error, setError] = useState(null);
-  const [done, setDone] = useState(hasPhoto);
+  /* The id of the picture currently on file, or null. Doubles as "is there a
+     picture" and as the cache-buster in its URL — one piece of state instead
+     of a boolean that silently pointed at a stale image. */
+  const [photoVersion, setPhotoVersion] = useState(initialVersion);
+  // Separate from the above, because "show me the upload control again" must
+  // not mean "the picture is gone" — they may change their mind.
+  const [retaking, setRetaking] = useState(false);
   const fileRef = useRef(null);
 
   async function onPick(file) {
@@ -64,7 +70,8 @@ export default function Pass({
       // reference here means the browser isn't holding the original either.
       setPicked(null);
       setConsented(false);
-      setDone(true);
+      setPhotoVersion(res.version);
+      setRetaking(false);
     });
   }
 
@@ -128,18 +135,18 @@ export default function Pass({
         <section className="mt-6 rounded-card border border-line bg-white p-5">
           <h2 className="font-heading text-lg font-semibold text-charcoal">Your family picture</h2>
 
-          {done ? (
+          {photoVersion && !retaking ? (
             <>
               <p className="mt-1 text-sm text-charcoal-soft">Here it is — press and hold to save it.</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`/api/qr/photo/${token}?v=${done === true ? "1" : done}`}
+                src={`/api/qr/photo/${token}?v=${photoVersion}`}
                 alt={`${name} at ${eventTitle}`}
                 className="mt-4 w-full rounded-card border border-line bg-paper"
               />
               <div className="mt-4 flex flex-wrap gap-3">
                 <a
-                  href={`/api/qr/photo/${token}`}
+                  href={`/api/qr/photo/${token}?v=${photoVersion}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="rounded-pill border border-line px-5 py-2.5 text-sm font-semibold text-ink transition-transform duration-150 ease-out active:scale-[0.97]"
@@ -149,7 +156,7 @@ export default function Pass({
                 <button
                   type="button"
                   onClick={() => {
-                    setDone(false);
+                    setRetaking(true);
                     setPicked(null);
                     setConsented(false);
                   }}
@@ -163,7 +170,8 @@ export default function Pass({
                   onClick={() =>
                     startTransition(async () => {
                       await deleteFamilyPhotoAction(token);
-                      setDone(false);
+                      setPhotoVersion(null);
+                      setRetaking(false);
                     })
                   }
                   className="rounded-pill border border-line px-5 py-2.5 text-sm font-semibold text-rust transition-transform duration-150 ease-out active:scale-[0.97]"
@@ -177,6 +185,20 @@ export default function Pass({
               <p className="mt-1 text-sm text-charcoal-soft">
                 {photoBlurb || "Send us a family photo and we’ll turn it into your event picture."}
               </p>
+
+              {photoVersion ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRetaking(false);
+                    setPicked(null);
+                    setConsented(false);
+                  }}
+                  className="mt-3 text-sm font-semibold text-gold underline"
+                >
+                  Keep the picture we already have
+                </button>
+              ) : null}
 
               <input
                 ref={fileRef}

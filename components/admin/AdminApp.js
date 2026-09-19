@@ -8,18 +8,16 @@ import {
   resetUserPassword,
   deleteUser,
   deleteUsers,
-  createStudent,
-  updateStudent,
-  deleteStudent,
-  deleteStudents,
   createInvite,
   deleteInvite,
 } from "@/lib/actions/admin";
+import { sendSignupReminders } from "@/lib/actions/signup";
+import { STATE_LABEL, needsReminder, MAX_PER_SEND } from "@/lib/admin/signup";
 import { titleCase, initials } from "@/components/tracker/util";
 import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
-import HoursAdmin from "@/components/admin/HoursAdmin";
-import ShiftsAdmin from "@/components/admin/ShiftsAdmin";
+import ShiftRoster from "@/components/admin/ShiftRoster";
+import AccessPanel from "@/components/admin/AccessPanel";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -96,39 +94,84 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
   );
 }
 
-export default function AdminApp({ users, staff, invites = [], locations, classes, initialHours, initialShifts }) {
-  const [tab, setTab] = useState("users");
+/**
+ * The Admin page: TWO areas, not seven tabs.
+ *
+ * Karim, 17 Sep: "i find the admin view very messy. i want the Sling functions
+ * to be on its own with the other admin matters for this login accounts and
+ * invited emails on its own tab."
+ *
+ * So:
+ *   ADMIN         — accounts, invitations, and who holds admin access.
+ *   SHIFT ROSTER  — everything that was Sling, behind Sling's own tile menu.
+ *                   See components/admin/ShiftRoster.js.
+ *
+ * The page is full width. It used to be capped at max-w-5xl, which left a
+ * calendar of 71 teachers squeezed into half a monitor with white space beside
+ * it — Karim's second ask on the same day.
+ */
+export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null, mailReady = false, positions = null }) {
+  // A centre IT Head has no Admin area at all — no accounts, no invitations, no
+  // access screen — so they open on the roster, which is their whole job here.
+  const [area, setArea] = useState(fullAdmin ? "admin" : "roster");
+  const [tab, setTab] = useState("users"); // within the Admin area
   const [userModal, setUserModal] = useState(null); // {mode, user?}
-  const [staffModal, setStaffModal] = useState(null); // {mode, student?}
   const [inviteModal, setInviteModal] = useState(false);
   const [creds, setCreds] = useState(null); // {email, tempPassword} banner
-
-  const pendingHours = initialHours?.pending?.length || 0;
-  const missedCount = initialShifts?.missed?.length || 0;
   // Anyone who can hold a shift. Sorted by name so the pickers are scannable.
+  // position and primary_location travel with the name: Sling's employee
+  // picker shows both under each person, and with 77 staff sharing first names
+  // ("NUR …", "SITI …", "NURUL …") the subtitle is often what tells you which
+  // one you meant. It is also what the search matches on.
   const teacherOptions = [...users]
-    .map((u) => ({ id: u.id, fullName: u.full_name }))
+    .map((u) => ({
+      id: u.id,
+      fullName: u.full_name,
+      position: u.position || "",
+      primaryLocation: u.primary_location || "",
+    }))
     .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
 
-  const ADD_LABEL = { users: "Add user", staff: "Add staff", invites: "Invite email" };
-  const ADD_ICON = { users: "user-plus", staff: "plus", invites: "mail-plus" };
+  // Accounts nobody has signed in to, plus ones an admin has reset and the
+  // person has not picked up. Counted here so the tab itself answers "who
+  // hasn't signed up" without being opened.
+  const unsigned = users.filter((u) => needsReminder(u.signup?.state)).length;
+
+  // What is outstanding on the roster side, so the switch says so without
+  // having to be opened. Missed clock-ins plus sessions awaiting approval —
+  // both are somebody waiting on an admin.
+  const rosterBadge =
+    (initialShifts?.missed?.length || 0) +
+    (initialShifts?.relief?.uncovered?.length || 0) +
+    (fullAdmin ? initialHours?.pending?.length || 0 : 0);
+
+  const ADD_LABEL = { users: "Add user", invites: "Invite email" };
+  const ADD_ICON = { users: "user-plus", invites: "mail-plus" };
 
   function openAdd() {
     if (tab === "users") setUserModal({ mode: "new" });
-    else if (tab === "staff") setStaffModal({ mode: "new" });
     else if (tab === "invites") setInviteModal(true);
   }
 
+  const inAdmin = area === "admin" && fullAdmin;
+
   return (
-    <div className="px-4 py-6 sm:p-8 max-w-5xl">
+    <div className="px-4 py-6 sm:p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <PageHeading
           route="/admin"
           icon="settings"
           title="Admin"
-          subtitle="Manage accounts, the tracked staff roster, and work hours."
+          subtitle={
+            inAdmin
+              ? "Accounts, invitations, and who holds admin access."
+              : "Shifts, clock-ins and what they pay."
+          }
         />
-        {tab !== "hours" && (
+        {/* The Add button belongs to the Admin area's tables. Shift Roster has
+            its own actions on the screens that need them — Add shift sits on
+            the calendar, where the date you clicked is the date you meant. */}
+        {inAdmin && (
           <button
             type="button"
             onClick={openAdd}
@@ -142,33 +185,60 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
 
       {creds && <CredsBanner creds={creds} onClose={() => setCreds(null)} />}
 
-      <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
-        <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
-          Login accounts ({users.length})
-        </Tab>
-        <Tab active={tab === "staff"} onClick={() => setTab("staff")} icon="clipboard-check">
-          Staff roster ({staff.length})
-        </Tab>
-        <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
-          Invited emails ({invites.length})
-        </Tab>
-        <Tab active={tab === "shifts"} onClick={() => setTab("shifts")} icon="calendar">
-          Roster{missedCount ? ` (${missedCount})` : ""}
-        </Tab>
-        <Tab active={tab === "hours"} onClick={() => setTab("hours")} icon="clock">
-          Work hours{pendingHours ? ` (${pendingHours})` : ""}
-        </Tab>
-      </div>
+      {/* Two areas. A centre IT Head sees no switch at all, because there is
+          only one side of it they can open. */}
+      {fullAdmin && (
+        <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
+          <Tab active={area === "admin"} onClick={() => setArea("admin")} icon="users">
+            Admin
+          </Tab>
+          <Tab active={area === "roster"} onClick={() => setArea("roster")} icon="calendar">
+            Shift Roster{rosterBadge ? ` (${rosterBadge})` : ""}
+          </Tab>
+        </div>
+      )}
 
-      {tab === "users" && (
-        <UsersTable users={users} onEdit={(u) => setUserModal({ mode: "edit", user: u })} onCreds={setCreds} />
+      {inAdmin && (
+        <div className="mb-5 flex flex-wrap gap-1 rounded-control bg-paper-deep p-1 w-fit">
+          <Tab active={tab === "users"} onClick={() => setTab("users")} icon="users">
+            Login accounts ({users.length})
+            {unsigned ? <span className="ml-1 text-rust">· {unsigned} not signed up</span> : null}
+          </Tab>
+          <Tab active={tab === "invites"} onClick={() => setTab("invites")} icon="mail">
+            Invited emails ({invites.length})
+          </Tab>
+          {/* Full admins only — this is the screen that hands out payroll access. */}
+          <Tab active={tab === "access"} onClick={() => setTab("access")} icon="key">
+            Access
+          </Tab>
+        </div>
       )}
-      {tab === "staff" && <StaffTable staff={staff} onEdit={(s) => setStaffModal({ mode: "edit", student: s })} />}
-      {tab === "invites" && <InvitesTable invites={invites} />}
-      {tab === "shifts" && (
-        <ShiftsAdmin teachers={teacherOptions} locations={locations} initial={initialShifts} />
+
+      {inAdmin && tab === "users" && (
+        <UsersTable
+          users={users}
+          mailReady={mailReady}
+          onEdit={(u) => setUserModal({ mode: "edit", user: u })}
+          onCreds={setCreds}
+        />
       )}
-      {tab === "hours" && <HoursAdmin initial={initialHours} />}
+      {inAdmin && tab === "invites" && <InvitesTable invites={invites} />}
+      {inAdmin && tab === "access" && <AccessPanel />}
+
+      {!inAdmin && (
+        <ShiftRoster
+          teachers={teacherOptions}
+          locations={locations}
+          shiftLocations={shiftLocations}
+          initialShifts={initialShifts}
+          initialHours={initialHours}
+          initialPayroll={initialPayroll}
+          fullAdmin={fullAdmin}
+          managedBranches={managedBranches}
+          fenceOn={fenceOn}
+          positions={positions}
+        />
+      )}
 
       {userModal && (
         <UserModal
@@ -178,9 +248,6 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
           onCreds={setCreds}
         />
       )}
-      {staffModal && (
-        <StaffModal modal={staffModal} classes={classes} onClose={() => setStaffModal(null)} />
-      )}
       {inviteModal && <InviteModal locations={locations} onClose={() => setInviteModal(false)} />}
     </div>
   );
@@ -188,11 +255,83 @@ export default function AdminApp({ users, staff, invites = [], locations, classe
 
 // ---- Users -------------------------------------------------------------
 
-function UsersTable({ users, onEdit, onCreds }) {
+/**
+ * The sign-up state, as a pill.
+ *
+ * Three states rather than a tick and a cross, because "reset and not picked
+ * up" is a person locked out of an account they were using — a different and
+ * more urgent thing than never having started. See lib/admin/signup.js.
+ */
+function SignupPill({ signup }) {
+  const state = signup?.state || "active";
+  const tone =
+    state === "active"
+      ? "bg-sage/15 text-charcoal"
+      : state === "reset"
+        ? "bg-gold-soft/60 text-charcoal"
+        : "bg-rust/10 text-rust";
+  return (
+    <span className={`inline-block rounded-pill px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
+      {STATE_LABEL[state]}
+    </span>
+  );
+}
+
+function shortDay(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("en-SG", {
+    timeZone: "Asia/Singapore",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function UsersTable({ users, mailReady = false, onEdit, onCreds }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // "everyone" | "outstanding" | "active"
+  const [show, setShow] = useState("everyone");
+  const [report, setReport] = useState(null);
+
+  const shown = users.filter((u) => {
+    if (show === "outstanding") return needsReminder(u.signup?.state);
+    if (show === "active") return !needsReminder(u.signup?.state);
+    return true;
+  });
+  const outstanding = users.filter((u) => needsReminder(u.signup?.state));
+  // Selection is over the VISIBLE rows, so "select all" while filtered to the
+  // outstanding picks exactly the people a reminder is for — which is the whole
+  // reason the filter is there.
+  const remindable = shown.filter((u) => needsReminder(u.signup?.state)).map((u) => u.id);
+
   // Your own account can never be deleted, so it is never selectable either.
-  const sel = useSelection(users.filter((u) => !u.isSelf).map((u) => u.id));
+  const sel = useSelection(shown.filter((u) => !u.isSelf).map((u) => u.id));
+
+  function sendReminders(ids) {
+    const names = users.filter((u) => ids.includes(u.id)).map((u) => u.full_name);
+    if (!names.length) return;
+    const preview = names.slice(0, 5).join(", ") + (names.length > 5 ? `, and ${names.length - 5} more` : "");
+    if (
+      !confirm(
+        `Email a sign-up reminder to ${names.length} ${names.length === 1 ? "person" : "people"}?\n\n${preview}\n\n` +
+          "This gives each of them a NEW temporary password and sends it to them. " +
+          "Any password they already have stops working."
+      )
+    )
+      return;
+    setReport(null);
+    startTransition(async () => {
+      const r = await sendSignupReminders(ids);
+      if (r?.error) {
+        alert(r.error);
+        return;
+      }
+      setReport(r);
+      sel.clear();
+      router.refresh();
+    });
+  }
 
   function removeSelected() {
     const names = users.filter((u) => sel.has(u.id)).map((u) => u.full_name);
@@ -241,6 +380,96 @@ function UsersTable({ users, onEdit, onCreds }) {
 
   return (
     <>
+    {/* Who has signed up, and the one button for the ones who haven't. */}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-card border-[0.5px] border-line bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1 rounded-control bg-paper-deep p-1">
+        {[
+          ["everyone", `Everyone (${users.length})`],
+          ["outstanding", `Not signed up (${outstanding.length})`],
+          ["active", `Signed up (${users.length - outstanding.length})`],
+        ].map(([k, lbl]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => { setShow(k); sel.clear(); }}
+            className={`rounded-[7px] px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+              show === k ? "bg-white text-charcoal shadow-sm" : "text-charcoal-soft hover:text-charcoal"
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {outstanding.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!mailReady && (
+            <span className="text-[12px] text-rust">
+              Email isn’t set up on this server, so reminders can’t be sent.
+            </span>
+          )}
+          <button
+            type="button"
+            disabled={pending || !mailReady || !remindable.length}
+            onClick={() => sendReminders(remindable.slice(0, MAX_PER_SEND))}
+            title={`Sends at most ${MAX_PER_SEND} at a time`}
+            className="rounded-control border-[0.5px] border-ink px-3 py-2 text-[12px] font-semibold text-ink hover:bg-ink/5 disabled:opacity-40"
+          >
+            Remind {Math.min(remindable.length, MAX_PER_SEND) || 0}
+            {remindable.length > MAX_PER_SEND ? ` of ${remindable.length}` : ""}
+          </button>
+        </div>
+      )}
+    </div>
+
+    {/* Per-person outcomes. A partial send has to be readable: the people it
+        failed for have had their password changed and NOT been told, and this
+        is the only place that still knows what it was. */}
+    {report && (
+      <div className="mb-4 rounded-card border-[0.5px] border-line bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[13px] font-semibold text-charcoal">
+            {report.sent} sent{report.failed ? `, ${report.failed} failed` : ""}
+            {report.held?.length ? ` · ${report.held.length} held back for the next batch` : ""}
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setReport(null)}
+            className="text-charcoal-soft hover:text-charcoal"
+          >
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+        <ul className="mt-2 space-y-1">
+          {report.results.map((r) => (
+            <li key={r.id} className="text-[12px]">
+              <strong className={`font-semibold ${r.ok ? "text-sage" : "text-rust"}`}>
+                {r.ok ? "Sent" : "Failed"}
+              </strong>{" "}
+              <span className="text-charcoal">{r.name || r.id}</span>
+              <span className="text-charcoal-soft">{r.email ? ` · ${r.email}` : ""}</span>
+              {!r.ok && (
+                <span className="text-charcoal-soft">
+                  {" "}
+                  — {r.error}
+                  {r.tempPassword ? (
+                    <>
+                      . Their password is now{" "}
+                      <code className="rounded bg-paper-deep px-1 py-0.5 font-semibold text-charcoal">
+                        {r.tempPassword}
+                      </code>{" "}
+                      — pass it on by hand.
+                    </>
+                  ) : null}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
     <BulkBar count={sel.count} noun="account" pending={pending} onClear={sel.clear} onDelete={removeSelected} />
     <div className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
       <div className="overflow-x-auto">
@@ -258,13 +487,14 @@ function UsersTable({ users, onEdit, onCreds }) {
                 />
               </th>
               <Th>Name</Th>
+              <Th>Signed up?</Th>
               <Th>Role</Th>
               <Th>Branch</Th>
               <Th className="text-right pr-4">Actions</Th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {shown.map((u) => (
               <tr
                 key={u.id}
                 className={`border-b-[0.5px] border-line last:border-0 align-middle ${sel.has(u.id) ? "bg-paper-deep" : ""}`}
@@ -305,6 +535,24 @@ function UsersTable({ users, onEdit, onCreds }) {
                   </div>
                 </td>
                 <td className="px-3 py-3">
+                  <SignupPill signup={u.signup} />
+                  {u.signup?.lastLoginAt ? (
+                    <div className="mt-0.5 text-[11px] text-charcoal-soft">
+                      Last in {shortDay(u.signup.lastLoginAt)}
+                    </div>
+                  ) : u.signup?.state === "active" ? (
+                    // Honest about the gap: last_login_at only started being
+                    // recorded on 17 Sep, so an older account holds its own
+                    // password with no date to show for it.
+                    <div className="mt-0.5 text-[11px] text-charcoal-soft">Before 17 Sep</div>
+                  ) : null}
+                  {u.signup?.reminderCount ? (
+                    <div className="mt-0.5 text-[11px] text-charcoal-soft">
+                      Reminded {u.signup.reminderCount}× · last {shortDay(u.signup.remindedAt)}
+                    </div>
+                  ) : null}
+                </td>
+                <td className="px-3 py-3">
                   <RolePill role={u.role} />
                 </td>
                 <td className="px-3 py-3 text-[12px] text-charcoal-soft">
@@ -313,6 +561,14 @@ function UsersTable({ users, onEdit, onCreds }) {
                 <td className="py-3 pr-4">
                   <div className="flex items-center justify-end gap-1">
                     <IconBtn label="Edit" icon="pencil" onClick={() => onEdit(u)} />
+                    {needsReminder(u.signup?.state) && (
+                      <IconBtn
+                        label="Email a sign-up reminder"
+                        icon="mail"
+                        disabled={pending || !mailReady}
+                        onClick={() => sendReminders([u.id])}
+                      />
+                    )}
                     <IconBtn label="Reset password" icon="key" disabled={pending} onClick={() => reset(u)} />
                     <IconBtn
                       label="Delete"
@@ -325,10 +581,14 @@ function UsersTable({ users, onEdit, onCreds }) {
                 </td>
               </tr>
             ))}
-            {!users.length && (
+            {!shown.length && (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-[13px] text-charcoal-soft">
-                  No accounts yet.
+                <td colSpan={6} className="p-6 text-center text-[13px] text-charcoal-soft">
+                  {users.length
+                    ? show === "outstanding"
+                      ? "Everybody has signed up."
+                      : "Nobody matches that."
+                    : "No accounts yet."}
                 </td>
               </tr>
             )}
@@ -348,6 +608,8 @@ function UserModal({ modal, locations, onClose, onCreds }) {
     full_name: u.full_name || "",
     email: u.email || "",
     role: u.role || "teacher",
+    adminScope: u.admin_scope || "centre",
+    managedBranches: u.managed_branches || [],
     position: u.position || "",
     pay_tier: u.pay_tier || "",
     primary_location: u.primary_location || "",
@@ -380,6 +642,10 @@ function UserModal({ modal, locations, onClose, onCreds }) {
       pay_tier: form.pay_tier,
       primary_location: form.primary_location,
       branches: [...branches],
+      adminScope: form.role === "admin" ? form.adminScope : null,
+      // A full admin covers everything, so their branch list is always empty —
+      // sending the stale chips would leave rows behind that mean nothing.
+      managedBranches: form.role === "admin" && form.adminScope === "centre" ? form.managedBranches : [],
     };
     startTransition(async () => {
       const r = editing ? await updateUser(payload) : await createUser(payload);
@@ -421,6 +687,57 @@ function UserModal({ modal, locations, onClose, onCreds }) {
             />
           </Labelled>
         </div>
+
+        {form.role === "admin" && (
+          <div className="rounded-control border-[0.5px] border-line bg-paper-deep/40 p-3">
+            <Labelled label="Admin access">
+              <select
+                className={field}
+                value={form.adminScope}
+                onChange={(e) => set("adminScope", e.target.value)}
+              >
+                <option value="centre">Centre only — roster and attendance, no payroll</option>
+                <option value="full">Full — everything, including payroll</option>
+              </select>
+            </Labelled>
+            {form.adminScope === "centre" && (
+              <div className="mt-3">
+                <span className="mb-1.5 block text-[12px] font-semibold text-charcoal">Their centres</span>
+                <div className="flex flex-wrap gap-2">
+                  {locations.filter((l) => l !== "HQ").map((loc) => {
+                    const on = form.managedBranches.includes(loc);
+                    return (
+                      <button
+                        key={loc}
+                        type="button"
+                        onClick={() =>
+                          set(
+                            "managedBranches",
+                            on
+                              ? form.managedBranches.filter((b) => b !== loc)
+                              : [...form.managedBranches, loc]
+                          )
+                        }
+                        className={`rounded-pill px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                          on
+                            ? "bg-ink text-paper"
+                            : "border-[0.5px] border-line bg-white text-charcoal hover:bg-paper-deep"
+                        }`}
+                      >
+                        {loc}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!form.managedBranches.length && (
+                  <p className="mt-2 text-[11px] text-rust">
+                    With no centres they will see an empty roster.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <Labelled label="Pay tier — sets their teaching rate for work hours">
           <select className={field} value={form.pay_tier} onChange={(e) => set("pay_tier", e.target.value)}>
             <option value="">Not set</option>
@@ -674,188 +991,6 @@ function InviteModal({ locations, onClose }) {
       </div>
 
       <ModalActions pending={pending} onClose={onClose} onSave={submit} saveLabel="Add invite" />
-    </Modal>
-  );
-}
-
-// ---- Staff roster ------------------------------------------------------
-
-function StaffTable({ staff, onEdit }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const sel = useSelection(staff.map((s) => s.id));
-
-  function removeSelected() {
-    const picked = staff.filter((s) => sel.has(s.id));
-    const lessons = picked.reduce((n, s) => n + (s.lessonCount || 0), 0);
-    if (
-      !confirm(
-        `Remove ${picked.length} staff member${picked.length === 1 ? "" : "s"} from the roster?\n\n` +
-          `This also deletes ${lessons} logged lesson${lessons === 1 ? "" : "s"}. ` +
-          "Their login accounts are not touched. This cannot be undone."
-      )
-    )
-      return;
-    startTransition(async () => {
-      const r = await deleteStudents(sel.chosen);
-      if (r?.error) alert(r.error);
-      sel.clear();
-      router.refresh();
-    });
-  }
-
-  function remove(s) {
-    if (!confirm(`Remove ${titleCase(s.name)} from the roster? This also deletes their ${s.lessonCount} logged lesson(s).`)) return;
-    startTransition(async () => {
-      const r = await deleteStudent(s.id);
-      if (r?.error) alert(r.error);
-      router.refresh();
-    });
-  }
-
-  // Group by class for readability.
-  const groups = staff.reduce((m, s) => {
-    (m[s.class] ||= []).push(s);
-    return m;
-  }, {});
-
-  return (
-    <div className="space-y-5">
-      {staff.length > 0 && (
-        <div>
-          <BulkBar count={sel.count} noun="staff member" pending={pending} onClear={sel.clear} onDelete={removeSelected} />
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] font-semibold text-charcoal-soft">
-            <input
-              type="checkbox"
-              className={checkbox}
-              checked={sel.allChosen}
-              ref={(el) => el && (el.indeterminate = sel.someChosen)}
-              onChange={sel.toggleAll}
-            />
-            Select all {staff.length}
-          </label>
-        </div>
-      )}
-      {Object.keys(groups).length === 0 && (
-        <div className="rounded-card border-[0.5px] border-line bg-white p-6 text-center text-[13px] text-charcoal-soft">
-          No staff on the roster yet.
-        </div>
-      )}
-      {Object.entries(groups).map(([cls, members]) => (
-        <div key={cls} className="overflow-hidden rounded-card border-[0.5px] border-line bg-white">
-          <div className="flex items-center justify-between border-b-[0.5px] border-line px-4 py-2.5">
-            <span className="text-[12px] font-bold uppercase tracking-wide text-charcoal">{titleCase(cls)}</span>
-            <span className="text-[11px] text-charcoal-soft">{members.length} staff</span>
-          </div>
-          <ul>
-            {members.map((s) => (
-              <li
-                key={s.id}
-                className={`flex items-center justify-between gap-3 border-b-[0.5px] border-line px-4 py-2.5 last:border-0 ${sel.has(s.id) ? "bg-paper-deep" : ""}`}
-              >
-                <input
-                  type="checkbox"
-                  className={checkbox}
-                  aria-label={`Select ${titleCase(s.name)}`}
-                  checked={sel.has(s.id)}
-                  onChange={() => sel.toggle(s.id)}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-charcoal">{titleCase(s.name)}</div>
-                  <div className="text-[11px] text-charcoal-soft">
-                    Juz {s.juz}
-                    {s.position ? ` · ${s.position}` : ""} · {s.lessonCount} lesson{s.lessonCount === 1 ? "" : "s"}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <IconBtn label="Edit" icon="pencil" onClick={() => onEdit(s)} />
-                  <IconBtn label="Remove" icon="trash" danger disabled={pending} onClick={() => remove(s)} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StaffModal({ modal, classes, onClose }) {
-  const router = useRouter();
-  const editing = modal.mode === "edit";
-  const s = modal.student || {};
-  const [form, setForm] = useState({
-    name: s.name || "",
-    class: s.class || classes[0],
-    juz: s.juz || 1,
-    position: s.position || "",
-  });
-  const [error, setError] = useState(null);
-  const [pending, startTransition] = useTransition();
-  const classChanged = editing && form.class !== s.class;
-
-  function set(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-  function submit() {
-    setError(null);
-    const payload = { id: s.id, ...form };
-    startTransition(async () => {
-      const r = editing ? await updateStudent(payload) : await createStudent(payload);
-      if (r?.error) {
-        setError(r.error);
-        return;
-      }
-      router.refresh();
-      onClose();
-    });
-  }
-
-  return (
-    <Modal title={editing ? "Edit staff member" : "New staff member"} onClose={onClose}>
-      <div className="space-y-3.5">
-        <Labelled label="Name">
-          <input className={field} value={form.name} onChange={(e) => set("name", e.target.value)} />
-        </Labelled>
-        <div className="grid grid-cols-2 gap-3">
-          <Labelled label="Branch">
-            <select className={field} value={form.class} onChange={(e) => set("class", e.target.value)}>
-              {classes.map((c) => (
-                <option key={c} value={c}>
-                  {titleCase(c)}
-                </option>
-              ))}
-            </select>
-          </Labelled>
-          <Labelled label="Current Juz">
-            <input
-              className={field}
-              type="number"
-              min="1"
-              max="30"
-              value={form.juz}
-              onChange={(e) => set("juz", e.target.value)}
-            />
-          </Labelled>
-        </div>
-        <Labelled label="Position / note">
-          <input
-            className={field}
-            value={form.position}
-            placeholder="optional, e.g. Hifz"
-            onChange={(e) => set("position", e.target.value)}
-          />
-        </Labelled>
-
-        {classChanged && (
-          <p className="rounded-control bg-gold-soft/40 px-3 py-2 text-[12px] text-charcoal">
-            Their {s.lessonCount} past lesson{s.lessonCount === 1 ? "" : "s"} will move to {titleCase(form.class)} with them.
-          </p>
-        )}
-        {error && <p className="rounded-control bg-rust-soft px-3 py-2 text-[12px] font-medium text-rust">{error}</p>}
-      </div>
-
-      <ModalActions pending={pending} onClose={onClose} onSave={submit} saveLabel={editing ? "Save changes" : "Add staff"} />
     </Modal>
   );
 }

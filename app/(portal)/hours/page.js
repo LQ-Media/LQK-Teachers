@@ -76,6 +76,31 @@ function shapeShift(row) {
     resolution: row.resolution || null,
     note: row.note || null,
     sessionId: row.session_id ?? null,
+    offeredAt: row.offered_at || null,
+    offerReason: row.offer_reason || null,
+    takenBy: row.taken_by || null,
+    minutes: shiftMinutes({ startsAt: row.starts_at, endsAt: row.ends_at }),
+  };
+}
+
+// The board: shifts somebody else has offered, that this teacher could cover.
+//
+// Their own offers are excluded — the one you just gave away is not an
+// opportunity — and so is anything that has already started, because an offer
+// nobody took before it began is an uncovered shift for the IT Head rather
+// than something still on sale.
+function shapeOffer(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    branch: row.branch || null,
+    category: row.category,
+    otReason: row.ot_reason || null,
+    phName: row.ph_name || null,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    offerReason: row.offer_reason || null,
+    fromName: row.from_name || null,
     minutes: shiftMinutes({ startsAt: row.starts_at, endsAt: row.ends_at }),
   };
 }
@@ -115,9 +140,12 @@ export default async function HoursPage() {
   // fortnight to catch anything they didn't clock in for.
   const shiftRows = db
     .prepare(
+      // published = 1 is Sling's PUBLISH toggle. An unpublished shift is a
+      // draft an admin is still arranging, and the whole promise of the toggle
+      // is that the teacher does not see it yet.
       `SELECT s.*, w.id AS session_id
        FROM shifts s LEFT JOIN work_sessions w ON w.shift_id = s.id
-       WHERE s.teacher_id = ? AND s.date BETWEEN ? AND ?
+       WHERE s.teacher_id = ? AND s.published = 1 AND s.date BETWEEN ? AND ?
        ORDER BY s.starts_at ASC`
     )
     .all(uid, addSgDays(today, -14), addSgDays(today, 14))
@@ -139,6 +167,31 @@ export default async function HoursPage() {
   // replaces the IT Head's weekly chase.
   const missed = shiftRows.filter((s) => isMissed(s, now, !!s.sessionId) && !s.missedReason);
   const awaiting = shiftRows.filter((s) => s.missedReason && !s.resolution);
+
+  // Shifts on the relief board that this teacher could pick up. The overlap
+  // check is done here too, so a shift they could never take is not dangled in
+  // front of them — takeShift refuses it again anyway, because between this
+  // page rendering and the tap somebody could roster them.
+  const offers = db
+    .prepare(
+      `SELECT s.*, f.full_name AS from_name
+       FROM shifts s
+       LEFT JOIN profiles f ON f.id = s.offer_from
+       WHERE s.offered_at IS NOT NULL
+         AND s.status = 'planned'
+         AND s.published = 1
+         AND s.starts_at > ?
+         AND s.teacher_id != ?
+         AND NOT EXISTS (
+           SELECT 1 FROM shifts m
+           WHERE m.teacher_id = ? AND m.status = 'planned' AND m.id != s.id
+             AND m.starts_at < s.ends_at AND m.ends_at > s.starts_at
+         )
+       ORDER BY s.starts_at ASC
+       LIMIT 20`
+    )
+    .all(now, uid, uid)
+    .map(shapeOffer);
 
   // The session the teacher is on right now, if any.
   const onShiftRow = db
@@ -190,6 +243,7 @@ export default async function HoursPage() {
       onShift={onShift}
       nextShift={nextShift}
       upcoming={upcoming}
+      offers={offers}
       missed={missed}
       awaiting={awaiting}
       sessions={sessions}

@@ -40,7 +40,7 @@ export default async function PassPage({ params }) {
       photoEnabled={Boolean(event.photo_enabled)}
       photoBlurb={event.photo_blurb}
       consentText={event.photo_consent_text}
-      hasPhoto={photo?.status === "ready"}
+      photoVersion={photo?.status === "ready" ? photo.id : null}
       /* The pass QR encodes a FULL URL, not a bare code: a parent who scans
          their own pass with the phone camera then lands somewhere useful
          instead of seeing eight meaningless characters. */
