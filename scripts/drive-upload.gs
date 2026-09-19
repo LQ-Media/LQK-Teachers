@@ -63,9 +63,16 @@ function doPost(e) {
 
     // One subfolder per event keeps years of Maulid photos from piling into a
     // single directory. Created on demand; reused if it already exists.
+    // "2026/Siti Aminah" (assessment evidence) walks down one level at a
+    // time; a plain event slug is the one-level case.
     if (body.subfolder) {
-      var existing = folder.getFoldersByName(body.subfolder);
-      folder = existing.hasNext() ? existing.next() : folder.createFolder(body.subfolder);
+      var parts = String(body.subfolder).split('/');
+      for (var i = 0; i < parts.length; i++) {
+        var name = parts[i].trim();
+        if (!name) continue;
+        var existing = folder.getFoldersByName(name);
+        folder = existing.hasNext() ? existing.next() : folder.createFolder(name);
+      }
     }
 
     var blob = Utilities.newBlob(

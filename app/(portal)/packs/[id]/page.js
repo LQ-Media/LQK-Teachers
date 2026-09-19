@@ -6,6 +6,7 @@ import { normalisePack } from "@/lib/ai/provider";
 import { ageLabel } from "@/lib/notes/taxonomy";
 import Icon from "@/components/Icon";
 import PackReview from "@/components/packs/PackReview";
+import PackEdits from "@/components/packs/PackEdits";
 
 export default async function PackPage({ params }) {
   const { id } = await params;
@@ -27,6 +28,35 @@ export default async function PackPage({ params }) {
     : null;
 
   const totalMinutes = pack.activities.reduce((s, a) => s + a.minutes, 0);
+
+  // Proposals: a teacher sees their own; reviewers see every pending one and
+  // the last few decided, so the record behind criterion A4 is visible.
+  const edits = db
+    .prepare(
+      `SELECT e.id, e.section, e.activity_index, e.proposed, e.reason, e.status, e.decided_at, e.decision_note, e.created_at,
+              e.proposer_id, p.full_name AS proposer_name, q.full_name AS decider_name
+         FROM lesson_pack_edits e
+         LEFT JOIN profiles p ON p.id = e.proposer_id
+         LEFT JOIN profiles q ON q.id = e.decided_by
+        WHERE e.pack_id = ? ${canReview ? "" : "AND e.proposer_id = ?"}
+        ORDER BY CASE e.status WHEN 'pending' THEN 0 ELSE 1 END, e.created_at DESC
+        LIMIT 30`
+    )
+    .all(...(canReview ? [row.id] : [row.id, session.userId]))
+    .map((e) => ({
+      id: e.id,
+      section: e.section,
+      activityIndex: e.activity_index,
+      proposed: e.proposed,
+      reason: e.reason,
+      status: e.status,
+      decidedAt: e.decided_at,
+      decisionNote: e.decision_note || "",
+      createdAt: e.created_at,
+      proposerName: e.proposer_name || "",
+      deciderName: e.decider_name || "",
+      mine: e.proposer_id === session.userId,
+    }));
 
   return (
     <div className="px-4 py-6 sm:p-8 max-w-3xl">
@@ -159,6 +189,18 @@ export default async function PackPage({ params }) {
         </Section>
       )}
 
+      {pack.teacherNotes.length > 0 && (
+        <Section title="From teachers" icon="users" note="Approved notes from colleagues who have taught this portion.">
+          <ul className="space-y-2">
+            {pack.teacherNotes.map((n, i) => (
+              <li key={i} className="rounded-control bg-paper px-4 py-3 text-[13px] leading-relaxed text-charcoal">
+                {n}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       {pack.uncertain.length > 0 && (
         <div className="mt-6 rounded-card border border-[#EED4C2] bg-rust-soft p-5">
           <div className="mb-2 flex items-center gap-2">
@@ -183,6 +225,13 @@ export default async function PackPage({ params }) {
       </p>
 
       {canReview && <PackReview id={row.id} status={row.status} />}
+
+      <PackEdits
+        packId={row.id}
+        canReview={canReview}
+        activities={pack.activities.map((a) => a.name)}
+        edits={edits}
+      />
     </div>
   );
 }

@@ -12,6 +12,8 @@ import { livePositions } from "@/lib/hours/position-store";
 import { signupRow } from "@/lib/admin/signup";
 import { mailConfigured } from "@/lib/events/mail";
 import { sgMonthNow } from "@/lib/hours/rates";
+import { adminYearData, yearsWithAssessments } from "@/lib/assess/queries";
+import { currentPeriod, yearOptions } from "@/lib/assess/periods";
 import AdminApp from "@/components/admin/AdminApp";
 
 export const metadata = { title: "Admin · LQK Teachers Portal" };
@@ -28,7 +30,7 @@ export default async function AdminPage() {
   const profiles = db
     .prepare(
       `SELECT p.id, p.full_name, p.email, p.role, p.admin_scope, p.primary_location, p.position,
-              p.photo, p.pay_tier, p.must_change_password, p.last_login_at, p.created_at,
+              p.photo, p.pay_tier, p.is_assessor, p.must_change_password, p.last_login_at, p.created_at,
               (SELECT MAX(r.at) FROM signup_reminders r WHERE r.subject_id = p.id AND r.ok = 1) AS reminded_at,
               (SELECT COUNT(*) FROM signup_reminders r WHERE r.subject_id = p.id AND r.ok = 1) AS reminder_count
        FROM profiles p ORDER BY p.full_name`
@@ -56,6 +58,7 @@ export default async function AdminPage() {
     primary_location: p.primary_location || "",
     position: p.position || "",
     pay_tier: p.pay_tier || "",
+    is_assessor: !!p.is_assessor,
     branches: byTeacher.get(p.id) || (p.primary_location ? [p.primary_location] : []),
     avatar: avatarSrc(p.id, p.photo),
     isSelf: p.id === session.userId,
@@ -109,6 +112,14 @@ export default async function AdminPage() {
     relief: board,
   };
 
+  // Assessment results are full-admin only, like payroll — and like payroll,
+  // not merely hidden in the UI: a centre IT Head's page must never carry the
+  // data at all, since props are serialised to the client.
+  const thisYear = currentPeriod().year;
+  const initialAssess = fullAdmin
+    ? { data: adminYearData(thisYear), years: yearOptions(thisYear, yearsWithAssessments()) }
+    : null;
+
   return (
     <AdminApp
       users={users}
@@ -130,6 +141,7 @@ export default async function AdminPage() {
       // The live position list, so the Add-shift dropdown and the Positions
       // tile's count both follow what the Positions screen says.
       positions={livePositions()}
+      initialAssess={initialAssess}
     />
   );
 }

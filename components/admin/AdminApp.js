@@ -18,6 +18,7 @@ import Icon from "@/components/Icon";
 import PageHeading from "@/components/PageHeading";
 import ShiftRoster from "@/components/admin/ShiftRoster";
 import AccessPanel from "@/components/admin/AccessPanel";
+import AssessmentsAdmin from "@/components/admin/AssessmentsAdmin";
 import { PAY_TIERS, TIER_BY_KEY } from "@/lib/hours/rates";
 
 const ROLE_LABEL = { admin: "Admin", reviewer: "Reviewer", teacher: "Teacher" };
@@ -110,7 +111,7 @@ function BulkBar({ count, noun, onDelete, onClear, pending }) {
  * calendar of 71 teachers squeezed into half a monitor with white space beside
  * it — Karim's second ask on the same day.
  */
-export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, fullAdmin = true, managedBranches = null, fenceOn = null, mailReady = false, positions = null }) {
+export default function AdminApp({ users, invites = [], locations, shiftLocations = locations, initialHours, initialShifts, initialPayroll, initialAssess, fullAdmin = true, managedBranches = null, fenceOn = null, mailReady = false, positions = null }) {
   // A centre IT Head has no Admin area at all — no accounts, no invitations, no
   // access screen — so they open on the roster, which is their whole job here.
   const [area, setArea] = useState(fullAdmin ? "admin" : "roster");
@@ -118,6 +119,7 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
   const [userModal, setUserModal] = useState(null); // {mode, user?}
   const [inviteModal, setInviteModal] = useState(false);
   const [creds, setCreds] = useState(null); // {email, tempPassword} banner
+  const chaseCount = initialAssess?.data?.counts?.chase || 0;
   // Anyone who can hold a shift. Sorted by name so the pickers are scannable.
   // position and primary_location travel with the name: Sling's employee
   // picker shows both under each person, and with 77 staff sharing first names
@@ -211,6 +213,9 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
           <Tab active={tab === "access"} onClick={() => setTab("access")} icon="key">
             Access
           </Tab>
+          <Tab active={tab === "assess"} onClick={() => setTab("assess")} icon="award">
+            Assessments{chaseCount ? ` (${chaseCount})` : ""}
+          </Tab>
         </div>
       )}
 
@@ -224,6 +229,7 @@ export default function AdminApp({ users, invites = [], locations, shiftLocation
       )}
       {inAdmin && tab === "invites" && <InvitesTable invites={invites} />}
       {inAdmin && tab === "access" && <AccessPanel />}
+      {inAdmin && tab === "assess" && <AssessmentsAdmin initial={initialAssess} />}
 
       {!inAdmin && (
         <ShiftRoster
@@ -554,6 +560,11 @@ function UsersTable({ users, mailReady = false, onEdit, onCreds }) {
                 </td>
                 <td className="px-3 py-3">
                   <RolePill role={u.role} />
+                  {u.is_assessor && (
+                    <span className="mt-1 block w-fit rounded-pill bg-sand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
+                      Assessor
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-3 text-[12px] text-charcoal-soft">
                   {u.branches.length ? u.branches.join(", ") : "—"}
@@ -612,6 +623,7 @@ function UserModal({ modal, locations, onClose, onCreds }) {
     managedBranches: u.managed_branches || [],
     position: u.position || "",
     pay_tier: u.pay_tier || "",
+    is_assessor: !!u.is_assessor,
     primary_location: u.primary_location || "",
     branches: new Set(u.branches || []),
   });
@@ -640,6 +652,7 @@ function UserModal({ modal, locations, onClose, onCreds }) {
       role: form.role,
       position: form.position,
       pay_tier: form.pay_tier,
+      is_assessor: form.is_assessor,
       primary_location: form.primary_location,
       branches: [...branches],
       adminScope: form.role === "admin" ? form.adminScope : null,
@@ -748,6 +761,20 @@ function UserModal({ modal, locations, onClose, onCreds }) {
             ))}
           </select>
         </Labelled>
+        <label className="flex items-start gap-2.5 rounded-control border-[0.5px] border-line bg-paper px-3 py-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-ink"
+            checked={form.is_assessor}
+            onChange={(e) => set("is_assessor", e.target.checked)}
+          />
+          <span className="text-[13px] text-charcoal">
+            <span className="font-semibold">Assessor</span>
+            <span className="mt-0.5 block text-[11px] text-charcoal-soft">
+              Can observe and score other teachers under Assessments. Any tier, any branch. Results stay with admins.
+            </span>
+          </span>
+        </label>
         <Labelled label="Primary branch">
           <select
             className={field}

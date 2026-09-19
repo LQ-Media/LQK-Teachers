@@ -28,6 +28,8 @@ const MORE_ITEMS = [
   { href: "/qibla", label: "Qibla", icon: "compass" },
   { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Awards", icon: "trophy" },
+  { href: "/classes", label: "My classes", icon: "graduation-cap" },
+  { href: "/assessments", label: "Assessments", icon: "award", assessor: true },
   { href: "/events", label: "Events", icon: "calendar", roles: ["admin"] },
   { href: "/qr", label: "QR Registration", icon: "grid", roles: ["admin"] },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
@@ -42,11 +44,11 @@ function isUnder(pathname, href) {
  * App-style bottom navigation, phones/tablets only (the sidebar takes over at
  * lg). Four fixed tabs + a "More" bottom sheet holding the rest of the nav.
  */
-export default function MobileTabBar({ role }) {
+export default function MobileTabBar({ role, canAssess = false }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const moreItems = MORE_ITEMS.filter((i) => !i.roles || i.roles.includes(role));
+  const moreItems = MORE_ITEMS.filter((i) => (!i.roles || i.roles.includes(role)) && (!i.assessor || canAssess));
   const moreActive = moreItems.some((i) => isUnder(pathname, i.href));
 
   // Close the sheet whenever navigation happens.
