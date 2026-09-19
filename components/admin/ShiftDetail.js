@@ -458,10 +458,19 @@ function EditForm({ shift, teachers, locations, pending, onSave, onCancelEdit })
         </Labelled>
       </div>
       <Labelled label="Location">
+        {/* The shift's OWN location is always an option, even when it is no
+            longer offered. Woods Square became its three rooms on 17 Sep and
+            existing shifts still say plain "Woods Square"; without this the
+            select would render with nothing selected, and the first save would
+            silently move the shift to whatever happened to be first. */}
         <select className={field} value={form.branch} onChange={set("branch")}>
-          {locations.map((l) => (
+          {(locations.includes(form.branch) || !form.branch
+            ? locations
+            : [form.branch, ...locations]
+          ).map((l) => (
             <option key={l} value={l}>
               {l}
+              {l === form.branch && !locations.includes(l) ? " (no longer used)" : ""}
             </option>
           ))}
         </select>

@@ -221,6 +221,27 @@ Three rules worth keeping:
 
 A chosen colour beats the name-derived one in `roleOf()`, and `cancelled` is not offered as a choice — it is the status colour, and painting a live position grey would make a working shift look called off.
 
+### 4g. Woods Square is three rooms on a shift (2026-09-17)
+
+Karim: the shift form's LOCATION dropdown should offer **Woods Square 1 (#03-78)**, **2 (#03-79)** and **3 (#03-77)** instead of one "Woods Square".
+
+**A person still belongs to plain "Woods Square"** (`lib/locations.js LOCATIONS`, five branches). Teachers move between the rooms, so pinning somebody to one would be wrong. That makes the two vocabularies one level further apart than they were, and `shiftLocationsForBranch()` in `lib/hours/locations.js` is the bridge.
+
+**The thing that would have broken silently.** `canManageBranch()` did an exact string match, so the three Woods Square IT Heads would have lost the whole centre's roster the moment the rooms appeared — no error, just an empty calendar and an empty location dropdown they could roster nothing into. Fixed by expanding the managed branches in three places: `canManageBranch` (which covers `refuseBranch` and the relief board), `visibleTo()` in `lib/actions/shifts.js`, and `myLocations` in `ShiftsAdmin`. Verified: a Woods Square IT Head sees all three rooms and the pre-split shifts, and does not see Primz Bizhub.
+
+**Existing shifts are NOT migrated.** Nobody recorded which room, and picking one for them would put a room number on the roster that no human chose. So `"Woods Square"` became a **legacy** value in `LEGACY_SHIFT_LOCATIONS`:
+
+| | Offered for a new shift | Valid on an existing shift | Resolves to a fence |
+|---|---|---|---|
+| `Woods Square 1/2/3 (#03-…)` | yes | yes | yes — `wdsq_1/2/3` |
+| `Woods Square` | **no** | yes | yes — `wdsq_1` |
+
+Dropping it outright was the alternative and would have been quietly destructive: `locationForBranch()` returns null for an unrecognised branch, every caller reads null as "cannot vouch for this location" and **refuses**, so with the fence on, every clock-in at an already-rostered Woods Square shift would have started failing.
+
+`createShifts` validates against the **offered** list (a new shift must name a room); `editShift` and `cancelDate` validate against `SHIFT_LOCATIONS_ALL`, so the back catalogue stays editable. The edit form always includes the shift's own location in the select, marked "(no longer used)" — without that it would render with nothing selected and the first save would silently move the shift.
+
+All three rooms share postal code **737715**, so they share one geofence coordinate. At a kilometre radius they were never distinguishable; the room number is for the roster and the teacher, not the fence.
+
 ### Location stamp (shipped 2026-08-10)
 
 OT is worked wherever the job is — a centre being cleaned, an event venue — so a teacher can stamp an OT session with one reading from their device.
@@ -435,6 +456,8 @@ Three things to know:
 - Tests are `.mjs` deliberately. The repo has no `"type": "module"`, and setting one to tidy the `MODULE_TYPELESS_PACKAGE_JSON` warning would change module resolution for every plain `.js` file in the project — not worth it for a cosmetic warning.
 
 The tests assert *rules*, not current output, and each says which rule it protects. If one goes red, the fix is almost never to update the expectation.
+
+**Verified in a browser for the Woods Square split (2026-09-17)**: a full admin's LOCATION dropdown offering the three rooms and no plain "Woods Square"; a back-catalogue shift still on the grid, openable, with its old value selected and labelled "(no longer used)", and moveable to room 2; and — the one that mattered — a centre IT Head assigned "Woods Square" seeing all 5 of her shifts across the old name and the three rooms, NOT seeing the Primz Bizhub one, and getting a three-room dropdown rather than an empty one.
 
 **Verified in a browser for sign-up status and editable positions (2026-09-17)**, against a seeded database holding all three states: the tab reading "· 4 not signed up", the filter pills `Everyone (7) / Not signed up (4) / Signed up (3)` narrowing to exactly the 4 outstanding rows, "Before 17 Sep" on the undated active account, "Reminded 2× · last 14 Sept 2026" on the chased one, and the Remind button disabled with a plain reason while `RESEND_API_KEY` was unset. Then with a key set: a send reported **"0 sent, 1 failed — Resend returned 403. Their password is now lqk-rkc8yy — pass it on by hand"**, and the database confirmed the hash HAD changed, the row was logged `ok=0` with the reason, and the failure did not count towards "Reminded N×". Positions: adding "Relief Teacher" with a palette colour and seeing it in the Add-shift dropdown on the same visit; the rename warning naming the shift count before saving; the OT-team dropdown appearing only for an OT position; no wage column anywhere. **Not verified here:** a SUCCESSFUL send — this sandbox's egress policy blocks Resend, so only the failure path could run.
 

@@ -28,6 +28,7 @@ import ShiftCalendar from "@/components/admin/ShiftCalendar";
 import ShiftDetail from "@/components/admin/ShiftDetail";
 import NewShiftModal from "@/components/admin/NewShiftModal";
 import { rangeFor, todayAnchor } from "@/lib/hours/calendar";
+import { expandManagedBranches } from "@/lib/hours/locations";
 import { formatHM, sgClock, sgDate, sgTime24, sgToday, addSgDays, isoFromSg } from "@/lib/hours/rates";
 
 const field =
@@ -72,7 +73,13 @@ export default function ShiftsAdmin({ teachers, locations, initial, positions = 
   // A centre admin only ever rosters at their own centres, so the pickers only
   // offer those. The server refuses the rest regardless — this just keeps the
   // form from inviting an error it will then reject.
-  const myLocations = managedBranches ? locations.filter((l) => managedBranches.includes(l)) : locations;
+  // Expanded through shiftLocationsForBranch: a centre IT Head manages "Woods
+  // Square" while the shift locations are its three rooms. A plain includes()
+  // left them with an EMPTY location dropdown the day the rooms appeared —
+  // they could roster nowhere and nothing said why.
+  const myLocations = managedBranches
+    ? locations.filter((l) => expandManagedBranches(managedBranches).includes(l))
+    : locations;
   const [busy, startTransition] = useTransition();
 
   function reload(nextFrom = from, nextTo = to) {

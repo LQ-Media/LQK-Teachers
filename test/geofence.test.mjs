@@ -12,6 +12,10 @@ import {
   GEOFENCE_RADIUS_M,
   LOCATION_BY_KEY,
   SHIFT_LOCATIONS,
+  SHIFT_LOCATIONS_ALL,
+  LEGACY_SHIFT_LOCATIONS,
+  shiftLocationsForBranch,
+  expandManagedBranches,
   checkGeofence,
   distanceMetres,
   isFenced,
@@ -68,8 +72,22 @@ describe("the branch bridge", () => {
     }
   });
 
-  test("SHIFT_LOCATIONS is the branches plus the two placeless ones", () => {
-    for (const b of BRANCHES) assert.ok(SHIFT_LOCATIONS.includes(b), `${b} missing from SHIFT_LOCATIONS`);
+  test("every person-branch is COVERED by a shift location", () => {
+    // Not "appears verbatim in SHIFT_LOCATIONS", which is what this asserted
+    // until 17 Sep. Woods Square became its three rooms on the shift form, so
+    // a branch is now covered rather than named — and every one of the
+    // locations it expands to still has to resolve, or a teacher based there
+    // could be rostered somewhere with no fence.
+    for (const b of BRANCHES) {
+      const covers = shiftLocationsForBranch(b);
+      assert.ok(covers.length, `${b} covers no shift location at all`);
+      for (const l of covers) {
+        assert.ok(
+          SHIFT_LOCATIONS_ALL.includes(l),
+          `${b} expands to ${l}, which is not a valid shift location`
+        );
+      }
+    }
     assert.ok(SHIFT_LOCATIONS.includes("Outside LQK"));
     assert.ok(SHIFT_LOCATIONS.includes("Online"));
   });
@@ -77,6 +95,101 @@ describe("the branch bridge", () => {
   test("every SHIFT_LOCATION resolves — no entry in the list the fence cannot read", () => {
     for (const b of SHIFT_LOCATIONS) {
       assert.notEqual(locationForBranch(b), null, `${b} is offered but does not resolve`);
+    }
+  });
+
+  test("the pre-split 'Woods Square' still resolves, so old shifts keep a fence", () => {
+    // Dropping it would have been quietly destructive: locationForBranch
+    // returns null for an unrecognised branch, every caller reads null as
+    // "cannot vouch" and REFUSES, so with the fence on every clock-in at the
+    // shifts already rostered would have started failing.
+    for (const legacy of LEGACY_SHIFT_LOCATIONS) {
+      const loc = locationForBranch(legacy);
+      assert.notEqual(loc, null, `${legacy} no longer resolves`);
+      assert.equal(loc.fenced, true, `${legacy} must still be fenced, not waved through`);
+    }
+  });
+
+  test("it is NOT offered for a new shift", () => {
+    for (const legacy of LEGACY_SHIFT_LOCATIONS) {
+      assert.ok(!SHIFT_LOCATIONS.includes(legacy), `${legacy} should not be on the menu`);
+      assert.ok(SHIFT_LOCATIONS_ALL.includes(legacy), `${legacy} should still be valid`);
+    }
+  });
+});
+
+describe("Woods Square, split into its three rooms", () => {
+  const ROOMS = ["Woods Square 1 (#03-78)", "Woods Square 2 (#03-79)", "Woods Square 3 (#03-77)"];
+
+  test("all three are offered, and all three are fenced", () => {
+    for (const r of ROOMS) {
+      assert.ok(SHIFT_LOCATIONS.includes(r), `${r} is not offered`);
+      assert.equal(locationForBranch(r)?.fenced, true, `${r} is not fenced`);
+    }
+  });
+
+  test("they share one postal code, so one coordinate serves all three", () => {
+    const codes = new Set(ROOMS.map((r) => locationForBranch(r).postalCode));
+    assert.equal(codes.size, 1);
+    assert.equal([...codes][0], "737715");
+  });
+
+  test("each maps to its OWN Sling room, not all to the first", () => {
+    // They share a coordinate but not an identity: the roster says which room,
+    // and an import matches Sling's per-room names.
+    assert.deepEqual(ROOMS.map((r) => locationForBranch(r).key), ["wdsq_1", "wdsq_2", "wdsq_3"]);
+  });
+
+  test("managing 'Woods Square' covers all three rooms AND the old name", () => {
+    // The breakage this prevents: canManageBranch does an exact match, so
+    // without the expansion the three Woods Square IT Heads silently lost the
+    // whole centre's roster and were left with an empty location dropdown.
+    const covered = shiftLocationsForBranch("Woods Square");
+    for (const r of ROOMS) assert.ok(covered.includes(r), `${r} not covered`);
+    assert.ok(covered.includes("Woods Square"), "the pre-split name must stay covered");
+  });
+
+  test("managing a room does not leak the rest of the centre", () => {
+    // Nobody is assigned a room today — manager_branches holds person-branches
+    // — but if that ever changes, a room must not silently widen to the centre.
+    assert.deepEqual(shiftLocationsForBranch(ROOMS[0]), [ROOMS[0]]);
+  });
+
+  test("another centre is unaffected by the split", () => {
+    assert.deepEqual(shiftLocationsForBranch("Primz Bizhub"), ["Primz Bizhub"]);
+    assert.deepEqual(shiftLocationsForBranch("Tampines Junction"), ["Tampines Junction"]);
+  });
+
+  test("a full admin's null scope passes straight through", () => {
+    // Callers rely on "null = everything"; turning it into [] would have
+    // hidden every shift from every full admin.
+    assert.equal(expandManagedBranches(null), null);
+    assert.equal(expandManagedBranches(undefined), null);
+  });
+
+  test("an empty managed list stays empty, and is not widened to everything", () => {
+    // A centre admin with no centres assigned sees nothing. That is the safe
+    // direction, and the opposite would hand them the company.
+    assert.deepEqual(expandManagedBranches([]), []);
+  });
+
+  test("two managed branches expand without duplicates", () => {
+    const out = expandManagedBranches(["Woods Square", "Primz Bizhub", "Woods Square"]);
+    assert.equal(new Set(out).size, out.length);
+    assert.ok(out.includes("Woods Square 2 (#03-79)"));
+    assert.ok(out.includes("Primz Bizhub"));
+  });
+
+  test("a blank or unknown branch covers nothing rather than everything", () => {
+    assert.deepEqual(shiftLocationsForBranch(""), []);
+    assert.deepEqual(shiftLocationsForBranch(null), []);
+    assert.deepEqual(shiftLocationsForBranch("Atlantis"), ["Atlantis"], "unknown passes through as itself");
+  });
+
+  test("the room names carry no comma, so a CSV export cannot split on them", () => {
+    // shifts.branch lands in the payroll CSV and in GROUP_CONCAT lists.
+    for (const r of [...ROOMS, ...SHIFT_LOCATIONS]) {
+      assert.ok(!/[,|;]/.test(r), `${r} contains a separator`);
     }
   });
 });
