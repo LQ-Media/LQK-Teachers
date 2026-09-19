@@ -45,7 +45,7 @@ export default async function NotebookPage() {
           route="/notebook"
           icon="mic"
           title="Halaqah Notebook"
-          subtitle="Capture a kuliah, a page from a kitab, or your own notes — and get them back as tidy key points, references and class ideas."
+          subtitle="Record or upload a kuliah, photograph a page from a kitab, or type your own notes — and get them back as tidy key points, references and class ideas."
         />
       </div>
 

@@ -67,6 +67,9 @@
   --font-heading: var(--font-baloo);
   --font-body: var(--font-nunito);
   --font-arabic: var(--font-naskh), var(--font-amiri), "Noto Naskh Arabic", serif;
+  /* No --font-mirza token here on purpose: next/font already defines a variable
+     of that name on <html>, so a theme token would shadow it and resolve to
+     itself. The Games use the plain .font-mirza class further down. */
 
   --radius-card: 20px;
   --radius-control: 12px;
@@ -89,6 +92,15 @@ body {
    clearer tashkeel at reading sizes), Amiri behind it for any missing glyph. */
 .font-arabic {
   font-family: var(--font-naskh), var(--font-amiri), "Noto Naskh Arabic", serif;
+}
+
+/* The flashcard face, for the Games only. Stated in full for the same reason
+   .font-arabic is — Tailwind generates a utility of this name from the theme
+   token above, and both rules must carry the same stack or whichever lands
+   later silently wins. Naskh sits behind it so a missing glyph still renders
+   as Arabic rather than as boxes. */
+.font-mirza {
+  font-family: var(--font-mirza), var(--font-naskh), "Noto Naskh Arabic", serif;
 }
 
 /* Subtle fade + rise on load (dashboard cards), staggered via animation-delay. */
@@ -153,5 +165,95 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .lqk-slide-in {
     animation: none;
+  }
+}
+
+/* ---- Games: the huruf mascots and the letter bloom ----------------------
+
+   The ustaz and ustazah react to what a child does (components/games/Mascot.js)
+   and a finished letter blooms once. Everything here is short and one-shot: a
+   4-year-old tracing a letter is already looking at the right place, and a
+   looping animation beside it would pull their eyes away from the one thing
+   they are meant to be watching. */
+@keyframes lqk-cheer {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(-14%) scale(1.08) rotate(-4deg);
+  }
+  70% {
+    transform: translateY(-4%) scale(1.03) rotate(3deg);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+.lqk-cheer {
+  animation: lqk-cheer 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes lqk-oops {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6%) rotate(-3deg);
+  }
+  75% {
+    transform: translateX(6%) rotate(3deg);
+  }
+}
+.lqk-oops {
+  animation: lqk-oops 400ms ease-in-out;
+}
+
+/* The card a child has just got right. */
+@keyframes lqk-bloom {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.09);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.lqk-bloom {
+  animation: lqk-bloom 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lqk-cheer,
+  .lqk-oops,
+  .lqk-bloom {
+    animation: none;
+  }
+}
+
+/* Harakah Lab: the mark arriving on the letter. The layer holding the
+   letter-with-harakah fades in over an identical plain letter, so the body
+   appears not to move and only the mark reads as new — see the note in
+   components/games/HarakahLab.js on why the mark cannot be drawn on its own. */
+@keyframes lqk-harakah-land {
+  0% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.lqk-harakah-land {
+  animation: lqk-harakah-land 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lqk-harakah-land {
+    animation: none;
+    opacity: 1;
   }
 }
