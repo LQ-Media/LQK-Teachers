@@ -62,7 +62,7 @@ export default async function RegistrationsPage() {
             order whose product page asks for attendee details (LQK Maulid 2026).
           </p>
           <p className="mt-2">
-            If orders are being paid but nothing lands here, check that the store's{" "}
+            If orders are being paid but nothing lands here, check that the store&rsquo;s{" "}
             <em>Order payment</em> webhook and <code>SHOPIFY_EVENTS_WEBHOOK_SECRET</code> are set up —
             the same wiring that confirms invitation contributions.
           </p>
