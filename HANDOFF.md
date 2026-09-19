@@ -32,6 +32,7 @@ None of this is self-serviceable — ask for it before you start:
 - **A login for the live portal** if you need to verify anything end-to-end in production. Do not test with a real teacher's account, and do not reset a real teacher's password to get in.
 - **`LQK_HQ_CODE`** if you need to register a new admin account
 - Optional: `GROQ_API_KEY` / `GEMINI_API_KEY` if you're touching the Halaqah Notebook
+- Optional: `RESEND_API_KEY` if you're touching password reset or event email, and the OAuth credentials (`GOOGLE_*`, `MICROSOFT_*`, `APPLE_*`) if you're touching social sign-in. Each is independent — see §4b and `.env.example`.
 
 Secrets live in Railway service variables and in a local `.env.local` — never in the repo. `.env.example` documents every variable and how to generate the ones that need generating.
 
@@ -277,6 +278,160 @@ Two traps: only $10/15/20/25 are expressible (the portal stores a *tier*, not a 
 
 ---
 
+## 4b. Signing in — social sign-in & password reset (shipped 2026-09-07)
+
+Before this, the only way in was an email and a password, and the only way to
+recover a forgotten one was to ask an admin. Now there are three doors, and
+they all lead to the same account.
+
+### Password reset
+
+"Forgot password?" on the login page emails a one-time link (`/reset-password`),
+good for an hour. Redeeming it sets the password and signs them straight in.
+
+- Only the **SHA-256 of the token** is stored (`password_resets`). The token
+  itself exists only in the email that was sent, so a leaked DB backup yields
+  nothing usable.
+- The form's answer is **identical whether or not the address has an account**,
+  whether or not the rate limit was hit, and whether or not the send succeeded.
+  That is deliberate — otherwise the form becomes a way to ask the portal "does
+  this person work at LQK?" against 77 real addresses. Don't "improve" the copy
+  by making it more specific.
+- **Three requests per address per hour.** Asking again burns the earlier link,
+  so the newest email is always the one that works.
+- Needs `RESEND_API_KEY`. Without it the page says so plainly and tells them to
+  ask an admin, rather than pretending to send.
+
+### Social sign-in (Google, Apple, Microsoft)
+
+**Hand-rolled OpenID Connect, not NextAuth/Auth.js.** The portal already has its
+own session (`lib/session.js`) carrying role, branch and the must-change gate,
+and every page reads it through `lib/dal.js`. A second session system would mean
+two sources of truth for "who is this and what may they do" on a portal that
+pays people. `jose` was already a dependency and does the hard part. **No new
+npm packages were added.**
+
+**These are deliberate decisions. Check with Karim before changing them:**
+
+- **Sign-in never creates an account.** It finds an existing profile or refuses
+  with "ask your admin". A profile carries a role, a branch and a pay tier —
+  letting a Google sign-in mint one would put a stranger inside payroll.
+  Registration and invites are untouched.
+- **A password always keeps working.** Connecting Google is an extra door, never
+  a replacement, so a Google outage or a lost work account never locks a teacher
+  out. Disconnecting is therefore always safe.
+- **A provider account may only belong to one profile** (`UNIQUE(provider,
+  subject)`). Without that, two teachers sharing one Google account could each
+  sign in as the other.
+- **Matching is on the provider's `sub`, not the email.** The email is used only
+  on the very first sign-in, to find the profile, and only when the provider has
+  **verified** it. See `trustedEmailFromClaims` in `lib/auth/providers.js` — this
+  is the security boundary of the whole feature, and it is what stops anyone who
+  can put `karim@littlequrankids.sg` on an account they own from signing in as
+  Karim. It is covered by `test/auth-providers.test.mjs`.
+- **Apple "Hide My Email" relay addresses match nothing**, by design — they
+  aren't anybody's work email. Those teachers sign in with their password once
+  and connect Apple under **Profile → Connected accounts**, which proves the two
+  accounts are the same person. Same route for a personal Gmail that isn't the
+  work address.
+- **Microsoft on the default `common` tenant trusts no email at all** (the
+  "nOAuth" pattern: the id_token can be signed by a directory the attacker
+  created). Set `MICROSOFT_TENANT` to the LQK directory to make Microsoft email
+  matching work; without it Microsoft is link-only.
+
+**A provider is off unless its variables are set** — no button, no half-working
+flow. That is what lets Google ship now and Apple follow whenever the paid
+developer account exists: environment variables only, no code change. Every
+variable, and where to get it, is documented in `.env.example`.
+
+Redirect URI to register with each provider, matched literally:
+`<LQK_PUBLIC_BASE_URL>/api/auth/<provider>/callback`
+
+| Concern | File |
+|---|---|
+| Provider registry + email-trust rules (pure, tested) | `lib/auth/providers.js` |
+| The OIDC flow: PKCE, state, id_token verification | `lib/auth/oauth.js` |
+| `oauth_identities` reads/writes | `lib/auth/identities.js` |
+| Reset tokens (pure-ish, tested) | `lib/auth/reset.js` |
+| Start / callback routes | `app/api/auth/[provider]/` |
+| Reset + disconnect actions | `lib/actions/auth.js` |
+| Resend transport, shared with events | `lib/mail.js` |
+
+---
+
+## 4g. Peer assessment, My classes, pack proposals (Sep 2026)
+
+Built 2026-09-10 from the rubric and build plan agreed with Karim (the
+decisions log is on the assessment artifact page and repeated in
+`lib/assess/rubric.js`). Five pieces, all on this branch, all additive.
+
+**Decisions, not accidents — check with Karim before changing any of them:**
+
+- **Five levels, one bar.** Level 3 (Proficient) is the target for every
+  tier. No link to pay this year: nothing here reads or writes payroll.
+- **Results are management-only.** No route shows a teacher their own
+  scores, notes or recordings. `assessmentDetail` returns null for anyone
+  but the owning assessor or an admin, and the page 404s on null. The only
+  record that a teacher heard their result is the admin-logged verbal review.
+- **Any tier can be appointed, any branch can be assessed.** The assessor
+  flag is a column (`profiles.is_assessor`), read per request in
+  `canAssessFor`, NOT a session claim — withdrawing it works immediately.
+- **No reciprocal pairs in a semester.** If A assessed B in S2 2026, B
+  cannot open an assessment of A in S2 2026 (`canAssess` + `reciprocalExists`).
+  Two assessors of one teacher are both kept, never averaged.
+- **Semesters are the two halves of the year** (Jan–Jun, Jul–Dec), derived
+  from the OBSERVATION date, not today. Every teacher needs at least one
+  submitted assessment by 30 November; the tracker chases from 1 October.
+- **Rubric wording is config, versioned.** Edit `lib/assess/rubric.js`; a
+  score row snapshots `rubric_version`. Bump the version for a change in
+  meaning. Never rename a criterion key once results exist.
+- **Recordings live on Drive, kept indefinitely.** Same Apps Script as
+  event photos, different folder (`LQK_ASSESS_DRIVE_FOLDER_ID`), under
+  `Assessments/<year>/<teacher>`. The portal stores the file id and a small
+  thumbnail. Playback is a gated 302; the Drive folder is shared to admins
+  only. Clips are capped at 45 MB because the script takes ~50 MB a request.
+  The portal never deletes from Drive.
+- **Domain B (reading and recitation) is scored live**, no recording.
+- **The parents portal owns the children roster.** `students` here is the
+  STAFF hifz roster and always was. "My classes" reads a teacher's classes
+  and children over `/api/bridge/*` on LQK-Parents (shared secret
+  `LQK_PARENTS_TOKEN` = `TEACHERS_API_SECRET`), and after-lesson reports go
+  back the same way into each child's feed. A report is stored here first
+  (`class_reports`) and marked sent on success, so a bad connection at a
+  centre never loses one.
+- **Teachers propose pack edits; reviewers apply them.** Approving writes
+  the wording into `lesson_packs.content`; the proposal row stays as the
+  record behind criterion A4.
+| Concern | File |
+|---|---|
+| Rubric, levels, domains | `lib/assess/rubric.js` |
+| Calendar, November rule (pure, tested) | `lib/assess/periods.js` |
+| Who may assess whom, annual view (pure, tested) | `lib/assess/rules.js` |
+| Read-side queries | `lib/assess/queries.js` |
+| Server actions | `lib/actions/assess.js` |
+| Assessor screens | `app/(portal)/assessments/`, `components/assess/` |
+| Evidence upload / playback | `app/api/assessments/[id]/evidence`, `app/api/assessments/evidence/[evidenceId]`, `lib/assess/evidence.js` |
+| Admin tab, CSV | `components/admin/AssessmentsAdmin.js`, `app/api/assessments/export` |
+| My classes | `lib/parents/bridge.js`, `lib/actions/classes.js`, `app/(portal)/classes/`, `components/classes/` |
+| Pack proposals | `lib/actions/packs.js` (bottom), `components/packs/PackEdits.js` |
+| Schema | `lib/db.js` → the "Peer assessment" block at the end of `ensureSchema` |
+| Tests | `test/assess.test.mjs` |
+
+**Deploy steps:** push (the additive migration runs on boot, nothing to run
+by hand). Then on Railway set, as needed: `LQK_ASSESS_DRIVE_FOLDER_ID`,
+`LQK_PARENTS_URL` + `LQK_PARENTS_TOKEN` (and `TEACHERS_API_SECRET` on the
+parents service — the LQK-Parents PR carries its side). Every one of them is
+optional: without it the relevant screen says so and the rest of the portal
+is unaffected. Redeploy the Apps Script from `scripts/drive-upload.gs` once —
+it now accepts a nested subfolder path.
+
+**Not verified in production:** everything in this section. Verified
+locally: `npm test` (271 tests, UTC and SGT), `npm run lint` (three
+pre-existing `set-state-in-effect` errors in components this work did not
+write, left alone), a clean
+`next build` of both portals, and the parents-side feed migration against a
+real old-shaped database.
+
 ## 5. Verified vs not
 
 **Verified locally**, on the code now in `main`: clean production build; the full `npm test` suite green (51 offline, plus 2 live-network tests when opted in); a live Nominatim lookup resolving a real Singapore address; and a full round trip of a tagged OT session appearing correctly in the teacher list, the admin approval queue, and the CSV export with label, coordinates, accuracy and map link.
@@ -333,7 +488,18 @@ One thing to watch for specifically: **geolocation requires a secure context.** 
    - **The fence ships SWITCHED OFF** and every clock-in records its verdict and distance regardless. Turn it on at **Admin → Access → Clock-in location** (or `node scripts/sync-location-coords.mjs --enable`); both refuse while any centre is unresolved. The reason it is not on by default: combined with "no clock-in means no pay", a deploy where geocoding had not run would refuse every clock-in at every centre on the first morning. See §4c.
    - **A phone that cannot get a fix is ALLOWED through**, recorded as `no_fix`. Every centre is on an upper floor of an office block, which is where GPS is worst, and docking a teacher's pay for their building's concrete seemed the wrong failure direction. Sling blocks this case. If Karim wants it blocked, it is one branch in `geofenceRefusal()` in `lib/actions/hours.js`.
 4. **`claude-test@lqk.test`** is a leftover admin account in the local dev DB with a known password. Harmless locally; delete it if you prefer. Confirm it does **not** exist in production.
-5. **Test coverage, partly addressed.** The suite is now 555 tests and covers the attendance rules, payroll periods, the admin-scope boundary, the geofence, the notification windows and the relief race — several against a real database built by the real migration. The server actions in `lib/actions/hours.js` are still not covered directly; the note below stands for those.
+5. **A password reset does not sign other devices out.** Sessions are stateless
+   signed JWTs valid for 30 days, so nothing can revoke them — the same has
+   always been true of the existing "change password" screen, and this feature
+   doesn't make it worse. Fixing it properly means stamping the profile with a
+   password epoch and checking it in `requireSession` (`lib/dal.js`), which adds
+   a DB read to every request in the portal. Worth doing; deliberately not
+   bundled into the sign-in work. Raise it with Karim.
+6. **Apple and Microsoft are built but dormant** until their credentials exist —
+   Apple needs the paid developer account. The code paths are unexercised
+   against the live providers, so treat the first real sign-in with each as a
+   test. Google is the one to verify first.
+7. **Test coverage, partly addressed.** The suite covers the attendance rules, payroll periods, the admin-scope boundary, the geofence, the notification windows, the relief race and the sign-in helpers (`lib/auth/providers.js`, `lib/auth/reset.js`, `lib/auth/identities.js`) — several against a real database built by the real migration. The server actions in `lib/actions/hours.js` are still not covered directly; the note below stands for those.
 
    **The original note:** Test coverage stops at the pure helpers. `npm test` covers `lib/hours/rates.js` and `lib/hours/geo.js`. It does **not** cover the server actions in `lib/actions/hours.js` — including the monthly totals in `hoursAdminData`, where approved sessions use their snapshotted `rate_cents` and pending ones use the teacher's current tier. That branch is the most valuable thing still untested, but covering it means either a DB fixture harness or extracting the aggregation into a pure function. The extraction is the tidier option and it touches payroll code, so agree it with Karim first.
 

@@ -22,6 +22,9 @@ const NAV_ITEMS = [
   { href: "/solat", label: "Solat & Azan", icon: "bell" },
   { href: "/achievements", label: "Achievements", icon: "trophy" },
   { href: "/hours", label: "Work hours", icon: "clock" },
+  { href: "/classes", label: "My classes", icon: "graduation-cap" },
+  // Gated by the assessor flag an admin sets, not by role — see canAssessFor.
+  { href: "/assessments", label: "Assessments", icon: "award", assessor: true },
   { href: "/events", label: "Events", icon: "calendar", roles: ["admin"] },
   { href: "/qr", label: "QR Registration", icon: "grid", roles: ["admin"] },
   { href: "/admin", label: "Admin", icon: "settings", roles: ["admin"] },
@@ -44,7 +47,7 @@ function Label({ collapsed, children, className = "" }) {
   );
 }
 
-export default function Sidebar({ role, fullName, avatar }) {
+export default function Sidebar({ role, fullName, avatar, canAssess = false }) {
   const pathname = usePathname();
   const initial = (fullName || "?").trim().charAt(0).toUpperCase();
 
@@ -106,7 +109,8 @@ export default function Sidebar({ role, fullName, avatar }) {
       <nav className="flex flex-1 flex-col gap-1">
         {NAV_ITEMS.map((item) => {
           if (item.roles && !item.roles.includes(role)) return null;
-          const isActive = pathname === item.href;
+          if (item.assessor && !canAssess) return null;
+          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
 
           if (item.soon) {
             return (

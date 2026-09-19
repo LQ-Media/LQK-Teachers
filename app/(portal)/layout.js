@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/dal";
+import { requireSession, canAssessFor } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { avatarSrc } from "@/lib/avatar";
 import Sidebar from "@/components/Sidebar";
@@ -18,6 +18,7 @@ export default async function PortalLayout({ children }) {
 
   const me = db.prepare("SELECT photo FROM profiles WHERE id = ?").get(session.userId);
   const avatar = avatarSrc(session.userId, me?.photo);
+  const canAssess = canAssessFor(session);
 
   return (
     <div className="flex min-h-screen bg-paper">
@@ -26,9 +27,10 @@ export default async function PortalLayout({ children }) {
         fullName={session.fullName}
         avatar={avatar}
         pendingReviewCount={pendingReviewCount}
+        canAssess={canAssess}
       />
       <main className="flex-1 min-w-0 max-lg:pb-[var(--tabbar-h)]">{children}</main>
-      <MobileTabBar role={session.role} />
+      <MobileTabBar role={session.role} canAssess={canAssess} />
       <InstallPrompt />
       <AzanPlayer />
     </div>

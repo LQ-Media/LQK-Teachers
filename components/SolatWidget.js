@@ -6,6 +6,7 @@ import Icon from "@/components/Icon";
 import { COUNTRIES, BY_CODE, countryForTimezone } from "@/lib/countries";
 import { AZAN_SETTINGS_EVENT } from "@/components/solat/AzanPlayer";
 import { prayerArt } from "@/lib/prayerArt";
+import { SUNRISE, timeLabel, timeMinutes } from "@/lib/azan/catalog";
 
 // Each prayer wears one of the three natural tones — dawn/night in sage,
 // the bright hours in honey and clay (no two neighbours share a colour).
@@ -16,6 +17,14 @@ const PRAYERS = [
   { key: "Maghrib", label: "Maghrib", icon: "sunset", tone: "bg-sand text-ink" },
   { key: "Isha", label: "Isyak", icon: "moon-star", tone: "bg-gold-soft text-ink" },
 ];
+
+// Syuruk sits between Subuh and Zohor. `sage-soft` is the CLAY surface (the
+// token names are indirect — see the palette note in app/globals.css), which
+// keeps the no-two-neighbours rule against Subuh's sage and Zohor's honey. It
+// carries the line icon rather than a clay render: there is no sunrise plate in
+// /public/prayer, and Subuh's is itself a sunrise, so borrowing it would read
+// as a second Subuh.
+const SUNRISE_CELL = { ...SUNRISE, tone: "bg-sage-soft text-ink" };
 
 // ---- Source ------------------------------------------------------------
 // Prayer times are fetched from the Aladhan API (api.aladhan.com). Each
@@ -285,8 +294,10 @@ export default function SolatWidget() {
           <span className="text-[12px] font-bold uppercase tracking-wider text-charcoal-soft">Prayer times</span>
           {picker}
         </div>
-        <div className="flex gap-3">
-          {PRAYERS.map((p) => (
+        {/* Six placeholders — five prayers plus Syuruk — so the card does not
+            resize when the real timings land. */}
+        <div className="flex gap-2">
+          {[...PRAYERS, SUNRISE_CELL].map((p) => (
             <div key={p.key} className="h-14 flex-1 animate-pulse rounded-control bg-paper-deep" />
           ))}
         </div>
@@ -295,14 +306,33 @@ export default function SolatWidget() {
   }
 
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const parsed = PRAYERS.map((p) => {
-    const [h, m] = (timings[p.key] || "00:00").split(":").map(Number);
-    return { ...p, minutes: h * 60 + m, time: timings[p.key] };
-  });
+
+  // The countdown runs over the five prayers ONLY. Syuruk is not one of them,
+  // so it never becomes "next prayer" — between Subuh and Syuruk the banner
+  // already points at Zohor.
+  const parsed = PRAYERS.map((p) => ({
+    ...p,
+    minutes: timeMinutes(timings[p.key]) ?? 0,
+    time: timeLabel(timings[p.key]) || "--:--",
+  }));
   const nextIndex = parsed.findIndex((p) => p.minutes > nowMinutes);
   const next = nextIndex === -1 ? parsed[0] : parsed[nextIndex]; // wraps to tomorrow's Subuh
   const diff = (((next.minutes - nowMinutes) % 1440) + 1440) % 1440;
   const countdown = diff >= 60 ? `${Math.floor(diff / 60)}h ${diff % 60}m` : `${diff}m`;
+  const nextKey = next.key;
+
+  // Display order slots Syuruk in after Subuh. Dropped entirely if the source
+  // did not return it, rather than showing a placeholder time.
+  const sunriseMinutes = timeMinutes(timings[SUNRISE_CELL.key]);
+  const cells = [...parsed];
+  if (sunriseMinutes != null) {
+    cells.splice(1, 0, {
+      ...SUNRISE_CELL,
+      minutes: sunriseMinutes,
+      time: timeLabel(timings[SUNRISE_CELL.key]),
+      marker: true, // not a prayer: no ring, no azan, never the countdown target
+    });
+  }
 
   return (
     <div>
@@ -315,24 +345,38 @@ export default function SolatWidget() {
           {azanControls}
         </span>
       </div>
-      <div className="mb-4 grid grid-cols-5 justify-items-center gap-2">
-        {parsed.map((p, i) => {
-          const isNext = i === (nextIndex === -1 ? 0 : nextIndex);
-          const isPast = nextIndex !== -1 && i < nextIndex;
+      {/* Six across once Syuruk is in, so the circle shrinks on a phone and
+          grows back from sm up rather than overflowing the card. */}
+      <div className="mb-4 grid grid-cols-6 justify-items-center gap-1 sm:gap-2">
+        {cells.map((p) => {
+          // Ringed by key, not index — Syuruk shifts the display order but is
+          // never itself the next prayer.
+          const isNext = !p.marker && p.key === nextKey;
+          const isPast = nextIndex !== -1 && p.minutes <= nowMinutes;
           return (
             <div key={p.key} className={`text-center ${isPast ? "opacity-45" : ""}`}>
               <div
-                className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full transition-[box-shadow] ${p.tone} ${
+                className={`mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full transition-[box-shadow] sm:h-14 sm:w-14 ${p.tone} ${
                   isNext
                     ? "ring-2 ring-gold ring-offset-2 ring-offset-white shadow-[0_4px_12px_rgba(150,104,26,0.28)]"
                     : ""
                 }`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={prayerArt(p.key)} alt="" width={40} height={40} className="h-10 w-10" />
+                {p.marker ? (
+                  <Icon name={p.icon} size={20} />
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={prayerArt(p.key)} alt="" width={40} height={40} className="h-8 w-8 sm:h-10 sm:w-10" />
+                )}
               </div>
-              <div className="text-[13px] font-semibold text-charcoal">{p.label}</div>
-              <div className="text-[12px] text-charcoal-soft">{p.time}</div>
+              <div
+                className={`text-[12px] font-semibold sm:text-[13px] ${
+                  p.marker ? "text-charcoal-soft" : "text-charcoal"
+                }`}
+              >
+                {p.label}
+              </div>
+              <div className="text-[11px] text-charcoal-soft sm:text-[12px]">{p.time}</div>
             </div>
           );
         })}
